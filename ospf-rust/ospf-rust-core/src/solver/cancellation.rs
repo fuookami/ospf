@@ -31,6 +31,53 @@ pub enum CancellationOrigin {
     Other(String),
 }
 
+impl CancellationOrigin {
+    /// 该来源的线格式规范代码 / Canonical wire code of this origin.
+    ///
+    /// portable checkpoint envelope 只承载规范代码（字符串），代码词表与两侧枚举映射由跨语言
+    /// 契约 `analysis-fixtures/checkpoint-wire-contract.tsv` 的 `[cancellation-origin]` 段规定，
+    /// 两侧的契约测试强制校验其一致性。
+    ///
+    /// The portable checkpoint envelope carries only the canonical code (a string). The code
+    /// vocabulary and the mapping to each side's enum are defined by the `[cancellation-origin]`
+    /// section of the cross-language contract `analysis-fixtures/checkpoint-wire-contract.tsv`, and
+    /// both sides enforce it in a contract test.
+    pub fn to_wire_code(&self) -> &str {
+        match self {
+            Self::User => "user",
+            Self::External => "external",
+            Self::Callback => "callback",
+            Self::FrameworkLoser => "frameworkLoser",
+            Self::RemoteStop => "remoteStop",
+            Self::TokioTaskAbort => "taskAbort",
+            Self::Backend => "backend",
+            // 归属未归类的结构化来源时，代码文本原样输出。
+            // A structured source outside the vocabulary emits its own text verbatim.
+            Self::Other(code) => code.as_str(),
+        }
+    }
+
+    /// 由线格式规范代码还原来源 / Restore an origin from its canonical wire code.
+    ///
+    /// 无法识别的代码落到 [`Self::Other`] 并**原样保留**代码文本，因此对端私有取值也能无损往返；
+    /// 契约中标记为 `Other` 的代码（`future`、`timeout`）同样走这条兜底路径。
+    /// An unrecognized code lands in [`Self::Other`] with the code text **preserved verbatim**, so a
+    /// peer's private value round-trips losslessly; the codes marked `Other` in the contract
+    /// (`future`, `timeout`) take the same fallback path.
+    pub fn from_wire_code(code: &str) -> Self {
+        match code {
+            "user" => Self::User,
+            "external" => Self::External,
+            "callback" => Self::Callback,
+            "frameworkLoser" => Self::FrameworkLoser,
+            "remoteStop" => Self::RemoteStop,
+            "taskAbort" => Self::TokioTaskAbort,
+            "backend" => Self::Backend,
+            other => Self::Other(other.to_owned()),
+        }
+    }
+}
+
 impl From<String> for CancellationOrigin {
     fn from(value: String) -> Self {
         Self::Other(value)
@@ -67,6 +114,39 @@ pub struct CancellationRecord {
     pub origin: CancellationOrigin,
     /// 首次取消时间（epoch milliseconds）/ First cancellation time in epoch milliseconds.
     pub requested_at_epoch_ms: u64,
+    /// 调用方给出的取消原因 / Caller-supplied cancellation reason.
+    ///
+    /// 该字段让取消原因能穿过 checkpoint 与跨语言线格式：线格式契约
+    /// （`analysis-fixtures/checkpoint-wire-contract.tsv` 的 `[cancellation-record]`）把它定义为
+    /// 可空字段，Kotlin 的 `CancellationRecord.reason` 也有对应语义。此前 core 缺少该字段，
+    /// 导致原因在 DTO → artifact 物化时被静默丢弃。
+    ///
+    /// This field lets a cancellation reason survive the checkpoint and the cross-language wire
+    /// format: the wire contract (`[cancellation-record]` in
+    /// `analysis-fixtures/checkpoint-wire-contract.tsv`) defines it as nullable, and Kotlin's
+    /// `CancellationRecord.reason` carries the same semantics. Its absence here previously dropped
+    /// the reason silently when materializing a DTO into an artifact.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub reason: Option<String>,
+}
+
+impl CancellationRecord {
+    /// 创建取消事实 / Create a cancellation fact.
+    ///
+    /// 提供构造器以便调用点无需逐字段列出结构体字面量，未来新增字段时也不必改动它们。
+    /// A constructor keeps call sites from listing every field, so future additions do not touch
+    /// them.
+    pub fn new(
+        origin: CancellationOrigin,
+        requested_at_epoch_ms: u64,
+        reason: Option<String>,
+    ) -> Self {
+        Self {
+            origin,
+            requested_at_epoch_ms,
+            reason,
+        }
+    }
 }
 
 type Interrupter = Arc<dyn Fn() + Send + Sync + 'static>;
@@ -125,6 +205,21 @@ impl SolveHandle {
     where
         O: Into<CancellationOrigin>,
     {
+        self.cancel_with_reason(origin, None)
+    }
+
+    /// 请求取消并附上原因 / Request cancellation with a reason.
+    ///
+    /// 与 [`Self::cancel`] 的唯一区别是记录取消原因。原因会随取消事实进入 checkpoint 与跨语言
+    /// 线格式，因此需要审计"为什么被取消"的调用方应使用本方法。
+    ///
+    /// The only difference from [`Self::cancel`] is that the cancellation reason is recorded. The
+    /// reason travels with the cancellation fact into checkpoints and the cross-language wire
+    /// format, so callers that need to audit *why* a solve was cancelled should use this method.
+    pub fn cancel_with_reason<O>(&self, origin: O, reason: Option<String>) -> bool
+    where
+        O: Into<CancellationOrigin>,
+    {
         let interrupters = {
             let mut state = self
                 .state
@@ -138,6 +233,7 @@ impl SolveHandle {
             state.record = Some(CancellationRecord {
                 origin: origin.into(),
                 requested_at_epoch_ms: now_epoch_ms(),
+                reason,
             });
             std::mem::take(&mut state.interrupters)
         };
@@ -269,6 +365,52 @@ mod tests {
     }
 
     #[test]
+    fn cancel_records_the_caller_supplied_reason() {
+        // 取消原因必须随取消事实一起记录，才能进入 checkpoint 与跨语言线格式。
+        // A cancellation reason must be recorded with the cancellation fact so it can travel into
+        // checkpoints and the cross-language wire format.
+        let handle = SolveHandle::new();
+        assert!(handle.cancel_with_reason(
+            CancellationOrigin::User,
+            Some("operator stopped the run".to_owned())
+        ));
+
+        let cancellation = handle.cancellation().expect("cancellation should be recorded");
+        assert_eq!(
+            cancellation.reason.as_deref(),
+            Some("operator stopped the run")
+        );
+    }
+
+    #[test]
+    fn cancel_without_a_reason_keeps_the_reason_empty() {
+        // 对照：不提供原因时必须是 `None`，而不是空字符串占位。
+        // Control: with no reason the field must be `None`, not an empty-string placeholder.
+        let handle = SolveHandle::new();
+        assert!(handle.cancel(CancellationOrigin::RemoteStop));
+
+        let cancellation = handle.cancellation().expect("cancellation should be recorded");
+        assert_eq!(cancellation.reason, None);
+    }
+
+    #[test]
+    fn repeated_cancel_does_not_replace_the_first_reason() {
+        // 重复取消不得覆盖首次原因：取消事实只在首次请求时确立。
+        // A repeated cancellation must not replace the first reason: the fact is fixed by the
+        // first request.
+        let handle = SolveHandle::new();
+        assert!(handle.cancel_with_reason(CancellationOrigin::User, Some("first".to_owned())));
+        assert!(!handle.cancel_with_reason(
+            CancellationOrigin::RemoteStop,
+            Some("second".to_owned())
+        ));
+
+        let cancellation = handle.cancellation().expect("cancellation should be recorded");
+        assert_eq!(cancellation.origin, CancellationOrigin::User);
+        assert_eq!(cancellation.reason.as_deref(), Some("first"));
+    }
+
+    #[test]
     fn registering_after_cancel_invokes_interrupter_immediately() {
         let handle = SolveHandle::new();
         handle.cancel(CancellationOrigin::External);
@@ -332,5 +474,40 @@ mod tests {
         assert!(handle.cancel(CancellationOrigin::FrameworkLoser));
         handle.mark_completed();
         assert!(handle.cancellation_preceded_completion());
+    }
+
+    #[test]
+    fn wire_codes_follow_the_cross_language_vocabulary() {
+        // 与 `checkpoint-wire-contract.tsv` 的 `[cancellation-origin]` 表逐行对齐。
+        // Mirrors the `[cancellation-origin]` table of `checkpoint-wire-contract.tsv` row by row.
+        let cases = [
+            (CancellationOrigin::User, "user"),
+            (CancellationOrigin::External, "external"),
+            (CancellationOrigin::Callback, "callback"),
+            (CancellationOrigin::FrameworkLoser, "frameworkLoser"),
+            (CancellationOrigin::RemoteStop, "remoteStop"),
+            (CancellationOrigin::TokioTaskAbort, "taskAbort"),
+            (CancellationOrigin::Backend, "backend"),
+        ];
+        for (origin, code) in cases {
+            assert_eq!(origin.to_wire_code(), code);
+            assert_eq!(CancellationOrigin::from_wire_code(code), origin);
+        }
+
+        // 契约把 `future`/`timeout` 映射到 Rust 的兜底变体，代码文本必须原样保留。
+        // The contract maps `future`/`timeout` to Rust's catch-all variant and keeps the code text.
+        for code in ["future", "timeout"] {
+            let origin = CancellationOrigin::from_wire_code(code);
+            assert_eq!(origin, CancellationOrigin::Other(code.to_owned()));
+            assert_eq!(origin.to_wire_code(), code);
+        }
+
+        // 未知代码（含对端私有取值）无损往返，不得被静默改写。
+        // Unknown codes — including a peer's private values — round-trip without silent rewriting.
+        for code in ["operator", "deadline", "vendor-supervisor", ""] {
+            let origin = CancellationOrigin::from_wire_code(code);
+            assert_eq!(origin, CancellationOrigin::Other(code.to_owned()));
+            assert_eq!(origin.to_wire_code(), code);
+        }
     }
 }

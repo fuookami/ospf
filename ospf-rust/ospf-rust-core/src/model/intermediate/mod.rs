@@ -12,10 +12,13 @@
 
 pub mod basic_linear_triad_model;
 pub mod basic_quadratic_tetrad_model;
+pub mod deferred_function;
 pub mod elastic;
+pub mod function_usage;
 pub mod linear_triad_model;
 pub mod linear_triad_model_view;
 pub mod lp_export;
+pub mod native_writer;
 pub mod quadratic_tetrad_model;
 pub mod quadratic_tetrad_model_view;
 
@@ -23,6 +26,15 @@ pub use basic_linear_triad_model::{
     BasicLinearTriadModel, BasicLinearTriadModelF64, SparseMatrix, SparseVector,
 };
 pub use basic_quadratic_tetrad_model::{BasicQuadraticTetradModel, BasicQuadraticTetradModelF64};
+pub use deferred_function::{
+    ConstraintSource, DOMAIN_PROOF_LOST, DOMAIN_PROOF_WIDENED, DeferredFunctionStructure,
+    InputDomainProof, StructureUsageBinding, fingerprint_float, verify_native_write,
+};
+pub use function_usage::FunctionUsageSummary;
+pub use native_writer::{
+    FallbackReason, NativeFunctionWriter, NativeFunctionWriterRegistry, NativeLoweringReport,
+    NativeWriteOutcome, NativeWriteRecord, NativeWriteRequest,
+};
 pub use elastic::{LinearElasticBuilder, QuadraticElasticBuilder};
 pub use linear_triad_model::{LinearTriadModel, LinearTriadModelF64};
 pub use linear_triad_model_view::LinearTriadModelView;

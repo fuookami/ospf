@@ -12,10 +12,13 @@ use ospf_rust_core::model::constraint_programming::{
 use ospf_rust_core::model::{ConstraintRelation, ObjectiveCategory};
 use ospf_rust_core::solver::constraint_programming::ConstraintProgrammingCheckpointArtifact;
 use ospf_rust_core::solver::{
-    AuditFingerprint, CancellationRecord, ProblemStatus, SolveCheckpointArtifact, SolveReport,
-    SolverOutput, SolverProvenance, SolverStatus, TerminationReason, stable_element_id,
+    AuditFingerprint, CancellationOrigin, CancellationRecord, ProblemStatus, SolveCheckpoint,
+    SolveCheckpointArtifact, SolveReport,
+    SolverOutput, SolverProvenance, SolverStatus, TerminationReason, sha256_fingerprint,
+    stable_element_id,
 };
 use ospf_rust_core::variable::VariableType;
+use sha2::{Digest, Sha256};
 
 use super::super::logic_based_benders_checkpoint::{
     LogicBasedBendersCheckpointArtifact, LogicBasedBendersResumeIdentity,
@@ -35,7 +38,13 @@ use super::storage::validate_object_ref_etag;
 
 /// 当前 portable checkpoint artifact 的远程 schema 版本。
 /// Current remote schema version for portable checkpoint artifacts.
-pub const CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION: &str = "1.0";
+///
+/// schema 3.0 起 `cancellationChain` 与 `provenance` 是 envelope 的一等字段，字段名与顺序由跨语言
+/// 契约 `analysis-fixtures/checkpoint-wire-contract.tsv` 的 `[envelope-field]` 段规定。
+/// Since schema 3.0 `cancellationChain` and `provenance` are first-class envelope fields; their names
+/// and order are defined by the `[envelope-field]` section of the cross-language contract
+/// `analysis-fixtures/checkpoint-wire-contract.tsv`.
+pub const CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION: &str = "3.0";
 
 /// 远程 typed CP/LBB checkpoint schema 版本。
 /// Remote schema version for typed CP/LBB checkpoints.
@@ -46,6 +55,14 @@ pub const CURRENT_REMOTE_CONSTRAINT_PROGRAMMING_RESULT_SCHEMA_VERSION: &str = "1
 
 const REMOTE_CONSTRAINT_PROGRAMMING_RESULT_DIGEST_DOMAIN: &str =
     "ospf.remote.constraint-programming.result";
+
+fn default_remote_checkpoint_schema_version() -> String {
+    CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION.to_owned()
+}
+
+fn default_remote_checkpoint_source_format() -> String {
+    "v2".to_owned()
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -513,20 +530,294 @@ pub fn validate_logic_based_benders_checkpoint_for_resume(
         })
 }
 
-/// 远程 portable checkpoint artifact 封装。
-/// Remote envelope for a portable checkpoint artifact.
+/// 仍无对应线格式字段的 Rust 取值所用的保留前缀 / Reserved prefix for Rust values with no wire field.
+///
+/// 该前缀只允许承载 Kotlin envelope 无法表达的数据；任何已有一等字段的数据都必须走真实字段，
+/// 不允许再塞回 `assumptions`。前缀随 envelope schema 升级（`v2` → `v3`），旧前缀的载荷不再产生，
+/// 但解码时仍按当前前缀识别。
+///
+/// The prefix may only carry data the Kotlin envelope cannot express. Any value that has a
+/// first-class field must travel in that field instead of being folded back into `assumptions`. The
+/// prefix tracks the envelope schema (`v2` → `v3`); the old prefix is no longer produced, only the
+/// current one is recognized on decode.
+pub const RUST_CHECKPOINT_RESIDUAL_METADATA_PREFIX: &str = "ospf-rust-residual-v3:";
+
+/// 对端未提供 provenance 时使用的显式未知身份 / Explicit unknown identity used when the peer omits provenance.
+///
+/// 契约把 envelope 的 `provenance` 定义为**可空**，因此"缺失"是合法输入；但核心
+/// `SolveCheckpoint::validate` 要求 `solver_id` 与 `backend_name` 非空。用这个标记同时满足两者：
+/// 物化不会因可空字段而失败，审计记录也不会被填入一个看起来真实的来源。
+///
+/// The contract defines the envelope's `provenance` as **nullable**, so its absence is legitimate
+/// input, while the core `SolveCheckpoint::validate` requires a non-blank `solver_id` and
+/// `backend_name`. This marker satisfies both: materialization does not fail over a nullable field,
+/// and the audit record never gets a plausible-looking origin fabricated into it.
+const UNKNOWN_PROVENANCE_IDENTITY: &str = "unknown";
+
+/// 身份字段在核心 `metadata` 中的保留键 / Reserved keys for identity fields inside the core metadata.
+///
+/// `into_artifact()` 必须把身份字段写进核心 `metadata`，因为那是跨物化**唯一**的字符串载体；但它们
+/// 是**一等线字段**，不得再冗余出现在线格式的 `metadata` 里。`new()` 因此在读取身份后把这些键从
+/// 线格式 `metadata` 中剔除，使"物化 → 重编码"后对端看到的 `metadata` 与原始一致。
+///
+/// 该簿记不影响线格式语义，但会改变 `SolveCheckpoint` 的结构相等性，因此凡按整结构比较 checkpoint
+/// 的地方都必须用 [`strip_identity_bookkeeping`] 归一化后再比。
+///
+/// `into_artifact()` must write the identity fields into the core metadata because that is the **only**
+/// string carrier across materialization, but they are **first-class wire fields** and must not
+/// additionally appear in the wire `metadata`. `new()` therefore strips these keys out of the wire
+/// metadata after reading the identity, so a peer sees the same `metadata` after a
+/// materialize-then-reencode round trip.
+///
+/// The bookkeeping does not affect wire semantics, but it does change `SolveCheckpoint`'s structural
+/// equality, so every whole-struct comparison must normalize with [`strip_identity_bookkeeping`] first.
+pub(crate) const RESERVED_IDENTITY_METADATA_KEYS: [&str; 5] = [
+    "checkpointId",
+    "identityNamespace",
+    "identitySchemaVersion",
+    "modelName",
+    "createdAtEpochMs",
+];
+
+/// 从核心 `metadata` 中剔除身份保留键，得到线格式 `metadata`。
+/// Strip the reserved identity keys from the core metadata to obtain the wire `metadata`.
+fn wire_metadata(metadata: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    metadata
+        .iter()
+        .filter(|(key, _)| !RESERVED_IDENTITY_METADATA_KEYS.contains(&key.as_str()))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect()
+}
+
+/// 剔除身份簿记后的 checkpoint，用于整结构比较。
+/// The checkpoint with identity bookkeeping removed, for whole-struct comparison.
+///
+/// 身份簿记是 Rust 侧跨物化的内部载体，**不是** checkpoint 身份的一部分；把它纳入整结构比较会让
+/// "存储侧经物化补齐了簿记"与"请求侧未携带簿记"必然不等，从而把身份匹配误判为不匹配。
+///
+/// The identity bookkeeping is a Rust-internal carrier across materialization and is **not** part of a
+/// checkpoint's identity; including it in a whole-struct comparison would make "storage side gained the
+/// bookkeeping while materializing" necessarily differ from "request side never carried it", turning a
+/// matching identity into a mismatch.
+pub(crate) fn strip_identity_bookkeeping(
+    checkpoint: &SolveCheckpoint,
+) -> SolveCheckpoint {
+    let mut normalized = checkpoint.clone();
+    for key in RESERVED_IDENTITY_METADATA_KEYS {
+        normalized.metadata.remove(key);
+    }
+    normalized
+}
+
+fn hex_sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Kotlin envelope 没有承载能力的 Rust 取值 / Rust values the Kotlin envelope cannot carry.
+///
+/// 取消链与 provenance 在 schema 3.0 已是一等字段，因此这里只剩以下数据：
+/// 可移植算法状态字节、状态摘要、迭代轮次、重建恢复所需的算法元数据，以及 Rust 原始的
+/// 模型/配置/solver 三份审计指纹——`modelFingerprint` 等字段被 Kotlin 的快照摘要语义占用，
+/// 无法承载 Rust 的原始指纹。
+///
+/// The cancellation chain and provenance are first-class fields as of schema 3.0, so only these
+/// remain: the portable state bytes, its digest, the iteration round, the algorithm metadata needed
+/// by a rebuild-based restore, and Rust's original model/configuration/solver audit fingerprints —
+/// `modelFingerprint` and friends are occupied by Kotlin's snapshot-digest semantics and cannot carry
+/// Rust's original fingerprints.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RustCheckpointResidualMetadata {
+    model_fingerprint: AuditFingerprint,
+    configuration_fingerprint: AuditFingerprint,
+    solver_fingerprint: AuditFingerprint,
+    state_digest: AuditFingerprint,
+    state: Vec<u8>,
+    iteration: usize,
+}
+
+/// 一条取消事实的线格式形态 / Wire shape of one cancellation fact.
+///
+/// 字段名、顺序与可空性与契约 `[cancellation-record]` 完全一致；来源以**规范代码**承载，
+/// 因此两侧都能无损往返对端取值（见 [`CancellationOrigin::to_wire_code`]）。
+///
+/// Field names, order, and nullability match the `[cancellation-record]` section of the contract
+/// exactly. The origin travels as a **canonical code** so either side round-trips the other side's
+/// values losslessly (see [`CancellationOrigin::to_wire_code`]).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableCancellationRecord {
+    /// 取消来源规范代码 / Canonical cancellation-origin code.
+    pub origin: String,
+    /// 取消请求时间（epoch 毫秒）/ Cancellation request time in epoch milliseconds.
+    pub requested_at_epoch_ms: u64,
+    /// 取消原因 / Cancellation reason.
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+impl PortableCancellationRecord {
+    /// 由核心取消事实创建线格式记录 / Build a wire record from a core cancellation fact.
+    ///
+    /// 核心 [`CancellationRecord`] 的 `reason` 会被原样搬运到线格式上，因此取消原因可以穿过
+    /// DTO → artifact 的物化过程而不丢失。
+    /// The core [`CancellationRecord`]'s `reason` is carried onto the wire verbatim, so a
+    /// cancellation reason survives materializing a DTO into an artifact.
+    pub fn from_record(record: &CancellationRecord) -> Self {
+        Self {
+            origin: record.origin.to_wire_code().to_owned(),
+            requested_at_epoch_ms: record.requested_at_epoch_ms,
+            reason: record.reason.clone(),
+        }
+    }
+
+    /// 还原为核心取消事实 / Restore the core cancellation fact.
+    pub fn to_record(&self) -> CancellationRecord {
+        CancellationRecord {
+            origin: CancellationOrigin::from_wire_code(&self.origin),
+            requested_at_epoch_ms: self.requested_at_epoch_ms,
+            reason: self.reason.clone(),
+        }
+    }
+}
+
+/// solver provenance 的线格式形态 / Wire shape of solver provenance.
+///
+/// 字段名、顺序与可空性与契约 `[provenance-field]` 完全一致。string-map 使用 [`BTreeMap`]，
+/// 因此序列化时天然按键升序输出，与 Kotlin 侧显式排序后的结果对齐（契约 `[canonicalization]`）。
+///
+/// Field names, order, and nullability match the `[provenance-field]` section of the contract
+/// exactly. The string maps are [`BTreeMap`]s, so they always serialize in ascending key order and
+/// match the Kotlin side's explicitly sorted output (contract `[canonicalization]`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PortableSolverProvenance {
+    /// 稳定 solver ID / Stable solver ID.
+    pub solver_id: String,
+    /// backend 名称 / Backend name.
+    pub backend_name: String,
+    /// backend 版本 / Backend version.
+    #[serde(default)]
+    pub backend_version: Option<String>,
+    /// plugin 版本 / Plugin version.
+    #[serde(default)]
+    pub plugin_version: Option<String>,
+    /// 请求配置摘要 / Requested configuration summary.
+    #[serde(default)]
+    pub requested_configuration: BTreeMap<String, String>,
+    /// 实际生效配置 / Effective configuration.
+    #[serde(default)]
+    pub effective_configuration: BTreeMap<String, String>,
+    /// 线程数 / Thread count.
+    #[serde(default)]
+    pub thread_count: Option<usize>,
+    /// 随机种子 / Random seed.
+    #[serde(default)]
+    pub random_seed: Option<u64>,
+    /// 是否确定性 / Whether deterministic.
+    #[serde(default)]
+    pub deterministic: Option<bool>,
+    /// 脱敏环境摘要 / Redacted environment summary.
+    #[serde(default)]
+    pub environment_summary: BTreeMap<String, String>,
+}
+
+impl PortableSolverProvenance {
+    /// 由核心 provenance 创建线格式 provenance / Build the wire provenance from a core provenance.
+    pub fn from_solver_provenance(provenance: &SolverProvenance) -> Self {
+        Self {
+            solver_id: provenance.solver_id.clone(),
+            backend_name: provenance.backend_name.clone(),
+            backend_version: provenance.backend_version.clone(),
+            plugin_version: provenance.plugin_version.clone(),
+            requested_configuration: provenance.requested_configuration.clone(),
+            effective_configuration: provenance.effective_configuration.clone(),
+            thread_count: provenance.thread_count,
+            random_seed: provenance.random_seed,
+            deterministic: provenance.deterministic,
+            environment_summary: provenance.environment_summary.clone(),
+        }
+    }
+
+    /// 还原为核心 solver provenance / Restore the core solver provenance.
+    pub fn to_solver_provenance(&self) -> SolverProvenance {
+        SolverProvenance {
+            solver_id: self.solver_id.clone(),
+            backend_name: self.backend_name.clone(),
+            backend_version: self.backend_version.clone(),
+            plugin_version: self.plugin_version.clone(),
+            requested_configuration: self.requested_configuration.clone(),
+            effective_configuration: self.effective_configuration.clone(),
+            thread_count: self.thread_count,
+            random_seed: self.random_seed,
+            deterministic: self.deterministic,
+            environment_summary: self.environment_summary.clone(),
+        }
+    }
+}
+
+/// Portable checkpoint envelope shared with the Kotlin CP codec.
+///
+/// The field list intentionally mirrors `ConstraintProgrammingCheckpointEnvelope` exactly.  In
+/// particular, there is no private `{ schemaVersion, artifact }` wrapper and all nullable/default
+/// fields are serialized, matching Kotlin's `encodeDefaults = true` configuration.  `cancellationChain`
+/// and `provenance` are first-class fields as of schema 3.0 and must stay in the contract's order
+/// (immediately before `integritySha256`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteCheckpointArtifactDto {
-    /// artifact schema 版本 / Artifact schema version.
+    #[serde(default = "default_remote_checkpoint_schema_version")]
     pub schema_version: String,
-    /// 被摘要保护的 checkpoint 和状态载荷 / Digest-protected checkpoint and state payload.
-    pub artifact: SolveCheckpointArtifact,
+    #[serde(default = "default_remote_checkpoint_source_format")]
+    pub source_format: String,
+    #[serde(default)]
+    pub migrated_from_legacy: bool,
+    pub checkpoint_id: String,
+    pub identity_schema_version: String,
+    pub identity_namespace: String,
+    pub model_name: String,
+    pub model_fingerprint: String,
+    #[serde(default)]
+    pub configuration_fingerprint: Option<String>,
+    #[serde(default)]
+    pub solver_fingerprint: Option<String>,
+    #[serde(default)]
+    pub run_id: Option<String>,
+    #[serde(default)]
+    pub attempt_id: Option<String>,
+    #[serde(default)]
+    pub parent_checkpoint_id: Option<String>,
+    pub created_at_epoch_ms: u64,
+    pub snapshot_json: String,
+    #[serde(default)]
+    pub incumbent: Option<serde_json::Value>,
+    #[serde(default)]
+    pub best_bound: Option<String>,
+    #[serde(default)]
+    pub gap: Option<String>,
+    #[serde(default)]
+    pub assumptions: Vec<String>,
+    #[serde(default)]
+    pub conflicts: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub benders: Option<serde_json::Value>,
+    /// 取消链；空链必须显式输出 `[]` / Cancellation chain; an empty chain is emitted as `[]`.
+    #[serde(default)]
+    pub cancellation_chain: Vec<PortableCancellationRecord>,
+    /// solver provenance；缺失时显式输出 `null` / Solver provenance; emitted as explicit `null` when absent.
+    #[serde(default)]
+    pub provenance: Option<PortableSolverProvenance>,
+    /// 结构化算法元数据；键升序输出（`BTreeMap` 天然有序）。 / Structured algorithm metadata; ascending key order (`BTreeMap` is ordered).
+    #[serde(default)]
+    pub metadata: BTreeMap<String, String>,
+    #[serde(default)]
+    pub integrity_sha256: String,
 }
 
 impl RemoteCheckpointArtifactDto {
-    /// 从核心 artifact 创建远程封装。
-    /// Create a remote envelope from a core artifact.
     pub fn new(artifact: SolveCheckpointArtifact) -> RemoteSolverResult<Self> {
         artifact.validate().map_err(|error| {
             RemoteSolverError::new(
@@ -534,14 +825,104 @@ impl RemoteCheckpointArtifactDto {
                 format!("checkpoint artifact failed validation: {}", error),
             )
         })?;
-        Ok(Self {
+
+        let checkpoint = &artifact.checkpoint;
+        let residual = RustCheckpointResidualMetadata {
+            model_fingerprint: checkpoint.model_fingerprint.clone(),
+            configuration_fingerprint: checkpoint.configuration_fingerprint.clone(),
+            solver_fingerprint: checkpoint.solver_fingerprint.clone(),
+            state_digest: checkpoint.state_digest.clone(),
+            state: artifact.state.clone(),
+            iteration: checkpoint.iteration,
+        };
+        let residual = serde_json::to_string(&residual).map_err(|error| {
+            RemoteSolverError::new(
+                super::domain::RemoteSolverErrorCode::CheckpointExportFailed,
+                format!("failed to encode Rust checkpoint residual metadata: {}", error),
+            )
+        })?;
+        let mut dto = Self {
             schema_version: CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION.to_owned(),
-            artifact,
-        })
+            source_format: "v2".to_owned(),
+            migrated_from_legacy: false,
+            checkpoint_id: checkpoint
+                .metadata
+                .get("checkpointId")
+                .cloned()
+                .unwrap_or_else(|| checkpoint.attempt_id.clone()),
+            identity_schema_version: checkpoint
+                .metadata
+                .get("identitySchemaVersion")
+                .cloned()
+                .unwrap_or_else(|| "1.0".to_owned()),
+            identity_namespace: checkpoint
+                .metadata
+                .get("identityNamespace")
+                .cloned()
+                .unwrap_or_else(|| "ospf-rust".to_owned()),
+            model_name: checkpoint
+                .metadata
+                .get("modelName")
+                .cloned()
+                .unwrap_or_else(|| "remote".to_owned()),
+            // Kotlin's envelope defines modelFingerprint as SHA-256(snapshotJson).  The original
+            // Rust checkpoint identity remains in the reserved residual metadata below.
+            model_fingerprint: String::new(),
+            configuration_fingerprint: Some(checkpoint.configuration_fingerprint.value.clone()),
+            solver_fingerprint: Some(checkpoint.solver_fingerprint.value.clone()),
+            run_id: Some(checkpoint.run_id.clone()),
+            attempt_id: Some(checkpoint.attempt_id.clone()),
+            parent_checkpoint_id: checkpoint.parent_attempt_id.clone(),
+            created_at_epoch_ms: checkpoint
+                .metadata
+                .get("createdAtEpochMs")
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0),
+            snapshot_json: String::from_utf8(artifact.state.clone()).unwrap_or_else(|_| {
+                format!("{}binary-state", RUST_CHECKPOINT_RESIDUAL_METADATA_PREFIX)
+            }),
+            incumbent: checkpoint.incumbent_objective.map(|objective| {
+                serde_json::json!({
+                    "valuesById": {},
+                    "intervalsById": {},
+                    "objective": objective.to_string(),
+                })
+            }),
+            best_bound: checkpoint.best_bound.map(|value| value.to_string()),
+            gap: checkpoint.relative_gap.map(|value| value.to_string()),
+            assumptions: vec![format!(
+                "{}{}",
+                RUST_CHECKPOINT_RESIDUAL_METADATA_PREFIX, residual
+            )],
+            conflicts: Vec::new(),
+            benders: None,
+            // 取消链与 provenance 走一等字段，不再塞进保留 assumption。
+            // The cancellation chain and provenance travel in first-class fields, no longer folded
+            // into the reserved assumption.
+            cancellation_chain: checkpoint
+                .cancellation_chain
+                .iter()
+                .map(PortableCancellationRecord::from_record)
+                .collect(),
+            provenance: Some(PortableSolverProvenance::from_solver_provenance(
+                &checkpoint.provenance,
+            )),
+            integrity_sha256: String::new(),
+            metadata: wire_metadata(&checkpoint.metadata),
+        };
+        // Invalid UTF-8 state is kept in the residual metadata and the snapshot field remains a
+        // JSON string, which preserves the Kotlin envelope's scalar type.
+        if !artifact.state.is_ascii() && std::str::from_utf8(&artifact.state).is_err() {
+            dto.snapshot_json = format!(
+                "{}binary-state",
+                RUST_CHECKPOINT_RESIDUAL_METADATA_PREFIX
+            );
+        }
+        dto.model_fingerprint = hex_sha256(dto.snapshot_json.as_bytes());
+        dto.integrity_sha256 = dto.digest()?;
+        Ok(dto)
     }
 
-    /// 校验 schema 和 artifact 完整性。
-    /// Validate schema and artifact integrity.
     pub fn validate(&self) -> RemoteSolverResult<()> {
         if self.schema_version != CURRENT_REMOTE_CHECKPOINT_ARTIFACT_SCHEMA_VERSION {
             return Err(RemoteSolverError::new(
@@ -552,7 +933,185 @@ impl RemoteCheckpointArtifactDto {
                 ),
             ));
         }
-        self.artifact.validate().map_err(|error| {
+        if self.source_format != "v2" {
+            return Err(RemoteSolverError::new(
+                super::domain::RemoteSolverErrorCode::UnsupportedProtocolVersion,
+                format!(
+                    "unsupported checkpoint source format '{}', expected 'v2'",
+                    self.source_format
+                ),
+            ));
+        }
+        if (!self.migrated_from_legacy && self.checkpoint_id == "legacy-v1")
+            || (self.migrated_from_legacy && self.checkpoint_id != "legacy-v1-migrated")
+        {
+            return Err(RemoteSolverError::checkpoint_restore(
+                "checkpoint envelope legacy migration marker does not match checkpointId",
+            ));
+        }
+        for (field, value) in [
+            ("checkpointId", self.checkpoint_id.as_str()),
+            ("identitySchemaVersion", self.identity_schema_version.as_str()),
+            ("identityNamespace", self.identity_namespace.as_str()),
+            ("modelName", self.model_name.as_str()),
+            ("modelFingerprint", self.model_fingerprint.as_str()),
+            ("integritySha256", self.integrity_sha256.as_str()),
+        ] {
+            if value.trim().is_empty() {
+                return Err(RemoteSolverError::checkpoint_restore(format!(
+                    "checkpoint envelope {} cannot be blank",
+                    field
+                )));
+            }
+        }
+        let expected_digest = self.digest()?;
+        if self.integrity_sha256 != expected_digest {
+            return Err(RemoteSolverError::checkpoint_restore(format!(
+                "checkpoint envelope integrity digest mismatch: expected {}, got {}",
+                expected_digest, self.integrity_sha256
+            )));
+        }
+        let expected_model_fingerprint = hex_sha256(self.snapshot_json.as_bytes());
+        if self.model_fingerprint != expected_model_fingerprint {
+            return Err(RemoteSolverError::checkpoint_restore(format!(
+                "checkpoint envelope model fingerprint does not match snapshotJson: expected {}, got {}",
+                expected_model_fingerprint, self.model_fingerprint
+            )));
+        }
+        Ok(())
+    }
+
+    fn digest(&self) -> RemoteSolverResult<String> {
+        let mut unsigned = self.clone();
+        unsigned.integrity_sha256.clear();
+        let bytes = serde_json::to_vec(&unsigned).map_err(|error| {
+            RemoteSolverError::checkpoint_restore(format!(
+                "failed to canonicalize checkpoint envelope: {}",
+                error
+            ))
+        })?;
+        Ok(hex_sha256(&bytes))
+    }
+
+    fn into_artifact(self) -> RemoteSolverResult<SolveCheckpointArtifact> {
+        let residual = self
+            .assumptions
+            .iter()
+            .find_map(|value| value.strip_prefix(RUST_CHECKPOINT_RESIDUAL_METADATA_PREFIX))
+            .and_then(|value| serde_json::from_str::<RustCheckpointResidualMetadata>(value).ok());
+        let state = residual
+            .as_ref()
+            .map(|residual| residual.state.clone())
+            .unwrap_or_else(|| self.snapshot_json.as_bytes().to_vec());
+        let fingerprint = |value: String| AuditFingerprint {
+            schema_version: "1.0".to_owned(),
+            algorithm: "sha256".to_owned(),
+            value,
+        };
+        // provenance 与取消链来自一等字段；对端缺失 provenance 时标记为未知来源。
+        //
+        // 契约把 `provenance` 定义为可空字段，因此缺失是**合法**输入，不能当作损坏。核心
+        // `SolveCheckpoint::validate` 又要求 solver_id / backend_name 非空，所以这里必须填入一个
+        // 显式的"未知"标记，而不是 `SolverProvenance::default()`（全空字符串会被核心校验拒绝，
+        // 使对端信封被误判为损坏），也不是任何看起来真实的来源（那是在伪造审计信息）。
+        //
+        // Provenance and the cancellation chain come from the first-class fields; a peer that omits
+        // provenance is marked as an unknown origin. The contract defines `provenance` as nullable,
+        // so its absence is **legitimate** input rather than corruption. The core
+        // `SolveCheckpoint::validate` in turn requires a non-blank solver_id / backend_name, so an
+        // explicit "unknown" marker is required here — not `SolverProvenance::default()` (all-blank
+        // strings, rejected by core validation, making a peer envelope look corrupt) and not any
+        // plausible-looking origin (that would fabricate audit information).
+        let provenance = self
+            .provenance
+            .as_ref()
+            .map(PortableSolverProvenance::to_solver_provenance)
+            .unwrap_or_else(|| SolverProvenance {
+                solver_id: UNKNOWN_PROVENANCE_IDENTITY.to_owned(),
+                backend_name: UNKNOWN_PROVENANCE_IDENTITY.to_owned(),
+                ..SolverProvenance::default()
+            });
+        let cancellation_chain: Vec<CancellationRecord> = self
+            .cancellation_chain
+            .iter()
+            .map(PortableCancellationRecord::to_record)
+            .collect();
+        let checkpoint = SolveCheckpoint::new(
+            self.run_id.unwrap_or_default(),
+            self.attempt_id.unwrap_or_else(|| self.checkpoint_id.clone()),
+            self.parent_checkpoint_id,
+            residual
+                .as_ref()
+                .map(|residual| residual.model_fingerprint.clone())
+                .unwrap_or_else(|| fingerprint(self.model_fingerprint)),
+            residual
+                .as_ref()
+                .map(|residual| residual.configuration_fingerprint.clone())
+                .unwrap_or_else(|| fingerprint(self.configuration_fingerprint.unwrap_or_default())),
+            residual
+                .as_ref()
+                .map(|residual| residual.solver_fingerprint.clone())
+                .unwrap_or_else(|| fingerprint(self.solver_fingerprint.unwrap_or_default())),
+            provenance,
+            residual
+                .as_ref()
+                .map(|residual| residual.iteration)
+                .unwrap_or(0),
+            self.incumbent
+                .as_ref()
+                .and_then(|value| value.get("objective"))
+                .and_then(serde_json::Value::as_str)
+                .and_then(|value| value.parse::<f64>().ok()),
+            self.best_bound
+                .as_deref()
+                .and_then(|value| value.parse::<f64>().ok()),
+            self.gap
+                .as_deref()
+                .and_then(|value| value.parse::<f64>().ok()),
+            residual
+                .as_ref()
+                .map(|residual| residual.state_digest.clone())
+                .unwrap_or_else(|| sha256_fingerprint("ospf.solve.checkpoint.state", &state)),
+        )
+        .map_err(|error| {
+            RemoteSolverError::checkpoint_restore(format!(
+                "checkpoint envelope identity is invalid: {}",
+                error
+            ))
+        })?;
+        let mut checkpoint = checkpoint;
+        // `metadata` 来自一等字段；残留载荷只承载仍无对应字段的数据。
+        // `metadata` comes from the first-class field; the residual payload carries only data that
+        // still has no corresponding field.
+        checkpoint.metadata = self.metadata.clone();
+        // 身份字段必须**写回** metadata：`new()` 正是从那里读取它们，缺项时会落到兜底值
+        // （checkpointId → attemptId、namespace → `ospf-rust`、modelName → `remote`、时间戳 → 0）。
+        // 若只读不写，"物化再重编码"会把**对端**的身份静默改写，对端读回时审计链已经失真。
+        //
+        // Identity fields must be written **back** into the metadata: `new()` reads them from there and
+        // substitutes defaults for missing ones (checkpointId → attemptId, namespace → `ospf-rust`,
+        // modelName → `remote`, timestamp → 0). Reading without writing silently rewrites a **peer's**
+        // identity on materialize-then-reencode, so the peer reads back a drifted audit chain.
+        checkpoint
+            .metadata
+            .insert("checkpointId".to_owned(), self.checkpoint_id.clone());
+        checkpoint.metadata.insert(
+            "identityNamespace".to_owned(),
+            self.identity_namespace.clone(),
+        );
+        checkpoint.metadata.insert(
+            "identitySchemaVersion".to_owned(),
+            self.identity_schema_version.clone(),
+        );
+        checkpoint
+            .metadata
+            .insert("modelName".to_owned(), self.model_name.clone());
+        checkpoint.metadata.insert(
+            "createdAtEpochMs".to_owned(),
+            self.created_at_epoch_ms.to_string(),
+        );
+        checkpoint.cancellation_chain = cancellation_chain;
+        SolveCheckpointArtifact::new(checkpoint, state).map_err(|error| {
             RemoteSolverError::checkpoint_restore(format!(
                 "checkpoint artifact failed integrity validation: {}",
                 error
@@ -621,7 +1180,7 @@ pub fn checkpoint_artifact_from_json(bytes: &[u8]) -> RemoteSolverResult<SolveCh
         ))
     })?;
     dto.validate()?;
-    Ok(dto.artifact)
+    dto.into_artifact()
 }
 
 /// 按 resume 请求校验 checkpoint artifact 的身份链。
@@ -2096,6 +2655,7 @@ mod tests {
             solver_status: "TIME_LIMIT".to_string(),
             report: None,
             message: None,
+            ..Default::default()
         };
 
         let output = serialized_solution_to_solver_output(&solution);
@@ -2124,6 +2684,7 @@ mod tests {
             report: None,
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let output = solve_result_to_solver_output(&result, None);
@@ -2284,7 +2845,18 @@ mod tests {
         let restored = load_checkpoint_artifact_from(&storage, &object_ref, &expectation)
             .await
             .expect("checkpoint artifact should be restored");
-        assert_eq!(restored, artifact);
+        // 物化会在核心 `metadata` 中补齐身份簿记（跨物化唯一的字符串载体），因此整结构比较前必须
+        // 归一化——与 remote resume 路径一致。除该簿记外，artifact 必须逐字段相同。
+        //
+        // Materialization fills in the identity bookkeeping inside the core `metadata` (the only string
+        // carrier across materialization), so a whole-struct comparison must normalize first — exactly as
+        // the remote resume path does. Apart from that bookkeeping the artifact must be field-identical.
+        assert_eq!(
+            strip_identity_bookkeeping(&restored.checkpoint),
+            strip_identity_bookkeeping(&artifact.checkpoint)
+        );
+        assert_eq!(restored.state, artifact.state);
+        assert_eq!(restored.checkpoint.state_digest, artifact.checkpoint.state_digest);
 
         let legacy_expectation = CheckpointResumeExpectation {
             run_id: artifact.checkpoint.run_id.clone(),
@@ -2322,6 +2894,132 @@ mod tests {
         let _ = std::fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn kotlin_v3_checkpoint_fixture_round_trips_and_rejects_identity_tampering() {
+        let bytes = include_bytes!("../../../tests/fixtures/remote-cp-checkpoint-v3.json");
+        let dto: RemoteCheckpointArtifactDto =
+            serde_json::from_slice(bytes).expect("Kotlin v3 envelope should decode");
+        dto.validate().expect("Kotlin v3 envelope should validate");
+        assert_eq!(dto.schema_version, "3.0");
+
+        // 取消链与 provenance 是 schema 3.0 的一等字段，必须直接落在 DTO 字段上。
+        // The cancellation chain and provenance are first-class schema-3.0 fields and must land
+        // directly on the DTO fields, not inside a reserved `assumptions` payload.
+        assert_eq!(dto.cancellation_chain.len(), 2);
+        assert_eq!(dto.cancellation_chain[0].origin, "remoteStop");
+        assert_eq!(dto.cancellation_chain[0].requested_at_epoch_ms, 1700000000001);
+        assert_eq!(
+            dto.cancellation_chain[0].reason.as_deref(),
+            Some("remote dispatcher stopped the attempt")
+        );
+        assert_eq!(dto.cancellation_chain[1].origin, "frameworkLoser");
+        assert!(dto.cancellation_chain[1].reason.is_none());
+        let provenance = dto
+            .provenance
+            .as_ref()
+            .expect("Kotlin v3 envelope should carry provenance");
+        assert_eq!(provenance.solver_id, "kotlin-cp/1.0");
+        assert_eq!(provenance.backend_name, "kotlin-backend");
+        assert_eq!(provenance.thread_count, Some(4));
+        assert_eq!(provenance.random_seed, Some(1700000000123));
+        assert_eq!(provenance.deterministic, Some(true));
+        assert_eq!(
+            provenance.requested_configuration.keys().collect::<Vec<_>>(),
+            vec!["threads", "timeLimit"]
+        );
+
+        let artifact = checkpoint_artifact_from_json(bytes)
+            .expect("Kotlin v3 envelope should materialize as a Rust artifact");
+        assert_eq!(artifact.checkpoint.run_id, "run-kotlin");
+        assert_eq!(artifact.checkpoint.attempt_id, "attempt-kotlin");
+        assert_eq!(
+            artifact.checkpoint.cancellation_chain[0].origin,
+            CancellationOrigin::RemoteStop
+        );
+        assert_eq!(
+            artifact.checkpoint.cancellation_chain[1].origin,
+            CancellationOrigin::FrameworkLoser
+        );
+        assert_eq!(artifact.checkpoint.provenance.solver_id, "kotlin-cp/1.0");
+
+        let reencoded = checkpoint_artifact_to_json(&artifact).expect("artifact should re-encode");
+        let reencoded_dto: RemoteCheckpointArtifactDto =
+            serde_json::from_slice(&reencoded).expect("re-encoded v3 envelope should decode");
+        assert_eq!(reencoded_dto.schema_version, "3.0");
+        assert_eq!(reencoded_dto.source_format, "v2");
+        assert_eq!(reencoded_dto.run_id.as_deref(), Some("run-kotlin"));
+        assert_eq!(reencoded_dto.attempt_id.as_deref(), Some("attempt-kotlin"));
+        assert_eq!(reencoded_dto.cancellation_chain.len(), 2);
+        assert_eq!(reencoded_dto.cancellation_chain[0].origin, "remoteStop");
+        assert_eq!(reencoded_dto.cancellation_chain[1].origin, "frameworkLoser");
+        assert_eq!(
+            reencoded_dto
+                .provenance
+                .as_ref()
+                .map(|provenance| provenance.solver_id.as_str()),
+            Some("kotlin-cp/1.0")
+        );
+
+        // 保留 assumption 只承载仍无对应字段的数据；一等字段不得回流到该私有通道。
+        // The reserved assumption carries only values with no counterpart field; no first-class
+        // field may flow back into that private channel.
+        assert_eq!(reencoded_dto.assumptions.len(), 1);
+        let residual: serde_json::Value = serde_json::from_str(
+            reencoded_dto.assumptions[0]
+                .strip_prefix(RUST_CHECKPOINT_RESIDUAL_METADATA_PREFIX)
+                .expect("reserved assumption should keep the residual prefix"),
+        )
+        .expect("reserved assumption should carry JSON");
+        let residual_keys: Vec<&str> = residual
+            .as_object()
+            .expect("residual payload should be an object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            residual_keys,
+            vec![
+                "configurationFingerprint",
+                "iteration",
+                "modelFingerprint",
+                "solverFingerprint",
+                "state",
+                "stateDigest",
+            ]
+        );
+        reencoded_dto
+            .validate()
+            .expect("re-encoded v3 envelope should retain integrity");
+
+        let mut tampered: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        tampered["checkpointId"] = serde_json::Value::from("other-checkpoint");
+        let tampered = serde_json::to_vec(&tampered).unwrap();
+        let error = checkpoint_artifact_from_json(&tampered)
+            .expect_err("identity tampering must invalidate the Kotlin envelope");
+        assert_eq!(error.code, RemoteSolverErrorCode::CheckpointRestoreFailed);
+    }
+
+    #[test]
+    fn kotlin_v2_checkpoint_fixture_is_rejected_as_legacy_schema() {
+        let bytes = include_bytes!("../../../tests/fixtures/remote-cp-checkpoint-v2.json");
+        let dto: RemoteCheckpointArtifactDto =
+            serde_json::from_slice(bytes).expect("legacy v2 envelope should still decode");
+        assert_eq!(dto.schema_version, "2.0");
+        assert!(dto.cancellation_chain.is_empty());
+        assert!(dto.provenance.is_none());
+
+        // schema 升级到 3.0 后，旧 2.0 envelope 必须被显式拒绝，而不是按 3.0 语义解释。
+        // After the schema moved to 3.0, a legacy 2.0 envelope must be rejected explicitly instead
+        // of being interpreted with 3.0 semantics.
+        let error = dto
+            .validate()
+            .expect_err("legacy 2.0 envelope must be rejected");
+        assert_eq!(error.code, RemoteSolverErrorCode::UnsupportedProtocolVersion);
+        let error = checkpoint_artifact_from_json(bytes)
+            .expect_err("legacy 2.0 envelope must not materialize");
+        assert_eq!(error.code, RemoteSolverErrorCode::UnsupportedProtocolVersion);
+    }
+
     #[tokio::test]
     async fn checkpoint_object_storage_resume_preserves_three_attempt_chain() {
         let root = std::env::temp_dir().join(format!(
@@ -2339,6 +3037,7 @@ mod tests {
             .record_cancellation(ospf_rust_core::solver::CancellationRecord {
                 origin: ospf_rust_core::solver::CancellationOrigin::User,
                 requested_at_epoch_ms: 10,
+                reason: None,
             })
             .expect("first cancellation should be recorded");
 
@@ -2370,6 +3069,7 @@ mod tests {
             .record_cancellation(ospf_rust_core::solver::CancellationRecord {
                 origin: ospf_rust_core::solver::CancellationOrigin::RemoteStop,
                 requested_at_epoch_ms: 20,
+                reason: None,
             })
             .expect("second cancellation should extend the chain");
         let second_path = ObjectPath::of("run-1/attempt-2.chain.json")
@@ -2433,6 +3133,7 @@ mod tests {
             report: Some(solve_report_to_remote_report(report, None, None, None)),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let error = solve_result_to_solve_report(&result)
@@ -2469,6 +3170,7 @@ mod tests {
             )),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let error = solve_result_to_solve_report(&result)
@@ -2501,6 +3203,7 @@ mod tests {
             )),
             message: None,
             extension: BTreeMap::new(),
+            ..Default::default()
         };
 
         let error = solve_result_to_solve_report(&result)

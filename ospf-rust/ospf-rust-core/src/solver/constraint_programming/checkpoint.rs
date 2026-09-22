@@ -87,7 +87,24 @@ impl ConstraintProgrammingCheckpointState {
         }
         self.snapshot.validate()?;
         super::validate_assumptions(&self.snapshot.snapshot, &self.assumptions)?;
-        self.snapshot.snapshot.validate_hint(&self.solution_hint)?;
+        // 完整的 solution hint 必须作为**整体赋值**复验，而不是逐项只看"变量存在 + 值在域内"。
+        // 一个损坏的 incumbent 完全可能每一项都落在各自值域内、却违反约束；只做逐项域检查会
+        // 让它通过校验，直到重建后的求解才暴露。当 hint 覆盖全部变量时，
+        // `validate_complete_hint` 会额外执行 `validate_assignment`（值域 + interval +
+        // 逐约束）与 assumption 复核，与 Kotlin 侧 `toSolution` 的深度一致。
+        //
+        // A complete solution hint must be revalidated as a **whole assignment**, not merely
+        // entry by entry for "variable exists + value in domain". A corrupt incumbent can satisfy
+        // every individual domain while violating a constraint; per-entry domain checks alone let
+        // it pass validation and only surface after a rebuilt solve. When the hint covers every
+        // variable, `validate_complete_hint` additionally runs `validate_assignment` (domains +
+        // intervals + every constraint) and re-checks the assumptions, matching the depth of
+        // Kotlin's `toSolution`.
+        super::validate_complete_hint(
+            &self.snapshot.snapshot,
+            Some(&self.solution_hint),
+            &self.assumptions,
+        )?;
 
         let mut assumption_ids = BTreeSet::new();
         let mut previous_assumption_id = None;
@@ -401,6 +418,88 @@ mod tests {
             fingerprint("placeholder"),
         )
         .expect("checkpoint")
+    }
+
+    #[test]
+    fn complete_hint_violating_a_constraint_is_rejected() {
+        // 回归：`x` 的值域是 [0, 2]，且存在约束 `x >= 1`。hint `x = 0` 落在值域内、却违反约束。
+        // 在加入整体赋值复验之前，校验只逐项检查"变量存在 + 值在域内"，因此这个损坏的
+        // incumbent 会被接受，问题要等到重建后的求解才暴露。
+        //
+        // Regression: `x` has domain [0, 2] and the model constrains `x >= 1`. The hint `x = 0`
+        // lies inside the domain yet violates the constraint. Before whole-assignment
+        // revalidation, validation only checked entry by entry that "the variable exists and the
+        // value is in its domain", so this corrupt incumbent was accepted and only surfaced after
+        // a rebuilt solve.
+        let (snapshot, _) = fixture();
+
+        let error = ConstraintProgrammingCheckpointArtifact::new_direct(
+            checkpoint(&snapshot),
+            &snapshot,
+            Vec::new(),
+            BTreeMap::from([(StableVariableId::from("x"), 0)]),
+            BTreeMap::new(),
+        )
+        .expect_err("违反约束的完整 hint 必须被拒绝 / a constraint-violating complete hint must be rejected");
+
+        assert!(
+            error.to_string().contains("solution hint"),
+            "错误信息应指明 solution hint：{error}"
+        );
+    }
+
+    #[test]
+    fn complete_hint_satisfying_every_constraint_is_accepted() {
+        // 对照：合法完整 hint 必须被接受，证明拒绝来自复验而非恒失败。
+        // Control: a legitimate complete hint must be accepted, proving the rejection comes from
+        // revalidation rather than failing unconditionally.
+        let (snapshot, _) = fixture();
+
+        let artifact = ConstraintProgrammingCheckpointArtifact::new_direct(
+            checkpoint(&snapshot),
+            &snapshot,
+            Vec::new(),
+            BTreeMap::from([(StableVariableId::from("x"), 1)]),
+            BTreeMap::new(),
+        )
+        .expect("满足全部约束的 hint 必须被接受 / a hint satisfying every constraint must be accepted");
+
+        assert_eq!(
+            artifact.state.solution_hint.get(&StableVariableId::from("x")),
+            Some(&1)
+        );
+    }
+
+    #[test]
+    fn out_of_domain_hint_is_rejected() {
+        // 值域检查必须保留：`x = 5` 超出 [0, 2]。
+        // The domain check must remain: `x = 5` is outside [0, 2].
+        let (snapshot, _) = fixture();
+
+        ConstraintProgrammingCheckpointArtifact::new_direct(
+            checkpoint(&snapshot),
+            &snapshot,
+            Vec::new(),
+            BTreeMap::from([(StableVariableId::from("x"), 5)]),
+            BTreeMap::new(),
+        )
+        .expect_err("超出值域的 hint 必须被拒绝 / an out-of-domain hint must be rejected");
+    }
+
+    #[test]
+    fn complete_hint_violating_an_active_assumption_is_rejected() {
+        // 完整 hint 还必须同时满足激活的 assumption，而不只是模型约束。
+        // A complete hint must also satisfy the active assumptions, not only model constraints.
+        let (snapshot, x) = fixture();
+
+        ConstraintProgrammingCheckpointArtifact::new_direct(
+            checkpoint(&snapshot),
+            &snapshot,
+            vec![ConstraintProgrammingAssumption::Equal(x, 2)],
+            BTreeMap::from([(StableVariableId::from("x"), 1)]),
+            BTreeMap::new(),
+        )
+        .expect_err("违反激活 assumption 的 hint 必须被拒绝 / a hint violating an active assumption must be rejected");
     }
 
     #[test]

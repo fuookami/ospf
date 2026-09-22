@@ -11,6 +11,7 @@ use std::sync::{
 use ospf_rust_math::symbol::Symbol;
 
 use crate::error::Result;
+use crate::model::intermediate::DeferredFunctionStructure;
 use crate::model::{
     LinearConstraint, QuadraticConstraint, RangeCacheContextTrait, RangeCacheKey,
     ValueCacheContextTrait, ValueCacheKey,
@@ -160,6 +161,93 @@ where
     /// Register auxiliary tokens (for function symbols). Default implementation does nothing.
     fn register_auxiliary_tokens(&self, _tokens: &mut Vec<Token<V>>) -> Result<()> {
         Ok(())
+    }
+
+    /// 在可见已注册令牌的前提下注册辅助令牌。
+    ///
+    /// 模型在把符号加入模型时调用本方法。`tokens` 是模型当前已注册的全部令牌，
+    /// 因此函数符号可以据此判断输入形状（例如输入是否为直接二值变量），并只注册
+    /// 该形状真正需要的辅助变量。默认实现忽略 `tokens` 并委托给
+    /// [`IntermediateSymbol::register_auxiliary_tokens`]。
+    ///
+    /// Register auxiliary tokens with visibility of the already registered tokens.
+    ///
+    /// The model calls this method while adding the symbol. `tokens` holds every token
+    /// already registered in the model, so a function symbol can inspect the input shape
+    /// (for example whether an input is a direct binary variable) and register only the
+    /// helpers that shape actually needs. The default implementation ignores `tokens` and
+    /// delegates to [`IntermediateSymbol::register_auxiliary_tokens`].
+    fn register_auxiliary_tokens_with_context(
+        &self,
+        tokens: &mut Vec<Token<V>>,
+        _registered: &[Token<V>],
+    ) -> Result<()> {
+        self.register_auxiliary_tokens(tokens)
+    }
+
+    /// 利用已注册输入令牌的边界收紧辅助令牌的声明范围。
+    ///
+    /// 模型在把 `register_auxiliary_tokens` 产生的令牌写入令牌表之前调用本方法，
+    /// 因此 `tokens` 中已包含该符号输入多项式引用的令牌及其有限边界。函数符号可据此
+    /// 把有限输入域传播到结果、正部或负部等辅助变量的声明范围，从而获得更紧的松弛。
+    ///
+    /// 默认实现不修改任何范围。实现必须保证只收紧、不放宽已有边界，且在无法证明
+    /// 有限域时保持原样。
+    ///
+    /// Refine the declared ranges of auxiliary tokens with the bounds of the already
+    /// registered input tokens.
+    ///
+    /// The model calls this method before the tokens produced by
+    /// `register_auxiliary_tokens` enter the token table, so `tokens` already carries
+    /// every token referenced by the symbol's input polynomial together with its finite
+    /// bounds. Function symbols can therefore propagate a finite input domain into the
+    /// declared ranges of result, positive-part, or negative-part helpers, which yields a
+    /// tighter relaxation.
+    ///
+    /// The default implementation leaves every range untouched. Implementations must only
+    /// tighten existing bounds, never widen them, and must keep the token unchanged when a
+    /// finite domain cannot be proven.
+    fn refine_auxiliary_tokens(
+        &self,
+        _auxiliary: &mut [Token<V>],
+        _tokens: &[Token<V>],
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    /// 返回本符号的求解器无关结构描述，用于延迟展开。
+    ///
+    /// 当模型采用非 `Eager` 的 [`crate::model::FunctionExpansionPolicy`] 时，模型会改用本方法
+    /// 返回的结构 sidecar 替代即时约束写入；返回 `None` 的符号继续走即时展开，作为通用
+    /// fallback。默认实现返回 `None`。
+    ///
+    /// Return this symbol's solver-neutral structure description for deferred expansion.
+    ///
+    /// When the model uses a non-`Eager`
+    /// [`crate::model::FunctionExpansionPolicy`], the model writes the structure sidecar
+    /// returned here instead of eager constraints; symbols returning `None` keep eager
+    /// expansion as the generic fallback. The default implementation returns `None`.
+    fn deferred_structure(&self) -> Option<Arc<dyn DeferredFunctionStructure<V>>> {
+        None
+    }
+
+    /// 在可见已注册令牌的前提下返回求解器无关结构描述。
+    ///
+    /// 模型调用的是本方法。令牌上下文让结构快照可以携带与即时展开相同的推断 Big-M 与输入域
+    /// 证明，从而保证延迟物化后的通用 fallback 与 EAGER 展开逐列一致。默认实现忽略 `tokens`
+    /// 并委托给 [`IntermediateSymbol::deferred_structure`]。
+    ///
+    /// Return the solver-neutral structure description with visibility of the registered tokens.
+    ///
+    /// The model calls this method. The token context lets the structure snapshot carry the same
+    /// inferred Big-M and input-domain proof as eager expansion, so deferred fallback
+    /// materialization stays column-identical to eager expansion. The default implementation
+    /// ignores `tokens` and delegates to [`IntermediateSymbol::deferred_structure`].
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn DeferredFunctionStructure<V>>> {
+        self.deferred_structure()
     }
 
     /// 构建该符号生成的机制层线性约束，默认实现不生成任何约束。

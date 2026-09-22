@@ -1348,20 +1348,27 @@ impl<T: Clone> Differentiate<T> for Quadratic<T> {
                 Some(symbol2) => {
                     // 二次项：c * S1 * S2
                     // Quadratic term: c * S1 * S2
-                    // 对 S1 求导：c * S2
-                    // Derivative with respect to S1: c * S2
-                    // 对 S2 求导：c * S1
-                    // Derivative with respect to S2: c * S1
+                    // 对 S1 求导：c * S2；对 S2 求导：c * S1
+                    // Derivative with respect to S1: c * S2; with respect to S2: c * S1
+                    //
+                    // 当两个符号相同时该项形如 c * S^2，导数是 2 * c * S —— 幂次法则要求
+                    // 把系数乘以 2，否则 d/dx(x^2) 会错误地得到 1 * x 而不是 2 * x。
+                    // When both symbols coincide the term is c * S^2, whose derivative is
+                    // 2 * c * S. The power rule requires doubling the coefficient; otherwise
+                    // d/dx(x^2) wrongly yields 1 * x instead of 2 * x.
+                    let same_symbol = monomial.symbol1 == *symbol2;
+                    let coefficient = if same_symbol {
+                        let mut doubled = monomial.coefficient.clone();
+                        doubled += &monomial.coefficient;
+                        doubled
+                    } else {
+                        monomial.coefficient.clone()
+                    };
+
                     if monomial.symbol1 == *symbol {
-                        monomials.push(LinearMonomial::new(
-                            monomial.coefficient.clone(),
-                            symbol2.clone(),
-                        ));
+                        monomials.push(LinearMonomial::new(coefficient.clone(), symbol2.clone()));
                     } else if *symbol2 == *symbol {
-                        monomials.push(LinearMonomial::new(
-                            monomial.coefficient.clone(),
-                            monomial.symbol1.clone(),
-                        ));
+                        monomials.push(LinearMonomial::new(coefficient, monomial.symbol1.clone()));
                     }
                 }
                 None => {

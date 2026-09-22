@@ -105,7 +105,16 @@ persistence-mongodb = ["persistence", "serde", "dep:serde_json"]
 persistence-redis = ["persistence", "serde", "dep:serde_json"]
 
 # 远程求解客户端 / Remote solver client
-remote-solver = ["async", "serde", "dep:serde_json"]
+#
+# 注意：remote 模块**不依赖** `async` feature。`async` 会把求解器 trait 切换为
+# 返回 future 的异步形态，一旦被 feature 统一打开，就会让 bpp3d 与 gantt 这类
+# 仍按同步签名调用的下游 crate 编译失败。remote 只需要 tokio 运行时 + serde。
+#
+# Note: the remote module does **not** depend on the `async` feature. Enabling `async`
+# switches the solver traits to a future-returning shape; once feature unification turns
+# it on, downstream crates such as bpp3d and gantt — whose call sites still use the
+# synchronous signature — fail to compile. remote only needs the tokio runtime and serde.
+remote-solver = ["dep:tokio", "serde", "dep:serde_json"]
 remote-solver-http-reqwest = ["remote-solver", "dep:reqwest"]
 
 [dev-dependencies]

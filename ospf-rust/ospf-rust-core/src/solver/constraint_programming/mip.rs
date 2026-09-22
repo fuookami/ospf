@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use super::validate_conflict_assumption_ids;
+use super::{validate_assumptions, validate_conflict_assumption_ids};
 use crate::error::{CoreError, SolverError};
 use crate::model::ObjectiveCategory;
 use crate::model::constraint_programming::{
@@ -19,13 +19,15 @@ use crate::model::constraint_programming::{
     IntegerExpression, IntegerRelation, IntegerVariable, IntervalDuration, IntervalVariableId,
 };
 use crate::model::intermediate::{LinearTriadModel, SparseVector};
+use crate::solver::audit::linear_model_mapping;
 use crate::solver::{
     AuditFingerprint, ConstraintProgrammingAssumption, ConstraintProgrammingSession,
     ConstraintProgrammingSolveOptions, ConstraintProgrammingSolver, ConstraintProgrammingSupport,
-    ConstraintProgrammingSupportReport, LinearSolver, ProblemStatus, SolveDiagnostics,
-    SolveFingerprints, SolveOptions, SolveProof, SolveReport, SolveSolution, SolveStage,
-    SolveStatistics, SolveWarning, SolverCapability, SolverDescriptor, SolverInfo,
-    SolverProvenance, StableConstraintId, StableVariableId, TerminationReason,
+    ConstraintProgrammingSupportReport, InfeasibilityEvidence, InfeasibilityEvidenceMember,
+    LinearSolver, ProblemStatus, SolveDiagnostics, SolveFingerprints, SolveOptions, SolveProof,
+    SolveReport, SolveSolution, SolveStage, SolveStatistics, SolveWarning, SolverCapability,
+    SolverDescriptor, SolverInfo, SolverProvenance, StableConstraintId, StableVariableId,
+    TerminationReason,
 };
 use crate::token::Token;
 use crate::variable::{
@@ -1915,7 +1917,22 @@ pub(crate) fn snapshot_with_assumptions(
         .map(|constraint| constraint.id.clone())
         .collect::<BTreeSet<_>>();
     validate_conflict_assumption_ids(assumptions)?;
+    validate_assumptions(snapshot, assumptions)?;
     for assumption in assumptions {
+        if let ConstraintProgrammingAssumption::SparseDomain(variable, domain) = assumption {
+            let variable_snapshot = result
+                .variables
+                .iter_mut()
+                .find(|entry| entry.variable.stable_id == variable.stable_id)
+                .ok_or_else(|| {
+                    CoreError::Solver(SolverError::InvalidInput(format!(
+                        "assumption references unknown variable {}",
+                        variable.stable_id
+                    )))
+                })?;
+            variable_snapshot.domain = domain.clone();
+            continue;
+        }
         let id = StableConstraintId(format!("__ospf_cp_assumption__{}", assumption.stable_id()));
         if existing.contains(&id) {
             return Err(CoreError::Solver(SolverError::ContractViolation(format!(
@@ -1964,6 +1981,7 @@ pub(crate) fn snapshot_with_assumptions(
                     *value,
                 )
             }
+            ConstraintProgrammingAssumption::SparseDomain(_, _) => unreachable!(),
         };
         result
             .constraints
@@ -2167,27 +2185,206 @@ fn report_best_bound(report: &SolveReport<f64>) -> Result<Option<f64>> {
         report.statistics.best_bound_value,
     ) {
         (Some(typed), Some(value)) => {
-            if !typed.is_finite() || !value.is_finite() {
-                return Err(CoreError::Solver(SolverError::NumericalError(
-                    "MIP best bound is non-finite".to_owned(),
-                )));
+            let typed = normalize_cp_best_bound(typed)?;
+            let value = normalize_cp_best_bound(value)?;
+            match (typed, value) {
+                (Some(typed), Some(value)) => {
+                    if !approximately_equal(typed, value, 1e-9) {
+                        return Err(CoreError::Solver(SolverError::ContractViolation(
+                            "MIP typed and floating-point best bounds are inconsistent"
+                                .to_owned(),
+                        )));
+                    }
+                    Ok(Some(value))
+                }
+                // Native MIP APIs commonly use a huge finite sentinel when no bound exists
+                // (for example Gurobi's +/-1e100). It is not an exact CP objective bound and
+                // must not be converted into i64.
+                // 原生 MIP API 在没有 bound 时常用极大的有限哨兵值（例如 Gurobi 的 +/-1e100）。
+                // 该值不是精确 CP 目标 bound，不能转换为 i64。
+                _ => Ok(None),
             }
-            if !approximately_equal(typed, value, 1e-9) {
-                return Err(CoreError::Solver(SolverError::ContractViolation(
-                    "MIP typed and floating-point best bounds are inconsistent".to_owned(),
-                )));
-            }
-            Ok(Some(value))
         }
-        (Some(value), None) | (None, Some(value)) => {
-            if !value.is_finite() {
-                return Err(CoreError::Solver(SolverError::NumericalError(
-                    "MIP best bound is non-finite".to_owned(),
-                )));
-            }
-            Ok(Some(value))
-        }
+        (Some(value), None) | (None, Some(value)) => normalize_cp_best_bound(value),
         (None, None) => Ok(None),
+    }
+}
+
+fn normalize_cp_best_bound(value: f64) -> Result<Option<f64>> {
+    if !value.is_finite() {
+        return Err(CoreError::Solver(SolverError::NumericalError(
+            "MIP best bound is non-finite".to_owned(),
+        )));
+    }
+    // CP report conversion is integer-valued. Values outside the exact i64 interval are backend
+    // sentinels or bounds that cannot be represented by this report contract.
+    // CP report 的目标 bound 是整数值；超出 i64 精确区间的值属于 backend 哨兵或本报告不能
+    // 表达的 bound。
+    const I64_MAX_EXCLUSIVE_AS_F64: f64 = 9_223_372_036_854_775_808.0;
+    const I64_MIN_AS_F64: f64 = -9_223_372_036_854_775_808.0;
+    if value < I64_MIN_AS_F64 || value >= I64_MAX_EXCLUSIVE_AS_F64 {
+        Ok(None)
+    } else {
+        Ok(Some(value))
+    }
+}
+
+/// 将线性后端不可行证据回映到 CP 源身份 / Remap linear-backend infeasibility evidence to CP identities.
+///
+/// MIP lowerer 为一个 CP 约束生成多条线性行；后端报告中的稳定行 ID 只能在 lowerer
+/// provenance 的边界内解释。该函数在 CP report 出口完成回映并丢弃稀疏域之外的辅助行，
+/// 因而 analysis 层永远不会看到 solver row、column 或 auxiliary variable。
+/// A CP constraint may lower to multiple linear rows; a backend row ID is meaningful only through
+/// the lowerer's provenance. This function remaps evidence at the CP-report boundary and drops
+/// generated rows that have no public source, so analysis never sees solver rows, columns, or
+/// auxiliary variables.
+fn remap_cp_infeasibility_evidence(
+    mut evidence: InfeasibilityEvidence,
+    snapshot: &ConstraintProgrammingSnapshot,
+    lowering: &MipLoweringResult,
+) -> InfeasibilityEvidence {
+    let Ok(mapping) = linear_model_mapping(&lowering.model) else {
+        return evidence;
+    };
+
+    evidence.constraint_ids = evidence
+        .constraint_ids
+        .iter()
+        .filter_map(|id| {
+            row_id_to_member(id, snapshot, lowering, &mapping)
+                .map(|member| member_key(&member))
+        })
+        .collect();
+    evidence.members = evidence
+        .members
+        .iter()
+        .filter_map(|member| match member {
+            InfeasibilityEvidenceMember::Constraint(id) => {
+                row_id_to_member(id, snapshot, lowering, &mapping)
+            }
+            InfeasibilityEvidenceMember::LowerBound(id) => variable_id_to_member(
+                id,
+                BoundSide::Lower,
+                snapshot,
+                lowering,
+                &mapping,
+            ),
+            InfeasibilityEvidenceMember::UpperBound(id) => variable_id_to_member(
+                id,
+                BoundSide::Upper,
+                snapshot,
+                lowering,
+                &mapping,
+            ),
+            InfeasibilityEvidenceMember::Domain(id) => {
+                variable_id_to_member(id, BoundSide::Domain, snapshot, lowering, &mapping)
+            }
+            InfeasibilityEvidenceMember::Interval(id) => snapshot
+                .intervals
+                .iter()
+                .any(|interval| interval.interval.id.0 == *id)
+                .then(|| InfeasibilityEvidenceMember::Interval(id.clone())),
+            InfeasibilityEvidenceMember::Assumption(id) => {
+                Some(InfeasibilityEvidenceMember::Assumption(id.clone()))
+            }
+        })
+        .collect();
+    evidence
+}
+
+#[derive(Clone, Copy)]
+enum BoundSide {
+    Lower,
+    Upper,
+    Domain,
+}
+
+fn row_id_to_member(
+    id: &str,
+    snapshot: &ConstraintProgrammingSnapshot,
+    lowering: &MipLoweringResult,
+    mapping: &crate::solver::LinearModelMapping,
+) -> Option<InfeasibilityEvidenceMember> {
+    if let Some(row) = mapping.rows_by_constraint.get(id) {
+        return lowering
+            .row_origins
+            .get(*row)
+            .and_then(|origin| row_origin_to_member(origin, snapshot));
+    }
+    let stable_id = StableConstraintId(id.to_owned());
+    snapshot
+        .constraint(&stable_id)
+        .map(|_| InfeasibilityEvidenceMember::Constraint(id.to_owned()))
+}
+
+fn row_origin_to_member(
+    origin: &MipRowOrigin,
+    snapshot: &ConstraintProgrammingSnapshot,
+) -> Option<InfeasibilityEvidenceMember> {
+    match origin {
+        MipRowOrigin::Constraint(id) => {
+            if id.0.starts_with("analysis-target:") {
+                // The analysis target is public evidence at the analysis layer, but it is not a
+                // source-model constraint and must not be emitted as one by the CP solver report.
+                // analysis target 在 analysis 层作为独立证据公开；它不是源模型约束，不能由
+                // CP solver report 伪装成普通 Constraint 暴露。
+                return None;
+            }
+            if snapshot.constraint(id).is_some() {
+                return Some(InfeasibilityEvidenceMember::Constraint(id.0.clone()));
+            }
+            if let Some(id) = id.0.strip_prefix("__ospf_cp_assumption__") {
+                return Some(InfeasibilityEvidenceMember::Assumption(id.to_owned()));
+            }
+            if let Some(id) = id.0.strip_prefix("__sparse_domain_value__") {
+                return Some(InfeasibilityEvidenceMember::Domain(id.to_owned()));
+            }
+            if let Some(id) = id.0.strip_prefix("__sparse_domain__") {
+                return Some(InfeasibilityEvidenceMember::Domain(id.to_owned()));
+            }
+            None
+        }
+        MipRowOrigin::Interval(id) => Some(InfeasibilityEvidenceMember::Interval(id.0.clone())),
+    }
+}
+
+fn variable_id_to_member(
+    id: &str,
+    side: BoundSide,
+    snapshot: &ConstraintProgrammingSnapshot,
+    lowering: &MipLoweringResult,
+    mapping: &crate::solver::LinearModelMapping,
+) -> Option<InfeasibilityEvidenceMember> {
+    let source_id = if snapshot
+        .variable(&StableVariableId(id.to_owned()))
+        .is_some()
+    {
+        Some(id.to_owned())
+    } else {
+        mapping
+            .columns_by_variable
+            .get(&StableVariableId(id.to_owned()))
+            .and_then(|column| lowering.variable_origins.get(*column))
+            .and_then(|origin| match origin {
+                MipVariableOrigin::Source(source) => Some(source.0.clone()),
+                MipVariableOrigin::Auxiliary { .. } => None,
+            })
+    }?;
+    Some(match side {
+        BoundSide::Lower => InfeasibilityEvidenceMember::LowerBound(source_id),
+        BoundSide::Upper => InfeasibilityEvidenceMember::UpperBound(source_id),
+        BoundSide::Domain => InfeasibilityEvidenceMember::Domain(source_id),
+    })
+}
+
+fn member_key(member: &InfeasibilityEvidenceMember) -> String {
+    match member {
+        InfeasibilityEvidenceMember::Constraint(id) => id.clone(),
+        InfeasibilityEvidenceMember::LowerBound(id) => format!("lower-bound/{id}"),
+        InfeasibilityEvidenceMember::UpperBound(id) => format!("upper-bound/{id}"),
+        InfeasibilityEvidenceMember::Domain(id) => format!("domain/{id}"),
+        InfeasibilityEvidenceMember::Interval(id) => format!("interval/{id}"),
+        InfeasibilityEvidenceMember::Assumption(id) => format!("assumption/{id}"),
     }
 }
 
@@ -2271,7 +2468,11 @@ fn map_mip_report<S: LinearSolver>(
         })
         .transpose()?;
     let mut diagnostics = SolveDiagnostics::default();
-    diagnostics.infeasibility_evidence = report.diagnostics.infeasibility_evidence.clone();
+    diagnostics.infeasibility_evidence = report
+        .diagnostics
+        .infeasibility_evidence
+        .clone()
+        .map(|evidence| remap_cp_infeasibility_evidence(evidence, snapshot, lowering));
     diagnostics.warnings = report.diagnostics.warnings.clone();
     diagnostics.issues = report.diagnostics.issues.clone();
     diagnostics.extensions = report.diagnostics.extensions.clone();
@@ -2415,16 +2616,22 @@ mod tests {
 
         fn solve_linear_report(
             &self,
-            _model: &LinearTriadModel,
+            model: &LinearTriadModel,
         ) -> crate::error::Result<SolveReport<f64>> {
+            let mapping = linear_model_mapping(model)?;
+            let row_id = mapping
+                .constraints_by_row
+                .last()
+                .cloned()
+                .unwrap_or_else(|| "farkas/row".to_owned());
             let diagnostics = SolveDiagnostics {
                 infeasibility_evidence: Some(InfeasibilityEvidence {
                     source: InfeasibilityEvidenceSource::Farkas,
                     reliability: ProofReliability::Exact,
                     completeness: ProofCompleteness::Complete,
-                    constraint_ids: std::collections::BTreeSet::from(["farkas/row".to_owned()]),
+                    constraint_ids: std::collections::BTreeSet::from([row_id.clone()]),
                     members: std::collections::BTreeSet::from([
-                        InfeasibilityEvidenceMember::Constraint("farkas/row".to_owned()),
+                        InfeasibilityEvidenceMember::Constraint(row_id),
                     ]),
                     minimality: crate::solver::InfeasibilityMinimality::NotChecked,
                     computation_time: std::time::Duration::ZERO,
@@ -2695,6 +2902,7 @@ mod tests {
                 .expect("fixed objective variable");
         }
         model.set_objective(IntegerObjective {
+            id: "objective".to_owned(),
             category,
             expression: IntegerExpression::linear(
                 constant,
@@ -3570,6 +3778,16 @@ mod tests {
             .expect("Farkas evidence");
         assert_eq!(evidence.source, InfeasibilityEvidenceSource::Farkas);
         assert_eq!(evidence.reliability, ProofReliability::Exact);
+        assert_eq!(
+            evidence.constraint_ids,
+            std::collections::BTreeSet::from(["force-zero".to_owned()])
+        );
+        assert_eq!(
+            evidence.members,
+            std::collections::BTreeSet::from([InfeasibilityEvidenceMember::Constraint(
+                "force-zero".to_owned(),
+            )])
+        );
         assert!(
             report
                 .diagnostics
@@ -3578,6 +3796,13 @@ mod tests {
                 .all(|issue| { issue.code != "CpConflictEvidenceReplaced" })
         );
         report.validate().expect("Farkas CP report should be valid");
+    }
+
+    #[test]
+    fn cp_best_bound_sentinels_are_not_converted_to_i64() {
+        assert_eq!(normalize_cp_best_bound(-1e100).expect("sentinel"), None);
+        assert_eq!(normalize_cp_best_bound(12.0).expect("bound"), Some(12.0));
+        assert!(normalize_cp_best_bound(f64::NAN).is_err());
     }
 
     fn find_feasible_vector(model: &LinearTriadModel) -> Option<Vec<f64>> {

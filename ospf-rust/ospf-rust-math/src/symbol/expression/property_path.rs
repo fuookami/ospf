@@ -392,3 +392,376 @@ pub(super) fn stable_path_symbol_hash(bytes: &[u8]) -> usize {
     }
     hash as usize
 }
+
+// ============================================================================
+// 属性路径测试 / Property path tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::str::FromStr;
+
+    use super::*;
+    use crate::symbol::test_utils::SimpleSymbol;
+
+    // ========================================================================
+    // 路径解析 / Path parsing
+    // ========================================================================
+
+    #[test]
+    fn parse_trims_surrounding_whitespace_only() {
+        assert_eq!(PropertyPath::parse("  user.name  ").value(), "user.name");
+        assert_eq!(PropertyPath::parse("user . name").value(), "user . name");
+    }
+
+    #[test]
+    fn of_joins_segments_with_dots() {
+        assert_eq!(PropertyPath::of(["a", "b", "c"]).value(), "a.b.c");
+        assert_eq!(PropertyPath::of(["name"]).value(), "name");
+        assert_eq!(PropertyPath::of(Vec::<String>::new()).value(), "");
+    }
+
+    #[test]
+    fn parse_or_none_accepts_valid_identifiers() {
+        assert_eq!(
+            PropertyPath::parse_or_none("user.address_1"),
+            Some(PropertyPath::parse("user.address_1"))
+        );
+        assert_eq!(
+            PropertyPath::parse_or_none("_private.field2"),
+            Some(PropertyPath::parse("_private.field2"))
+        );
+        assert_eq!(
+            PropertyPath::parse_or_none("  user.name  "),
+            Some(PropertyPath::parse("user.name"))
+        );
+    }
+
+    #[test]
+    fn parse_or_none_rejects_invalid_identifiers() {
+        assert_eq!(PropertyPath::parse_or_none(""), None);
+        assert_eq!(PropertyPath::parse_or_none("   "), None);
+        assert_eq!(PropertyPath::parse_or_none("1user"), None);
+        assert_eq!(PropertyPath::parse_or_none("user..name"), None);
+        assert_eq!(PropertyPath::parse_or_none(".user"), None);
+        assert_eq!(PropertyPath::parse_or_none("user."), None);
+        assert_eq!(PropertyPath::parse_or_none("user.na me"), None);
+        assert_eq!(PropertyPath::parse_or_none("user.na-me"), None);
+    }
+
+    #[test]
+    fn try_parse_reports_error_with_original_text() {
+        let error = PropertyPath::try_parse("1user").unwrap_err();
+        assert_eq!(error.text(), "1user");
+        assert_eq!(error.to_string(), "invalid property path: 1user");
+
+        assert_eq!(
+            PropertyPath::try_parse("user.name").unwrap(),
+            PropertyPath::parse("user.name")
+        );
+    }
+
+    #[test]
+    fn from_str_requires_valid_identifier_segments() {
+        assert_eq!(
+            "user.name".parse::<PropertyPath>().unwrap(),
+            PropertyPath::parse("user.name")
+        );
+        assert!("1user".parse::<PropertyPath>().is_err());
+        assert!(PropertyPath::from_str("user.name").is_ok());
+    }
+
+    #[test]
+    fn new_skips_identifier_validation() {
+        // `new` 是低层入口，不做校验；校验入口是 `parse_or_none` / `try_parse`。
+        // `new` is the low-level entry point without validation; validation lives in `parse_or_none` / `try_parse`.
+        assert_eq!(PropertyPath::new("1user..name").value(), "1user..name");
+        assert_eq!(PropertyPath::new("  padded  ").value(), "  padded  ");
+    }
+
+    #[test]
+    fn is_valid_identifier_matches_documented_rule() {
+        assert!(PropertyPath::is_valid_identifier("name"));
+        assert!(PropertyPath::is_valid_identifier("_name"));
+        assert!(PropertyPath::is_valid_identifier("name1"));
+        assert!(PropertyPath::is_valid_identifier("名字"));
+
+        assert!(!PropertyPath::is_valid_identifier(""));
+        assert!(!PropertyPath::is_valid_identifier("1name"));
+        assert!(!PropertyPath::is_valid_identifier("na me"));
+        assert!(!PropertyPath::is_valid_identifier("na-me"));
+        assert!(!PropertyPath::is_valid_identifier("na.me"));
+    }
+
+    // ========================================================================
+    // 路径结构 / Path structure
+    // ========================================================================
+
+    #[test]
+    fn segments_root_leaf_and_depth_describe_nested_path() {
+        let path = PropertyPath::parse("user.address.city");
+
+        assert_eq!(path.segments(), vec!["user", "address", "city"]);
+        assert_eq!(path.depth(), 3);
+        assert_eq!(path.root(), Some("user"));
+        assert_eq!(path.leaf(), Some("city"));
+        assert!(path.is_not_empty());
+        assert!(!path.is_empty());
+    }
+
+    #[test]
+    fn empty_path_has_no_segments_root_or_leaf() {
+        let path = PropertyPath::EMPTY;
+
+        assert!(path.is_empty());
+        assert!(!path.is_not_empty());
+        assert_eq!(path.depth(), 0);
+        assert_eq!(path.segments(), Vec::<&str>::new());
+        assert_eq!(path.root(), None);
+        assert_eq!(path.leaf(), None);
+        assert_eq!(path.parent(), None);
+        assert_eq!(path.child(), None);
+        assert_eq!(path, PropertyPath::default());
+        assert_eq!(path, PropertyPath::parse(""));
+    }
+
+    #[test]
+    fn single_segment_path_has_no_parent_or_child() {
+        let path = PropertyPath::parse("name");
+
+        assert_eq!(path.depth(), 1);
+        assert_eq!(path.root(), Some("name"));
+        assert_eq!(path.leaf(), Some("name"));
+        assert_eq!(path.parent(), None);
+        assert_eq!(path.child(), None);
+    }
+
+    #[test]
+    fn parent_and_child_strip_opposite_ends() {
+        let path = PropertyPath::parse("user.address.city");
+
+        assert_eq!(path.parent(), Some(PropertyPath::parse("user.address")));
+        assert_eq!(path.child(), Some(PropertyPath::parse("address.city")));
+        assert_eq!(path.parent().unwrap().depth(), 2);
+        assert_eq!(path.child().unwrap().depth(), 2);
+    }
+
+    // ========================================================================
+    // 路径关系 / Path relations
+    // ========================================================================
+
+    #[test]
+    fn sub_path_relation_is_strict_and_antisymmetric() {
+        let parent = PropertyPath::parse("user.address");
+        let child = PropertyPath::parse("user.address.city");
+
+        assert!(child.is_sub_path_of(&parent));
+        assert!(parent.is_parent_path_of(&child));
+        assert!(!parent.is_sub_path_of(&child));
+        assert!(!child.is_parent_path_of(&parent));
+    }
+
+    #[test]
+    fn same_depth_paths_are_not_in_sub_path_relation() {
+        let left = PropertyPath::parse("user.age");
+        let right = PropertyPath::parse("user.name");
+
+        assert!(!left.is_sub_path_of(&right));
+        assert!(!right.is_sub_path_of(&left));
+    }
+
+    #[test]
+    fn empty_path_participates_in_no_relation() {
+        let empty = PropertyPath::EMPTY;
+        let path = PropertyPath::parse("user.name");
+
+        assert!(!empty.is_sub_path_of(&path));
+        assert!(!path.is_sub_path_of(&empty));
+        assert!(!path.is_sub_path_of(&path));
+    }
+
+    #[test]
+    fn paths_are_ordered_lexicographically() {
+        let mut paths = vec![
+            PropertyPath::parse("user.name"),
+            PropertyPath::parse("user.age"),
+            PropertyPath::parse("account.id"),
+        ];
+        paths.sort();
+
+        assert_eq!(
+            paths,
+            vec![
+                PropertyPath::parse("account.id"),
+                PropertyPath::parse("user.age"),
+                PropertyPath::parse("user.name"),
+            ]
+        );
+        assert!(PropertyPath::parse("a") < PropertyPath::parse("a.b"));
+    }
+
+    // ========================================================================
+    // 路径拼接 / Path concatenation
+    // ========================================================================
+
+    #[test]
+    fn concat_joins_two_non_empty_paths() {
+        let left = PropertyPath::parse("user");
+        let right = PropertyPath::parse("address.city");
+
+        assert_eq!(left.concat(&right), PropertyPath::parse("user.address.city"));
+    }
+
+    #[test]
+    fn concat_with_empty_path_is_neutral_on_both_sides() {
+        let path = PropertyPath::parse("user.name");
+        let empty = PropertyPath::EMPTY;
+
+        assert_eq!(path.concat(&empty), path);
+        assert_eq!(empty.concat(&path), path);
+        assert_eq!(empty.concat(&empty), empty);
+        assert!(empty.concat(&path).is_not_empty());
+    }
+
+    #[test]
+    fn concat_segment_appends_one_level() {
+        let path = PropertyPath::parse("user");
+
+        assert_eq!(path.concat_segment("name"), PropertyPath::parse("user.name"));
+        assert_eq!(
+            path.concat_segment("address").concat_segment("city"),
+            PropertyPath::parse("user.address.city")
+        );
+        assert_eq!(
+            PropertyPath::EMPTY.concat_segment("name"),
+            PropertyPath::parse("name")
+        );
+    }
+
+    // ========================================================================
+    // 显示与转换 / Display and conversions
+    // ========================================================================
+
+    #[test]
+    fn display_and_string_conversions_round_trip() {
+        let path = PropertyPath::parse("user.name");
+
+        assert_eq!(path.to_string(), "user.name");
+        assert_eq!(String::from(path.clone()), "user.name");
+        assert_eq!(PropertyPath::from("user.name"), path);
+        assert_eq!(PropertyPath::from("user.name".to_string()), path);
+        assert_eq!(PropertyPath::from("  user.name  "), path);
+    }
+
+    #[test]
+    fn hashing_and_equality_follow_the_path_text() {
+        let mut set = HashSet::new();
+        set.insert(PropertyPath::parse("user.name"));
+        set.insert(PropertyPath::parse("  user.name  "));
+        set.insert(PropertyPath::parse("user.age"));
+
+        assert_eq!(set.len(), 2);
+        assert!(set.contains(&PropertyPath::parse("user.name")));
+    }
+
+    // ========================================================================
+    // 路径符号 / Path symbol
+    // ========================================================================
+
+    #[test]
+    fn path_symbol_id_prefixes_the_path_value() {
+        assert_eq!(path_symbol_id(&PropertyPath::parse("user.age")), "path:user.age");
+        assert_eq!(path_symbol_id(&PropertyPath::EMPTY), "path:");
+    }
+
+    #[test]
+    fn path_symbol_reports_path_name_and_symbol_id() {
+        let symbol = PathSymbol::from_path(PropertyPath::parse("user.address.city"));
+
+        assert_eq!(symbol.path(), &PropertyPath::parse("user.address.city"));
+        assert_eq!(symbol.symbol_id(), "path:user.address.city");
+        assert_eq!(symbol.name(), "user.address.city");
+        assert_eq!(symbol.display_name(), "user.address.city");
+        assert_eq!(symbol.to_string(), "user.address.city");
+        assert_eq!(symbol.id(), "path:user.address.city".to_string());
+        // 路径符号以 `PathSymbol` 作为父类型注册，index 为 0 表示父符号本身。
+        // Path symbols register under the `PathSymbol` parent type, with index 0 meaning the parent itself.
+        assert!(!symbol.dyn_id().is_standalone());
+        assert_eq!(symbol.dyn_id().parent_type, "PathSymbol");
+        assert_eq!(symbol.dyn_id().index, 0);
+        assert!(symbol.dyn_id().is_parent());
+    }
+
+    #[test]
+    fn path_symbol_constructors_agree_on_identity() {
+        let from_path = PathSymbol::new(PropertyPath::parse("a.b.c"));
+        let from_str = PathSymbol::from_path_str("a.b.c");
+        let from_segments = PathSymbol::of(["a", "b", "c"]);
+        let from_helper = path_symbol(PropertyPath::parse("a.b.c"));
+
+        assert_eq!(from_path, from_str);
+        assert_eq!(from_path, from_segments);
+        assert_eq!(from_path, from_helper);
+        assert_eq!(from_str.symbol_id(), "path:a.b.c");
+        assert_eq!(from_path.dyn_id(), from_str.dyn_id());
+    }
+
+    #[test]
+    fn path_symbol_equality_separates_distinct_paths() {
+        let left = PathSymbol::from_path_str("user.address");
+        let right = PathSymbol::from_path_str("user.name");
+        let same = PathSymbol::from_path_str("user.address");
+
+        assert_eq!(left, same);
+        assert_ne!(left, right);
+        assert_eq!(left, same.clone());
+    }
+
+    #[test]
+    fn path_symbol_into_owned_symbol_keeps_display_and_path() {
+        let symbol = PathSymbol::from_path(PropertyPath::parse("user.age"));
+        let owned = symbol.clone().into_owned_symbol();
+
+        assert_eq!(owned.name(), "user.age");
+        assert_eq!(owned.to_string(), "user.age");
+        assert_eq!(property_path_from_owned_symbol(&owned), Some(symbol.path()));
+    }
+
+    #[test]
+    fn path_owned_symbol_helper_produces_owned_path_symbol() {
+        let owned = path_owned_symbol(PropertyPath::parse("order.price"));
+
+        assert_eq!(owned.name(), "order.price");
+        assert_eq!(
+            property_path_from_owned_symbol(&owned),
+            Some(&PropertyPath::parse("order.price"))
+        );
+    }
+
+    #[test]
+    fn property_path_extraction_ignores_foreign_symbols() {
+        let foreign = OwnedSymbol::new(SimpleSymbol::new("plain"));
+        let path_symbol = PathSymbol::from_path_str("user.name");
+
+        assert_eq!(property_path_from_owned_symbol(&foreign), None);
+        assert_eq!(
+            property_path_from_owned_symbol(&path_symbol.into_owned_symbol()),
+            Some(&PropertyPath::parse("user.name"))
+        );
+        assert_eq!(property_path_from_symbol(&SimpleSymbol::new("plain")), None);
+    }
+
+    #[test]
+    fn stable_path_symbol_hash_is_deterministic_and_content_sensitive() {
+        assert_eq!(
+            stable_path_symbol_hash(b"path:user.name"),
+            stable_path_symbol_hash(b"path:user.name")
+        );
+        assert_ne!(
+            stable_path_symbol_hash(b"path:user.name"),
+            stable_path_symbol_hash(b"path:user.age")
+        );
+        assert_eq!(stable_path_symbol_hash(b""), 0xcbf29ce484222325_u64 as usize);
+    }
+}

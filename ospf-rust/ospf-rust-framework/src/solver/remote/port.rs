@@ -2,8 +2,9 @@
 //! Remote solver ports
 
 use super::domain::{
-    ExecutionHandle, NodeId, ObjectPath, ObjectRef, RemoteSolverResult, SliceId, SliceResult,
-    SolvePayload, SolveResult, StopAcknowledgement, TaskId, TenantId,
+    ExecutionHandle, NodeId, ObjectPath, ObjectRef, RemoteSolverError, RemoteSolverErrorCode,
+    RemoteSolverResult, SliceId, SliceResult, SolvePayload, SolveResult, StopAcknowledgement,
+    TaskId, TenantId,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -65,6 +66,59 @@ pub trait SolverExecutionPort: Send + Sync {
     /// 兼容旧布尔停止入口 / Compatibility facade for the legacy boolean stop entry.
     async fn stop_legacy(&self, handle: &ExecutionHandle) -> RemoteSolverResult<bool> {
         Ok(self.stop(handle).await?.accepted)
+    }
+}
+
+/// Object-storage implementation used when a caller only accepts inline results.
+///
+/// The remote CP adapter deliberately keeps this implementation as an explicit type instead of
+/// silently making `resultRef` unusable.  Any attempt to dereference an object fails with a
+/// structured storage error, while the adapter can still consume an inline exact report.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoObjectStorage;
+
+#[async_trait]
+impl ObjectStoragePort for NoObjectStorage {
+    async fn put(
+        &self,
+        _path: &ObjectPath,
+        _bytes: &[u8],
+        _metadata: &BTreeMap<String, String>,
+    ) -> RemoteSolverResult<ObjectRef> {
+        Err(RemoteSolverError::new(
+            super::domain::RemoteSolverErrorCode::StorageIoFailed,
+            "object storage is not configured",
+        ))
+    }
+
+    async fn get(&self, object_ref: &ObjectRef) -> RemoteSolverResult<Option<Vec<u8>>> {
+        Err(RemoteSolverError::new(
+            super::domain::RemoteSolverErrorCode::StorageIoFailed,
+            format!(
+                "object storage is not configured; cannot read '{}'",
+                object_ref.path
+            ),
+        ))
+    }
+
+    async fn delete(&self, object_ref: &ObjectRef) -> RemoteSolverResult<bool> {
+        Err(RemoteSolverError::new(
+            super::domain::RemoteSolverErrorCode::StorageIoFailed,
+            format!(
+                "object storage is not configured; cannot delete '{}'",
+                object_ref.path
+            ),
+        ))
+    }
+
+    async fn exists(&self, object_ref: &ObjectRef) -> RemoteSolverResult<bool> {
+        Err(RemoteSolverError::new(
+            super::domain::RemoteSolverErrorCode::StorageIoFailed,
+            format!(
+                "object storage is not configured; cannot inspect '{}'",
+                object_ref.path
+            ),
+        ))
     }
 }
 

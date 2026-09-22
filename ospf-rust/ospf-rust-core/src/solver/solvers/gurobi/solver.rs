@@ -809,6 +809,52 @@ impl GurobiSolver {
         linear::solve_linear(self, model)
     }
 
+    /// 两阶段求解：先建列，再做原生 lowering，最后装行并求解
+    /// Two-phase solve: create columns, lower natively, then load rows and solve
+    ///
+    /// 这是原生 writer 真正生效的入口：机制模型携带的延迟结构在**建列之后、装行之前**被交给
+    /// registry。原生写入成功的结构由模型层丢弃，其余结构一次性物化为通用 fallback；任一 writer
+    /// **真正写入失败**时丢弃已建好的 SDK 模型并整模型回退到通用展开路径（失败原子性），因此
+    /// 求解仍然成功。返回求解输出与原生 lowering 报告。
+    ///
+    /// This is the entry point where native writers actually take effect: the deferred structures
+    /// carried by the mechanism model are handed to the registry after the columns exist and before
+    /// the rows are loaded. Natively written structures are dropped by the model layer while the rest
+    /// are materialized as the generic fallback in one step; a writer that **really fails to write**
+    /// makes the solver discard the SDK model and fall back for the whole model along the generic path
+    /// (failure atomicity), so the solve still succeeds. Returns the solve output and the lowering
+    /// report.
+    pub fn solve_linear_with_native_lowering(
+        &self,
+        mechanism: crate::MechanismModel<f64>,
+        options: Option<&crate::SolveOptions<'_>>,
+    ) -> Result<(SolverOutput, crate::intermediate::NativeLoweringReport)> {
+        linear::solve_linear_with_native_lowering(self, mechanism, options)
+    }
+
+    /// 用给定 writer 集合执行两阶段求解（供失败路径验收使用）
+    /// Run the two-phase solve with a given writer set (used to accept the failure path)
+    ///
+    /// 与 [`Self::solve_linear_with_native_lowering`] 相同，只是 registry 由调用方提供：这样
+    /// 「writer 真正写入失败 → 整模型回退」这条路径才能通过注入一个必然失败的 writer 做端到端
+    /// 验证。公开入口始终使用默认 writer 集合。
+    ///
+    /// Identical to [`Self::solve_linear_with_native_lowering`] except that the registry comes from the
+    /// caller, so that the "a writer really fails ⇒ whole-model fallback" path can be verified end to
+    /// end by injecting a writer that must fail. The public entry point always uses the default set.
+    #[doc(hidden)]
+    pub fn solve_linear_with_native_writers(
+        &self,
+        mechanism: crate::MechanismModel<f64>,
+        options: Option<&crate::SolveOptions<'_>>,
+        registry: crate::intermediate::NativeFunctionWriterRegistry<
+            super::native::GurobiNativeContainer,
+            f64,
+        >,
+    ) -> Result<(SolverOutput, crate::intermediate::NativeLoweringReport)> {
+        linear::solve_linear_with_native_writers(self, mechanism, options, registry)
+    }
+
     /// 求解二次模型 / Solve quadratic model
     pub fn solve_quadratic(&self, model: &QuadraticTetradModel) -> Result<SolverOutput> {
         quadratic::solve_quadratic(self, model)

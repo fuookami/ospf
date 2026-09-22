@@ -1024,6 +1024,9 @@ impl MasterAssignmentAssumptionBinding {
                 ConstraintProgrammingAssumption::Equal(_, expected) => master_value == *expected,
                 ConstraintProgrammingAssumption::LowerBound(_, lower) => master_value >= *lower,
                 ConstraintProgrammingAssumption::UpperBound(_, upper) => master_value <= *upper,
+                ConstraintProgrammingAssumption::SparseDomain(_, domain) => {
+                    domain.contains(master_value)
+                }
             };
             if !satisfied {
                 return Err(contract(format!(
@@ -3855,6 +3858,7 @@ mod tests {
             .register_variable(variable.clone(), IntegerDomain::boolean())
             .expect("CP variable");
         model.set_objective(IntegerObjective {
+            id: "objective".to_owned(),
             category,
             expression: IntegerExpression::linear(
                 2,

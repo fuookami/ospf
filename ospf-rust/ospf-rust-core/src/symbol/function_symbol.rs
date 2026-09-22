@@ -121,7 +121,7 @@ where
 mod tests {
     use super::*;
     use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
-    use crate::symbol::function::{AndFunction, QuadraticSigmoidFunction, SigmoidFunction};
+    use crate::symbol::function::{AndFunction, QuadraticLogisticFunction, LogisticFunction};
 
     fn assert_linear<T: LinearFunctionSymbol>() {}
     fn assert_logic<T: LogicFunctionSymbol>() {}
@@ -129,20 +129,20 @@ mod tests {
 
     #[test]
     fn linear_and_logic_function_symbol_traits_compile() {
-        assert_linear::<SigmoidFunction>();
+        assert_linear::<LogisticFunction>();
         assert_logic::<AndFunction>();
     }
 
     #[test]
     fn quadratic_function_symbol_trait_compile() {
-        assert_quadratic::<QuadraticSigmoidFunction>();
+        assert_quadratic::<QuadraticLogisticFunction>();
 
-        let _ = QuadraticSigmoidFunction::new(
+        let _ = QuadraticLogisticFunction::new(
             9990,
             "qs",
             Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, 0)], 0.0),
         );
-        let _ = SigmoidFunction::new(
+        let _ = LogisticFunction::new(
             9991,
             "s",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),

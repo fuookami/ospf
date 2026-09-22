@@ -2,6 +2,20 @@
 //!
 //! 对 [`SatisfiedAmountFunction`] 的薄包装，暴露与 Kotlin 代码库对齐的不同类型名称 / Thin wrappers around [`SatisfiedAmountFunction`] that expose distinct type names aligned with the Kotlin codebase
 //! 每个结构体将所有 trait 行为委托给其内部的 `SatisfiedAmountFunction` / Each struct delegates all trait behaviour to its inner `SatisfiedAmountFunction`
+//!
+//! # 迁移裁决 / Migration ruling
+//!
+//! Kotlin `SatisfiedAmountInequality.kt` 的数量约束由激活变量 `y` 门控，提交 `0c9e04c` 修正了
+//! 该门控的上下界。Rust 侧当前没有激活变量：`SatisfiedAmountFunction` 只提供
+//! `result = sum(indicators)` 以及无门控的 `result >= lower` / `result <= upper` 两行，因此该
+//! 门控修正没有对应结构，本轮不引入激活变量，记为"不适用"，留待独立契约澄清后处理。
+//!
+//! The Kotlin `SatisfiedAmountInequality.kt` amount constraints are gated by an activation
+//! variable `y`, and commit `0c9e04c` corrected the bounds of that gate. The Rust side has no
+//! activation variable today: `SatisfiedAmountFunction` only emits `result = sum(indicators)`
+//! plus ungated `result >= lower` / `result <= upper` rows. The gate correction therefore has
+//! no counterpart structure here; no activation variable is introduced during this migration
+//! and the item is recorded as not applicable pending an independent contract clarification.
 
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,

@@ -6,18 +6,6 @@
 //! `ConditionalIndicatorFunction`, which registers an indicator using explicit finite
 //! bounds and never falls back to a default Big-M value.
 
-use std::any::Any;
-use std::collections::{HashMap, HashSet};
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
-use std::sync::Arc;
-use num_traits::{FromPrimitive, ToPrimitive, Zero};
-use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
-use crate::error::{ModelError, Result};
-use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
-use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
-use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
 use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
@@ -29,6 +17,18 @@ use super::conditional::{
 use super::discrete_condition::{
     DiscreteConditionLinearization, to_strict_positive_condition_with_derived_lattice_proof,
 };
+use crate::error::{ModelError, Result};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
+use crate::token::{IntoValue, Token, TokenList};
+use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
+use num_traits::{FromPrimitive, ToPrimitive, Zero};
+use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Add, Mul};
+use std::sync::Arc;
 
 fn evaluate_linear<V>(
     polynomial: &Linear<V>,
@@ -103,11 +103,8 @@ where
     Ok(())
 }
 
-fn validate_discrete_linearization(
-    linearization: DiscreteConditionLinearization,
-) -> Result<()> {
-    if !linearization.sign.is_finite()
-        || (linearization.sign != 1.0 && linearization.sign != -1.0)
+fn validate_discrete_linearization(linearization: DiscreteConditionLinearization) -> Result<()> {
+    if !linearization.sign.is_finite() || (linearization.sign != 1.0 && linearization.sign != -1.0)
     {
         return Err(ModelError::InvalidConstraint(
             "discrete condition linearization sign must be either 1 or -1".to_string(),
@@ -368,6 +365,24 @@ where
         [&self.result_var, &self.indicator_var]
     }
 
+    /// 查询条件范围是否让某一分支完全覆盖（折叠情形 / folded case）
+    /// Query whether the condition range lets one branch cover everything (the folded case).
+    ///
+    /// 复用即时展开的同一个判定函数 [`branch_coverage`]：返回 `Some(真值)` 表示条件在声明的有限范围上
+    /// 恒为真或恒为假，此时即时展开退化为两条**定值**行（`indicator = v`、`result = v`）——定值行没有对应
+    /// 的一般约束接口，原生写入必须整体回退，因此原生路径需要这个只读查询来判断。函数只转发既有判定，
+    /// 不复制公式，也不暴露可变状态。
+    ///
+    /// Reuses the very decision function of eager expansion, [`branch_coverage`]: `Some(truth)` means the
+    /// condition is constantly true or constantly false over the declared finite range, in which case eager
+    /// expansion collapses to two **fixed-value** rows (`indicator = v`, `result = v`) — fixed rows have no
+    /// general constraint counterpart, so a native write must fall back as a whole, which is why the native
+    /// path needs this read-only query. It only forwards the existing decision, copies no formula and exposes
+    /// no mutable state.
+    pub fn branch_coverage(&self) -> Result<Option<TruthValue>> {
+        branch_coverage(&self.bounds, self.relation, &self.strict_boundary)
+    }
+
     /// 分类给定的条件差值 / Classify a condition difference.
     pub fn classify(&self, difference: &V) -> Result<TruthValue> {
         classify(difference, self.relation, &self.strict_boundary)
@@ -522,14 +537,7 @@ where
 
 impl<V> ConditionalIndicatorFunction<V>
 where
-    V: Clone
-        + Debug
-        + PartialEq
-        + Send
-        + Sync
-        + 'static
-        + ToPrimitive
-        + FromPrimitive,
+    V: Clone + Debug + PartialEq + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
     /// 从离散关系创建受检指示器 / Create a checked indicator from a discrete relation.
     ///
@@ -781,12 +789,16 @@ mod tests {
         indicator.register_auxiliary_tokens(&mut helpers).unwrap();
         assert_eq!(helpers.len(), 2);
         tokens.try_add_tokens(helpers).unwrap();
-        assert!(tokens
-            .find_by_id(indicator.result_variable().id())
-            .is_some());
-        assert!(tokens
-            .find_by_id(indicator.condition_indicator_variable().id())
-            .is_some());
+        assert!(
+            tokens
+                .find_by_id(indicator.result_variable().id())
+                .is_some()
+        );
+        assert!(
+            tokens
+                .find_by_id(indicator.condition_indicator_variable().id())
+                .is_some()
+        );
     }
 
     #[test]
@@ -873,31 +885,35 @@ mod tests {
 
     #[test]
     fn rejects_invalid_inputs_before_token_registration_or_constraints() {
-        assert!(ConditionalIndicatorFunction::new(
-            902,
-            "bad_bounds",
-            condition(),
-            ConditionRelation::Greater,
-            0.1,
-            ConditionBounds {
-                lower: 1.0,
-                upper: -1.0,
-            },
-        )
-        .is_err());
+        assert!(
+            ConditionalIndicatorFunction::new(
+                902,
+                "bad_bounds",
+                condition(),
+                ConditionRelation::Greater,
+                0.1,
+                ConditionBounds {
+                    lower: 1.0,
+                    upper: -1.0,
+                },
+            )
+            .is_err()
+        );
 
-        assert!(ConditionalIndicatorFunction::new(
-            904,
-            "undefined_bounds",
-            condition(),
-            ConditionRelation::LessEqual,
-            0.1,
-            ConditionBounds {
-                lower: 0.01,
-                upper: 0.09,
-            },
-        )
-        .is_err());
+        assert!(
+            ConditionalIndicatorFunction::new(
+                904,
+                "undefined_bounds",
+                condition(),
+                ConditionRelation::LessEqual,
+                0.1,
+                ConditionBounds {
+                    lower: 0.01,
+                    upper: 0.09,
+                },
+            )
+            .is_err()
+        );
 
         let mut tokens = Vec::new();
         let invalid = ConditionalIndicatorFunction {
@@ -926,9 +942,11 @@ mod tests {
             indicator_var: BinaryVariableItem::auto("undefined_indicator"),
             declared_dependency_ids: Vec::new(),
         };
-        assert!(invalid_undefined
-            .register_auxiliary_tokens(&mut tokens)
-            .is_err());
+        assert!(
+            invalid_undefined
+                .register_auxiliary_tokens(&mut tokens)
+                .is_err()
+        );
         assert!(tokens.is_empty());
     }
 
@@ -949,15 +967,10 @@ mod tests {
     }
 
     fn discrete_tokens() -> Vec<Token<f64>> {
-        vec![Token::from_generic(
-            VariableItem::<Integer>::auto("p"),
-            0,
-        )]
+        vec![Token::from_generic(VariableItem::<Integer>::auto("p"), 0)]
     }
 
-    fn discrete_indicator(
-        relation: ConditionRelation,
-    ) -> ConditionalIndicatorFunction<f64> {
+    fn discrete_indicator(relation: ConditionRelation) -> ConditionalIndicatorFunction<f64> {
         let tokens = discrete_tokens();
         ConditionalIndicatorFunction::from_discrete_condition(
             910,
@@ -996,17 +1009,17 @@ mod tests {
             } else {
                 -1.0
             };
-            assert_eq!(*indicator.condition_polynomial().constant_term(), expected_constant);
+            assert_eq!(
+                *indicator.condition_polynomial().constant_term(),
+                expected_constant
+            );
             assert_eq!(
                 *indicator.condition_polynomial().monomials()[0].coefficient(),
                 expected_coefficient
             );
 
             for value in 0..=20 {
-                let token = Token::from_generic(
-                    VariableItem::<Integer>::auto("p_value"),
-                    0,
-                );
+                let token = Token::from_generic(VariableItem::<Integer>::auto("p_value"), 0);
                 token.set_result(f64::from(value));
                 let mut values = VecTokenList::new();
                 values.add_token(token);
@@ -1090,17 +1103,21 @@ mod tests {
                 tokens,
             )
         };
-        assert!(make(
-            Linear::new(vec![LinearMonomial::new(1.0, 0)], -10.0),
-            &continuous_tokens,
-        )
-        .is_err());
+        assert!(
+            make(
+                Linear::new(vec![LinearMonomial::new(1.0, 0)], -10.0),
+                &continuous_tokens,
+            )
+            .is_err()
+        );
 
         let integer_tokens = discrete_tokens();
-        assert!(make(
-            Linear::new(vec![LinearMonomial::new(0.5, 0)], -10.0),
-            &integer_tokens,
-        )
-        .is_err());
+        assert!(
+            make(
+                Linear::new(vec![LinearMonomial::new(0.5, 0)], -10.0),
+                &integer_tokens,
+            )
+            .is_err()
+        );
     }
 }

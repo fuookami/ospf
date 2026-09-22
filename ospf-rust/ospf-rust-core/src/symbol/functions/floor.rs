@@ -73,7 +73,11 @@ const DEFAULT_BIG_M: f64 = 1_000_000.0;
 /// 大 M 策略 / Big-M policy
 const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 /// 舍入精度常量 / Rounding epsilon constant
-const ROUNDING_EPSILON: f64 = 1e-8;
+///
+/// Keep the strict upper-bound margin identical to Kotlin's `FloorFunction`.
+/// This value is deliberately larger than machine epsilon while remaining
+/// small enough not to move an ordinary integer boundary.
+const ROUNDING_EPSILON: f64 = 1e-10;
 
 /// 向下取整函数 / Floor function
 ///

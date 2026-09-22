@@ -82,11 +82,11 @@ pub enum SigmoidPrecision {
 
 /// 关系阶跃 Sigmoid 的纯语义入口 / Pure semantic entry for a relation-step sigmoid
 ///
-/// 该入口复用统一条件分类器，不改变 `SigmoidFunction` 现有的连续 PWL 语义。
+/// 该入口复用统一条件分类器，不改变 `LogisticFunction` 现有的连续 PWL 语义。
 /// This entry reuses the shared condition classifier without changing the existing
-/// continuous PWL semantics of `SigmoidFunction`.
+/// continuous PWL semantics of `LogisticFunction`.
 #[derive(Debug, Clone)]
-pub struct SigmoidStepFunction<V>
+pub struct SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -100,7 +100,7 @@ where
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> SigmoidStepFunction<V>
+impl<V> SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
@@ -223,7 +223,7 @@ fn auxiliary_symbol_id(base: u64, salt: u64) -> u64 {
         .wrapping_add(salt.wrapping_mul(0x517c_c1b7_2722_0a95))
 }
 
-impl<V> Display for SigmoidStepFunction<V>
+impl<V> Display for SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -232,7 +232,7 @@ where
     }
 }
 
-impl<V> DynSymbol for SigmoidStepFunction<V>
+impl<V> DynSymbol for SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -253,7 +253,7 @@ where
     }
 }
 
-impl<V> Symbol for SigmoidStepFunction<V>
+impl<V> Symbol for SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -264,7 +264,7 @@ where
     }
 }
 
-impl<V> IntermediateSymbol<V> for SigmoidStepFunction<V>
+impl<V> IntermediateSymbol<V> for SigmoidFunction<V>
 where
     V: Clone
         + Debug
@@ -341,7 +341,7 @@ where
     }
 }
 
-impl<V> FunctionSymbol<V> for SigmoidStepFunction<V>
+impl<V> FunctionSymbol<V> for SigmoidFunction<V>
 where
     V: Clone
         + Debug
@@ -365,7 +365,7 @@ where
     }
 }
 
-impl<V> LinearIntermediateSymbol<V> for SigmoidStepFunction<V>
+impl<V> LinearIntermediateSymbol<V> for SigmoidFunction<V>
 where
     V: Clone
         + Debug
@@ -389,15 +389,15 @@ where
 }
 
 /// 关系阶跃入口的语义别名 / Semantic alias for the relation-step entry
-pub type SigmoidRelationFunction<V> = SigmoidStepFunction<V>;
+pub type SigmoidRelationFunction<V> = SigmoidFunction<V>;
 
 /// 条件 Sigmoid 纯入口的语义别名 / Semantic alias for the conditional sigmoid entry
-pub type ConditionalSigmoidFunction<V> = SigmoidStepFunction<V>;
+pub type ConditionalLogisticFunction<V> = SigmoidFunction<V>;
 
 /// 分段线性 Sigmoid 函数符号，支持精确值求值。
 /// Piecewise-linear sigmoid function symbol with exact-value evaluator.
 #[derive(Debug, Clone)]
-pub struct SigmoidFunction<V = f64>
+pub struct LogisticFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -408,7 +408,7 @@ where
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> SigmoidFunction<V>
+impl<V> LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
@@ -418,8 +418,8 @@ where
         relation: ConditionRelation,
         strict_boundary: V,
         bounds: ConditionBounds<V>,
-    ) -> Result<SigmoidStepFunction<V>> {
-        SigmoidStepFunction::from_parts(condition, relation, strict_boundary, bounds)
+    ) -> Result<SigmoidFunction<V>> {
+        SigmoidFunction::from_parts(condition, relation, strict_boundary, bounds)
     }
 
     /// 创建关系阶跃 Sigmoid 的兼容命名入口 / Compatibility-named relation-step constructor
@@ -428,7 +428,7 @@ where
         relation: ConditionRelation,
         strict_boundary: V,
         bounds: ConditionBounds<V>,
-    ) -> Result<SigmoidStepFunction<V>> {
+    ) -> Result<SigmoidFunction<V>> {
         Self::step(condition, relation, strict_boundary, bounds)
     }
 
@@ -586,7 +586,7 @@ where
     }
 }
 
-impl<V> Display for SigmoidFunction<V>
+impl<V> Display for LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -595,7 +595,7 @@ where
     }
 }
 
-impl<V> DynSymbol for SigmoidFunction<V>
+impl<V> DynSymbol for LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -616,7 +616,7 @@ where
     }
 }
 
-impl<V> Symbol for SigmoidFunction<V>
+impl<V> Symbol for LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -627,7 +627,7 @@ where
     }
 }
 
-impl<V> IntermediateSymbol<V> for SigmoidFunction<V>
+impl<V> IntermediateSymbol<V> for LogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -834,9 +834,204 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("sigmoid({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Sigmoid 的机制约束不依赖令牌边界：分段点、权重与所有参数都已固定在符号自身，因此总是
+        // 提供结构；是否真的走原生接口由 writer 按其能力决定，回退语义留在模型层。
+        // Sigmoid's mechanism constraints do not depend on token bounds: the breakpoints, weights and
+        // all parameters are intrinsic to the symbol, so a structure is always offered. Whether the
+        // native interface is actually used is the writer's decision, while fallback semantics stay
+        // in the model layer.
+        Some(Arc::new(LogisticStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+        )))
+    }
 }
 
-impl<V> FunctionSymbol<V> for SigmoidFunction<V>
+/// Sigmoid 的求解器无关结构描述 / Solver-neutral structure description of sigmoid
+///
+/// 与 SEMI 采用同一模式：持有产生它的符号（`Arc`），物化时通过 `IntermediateSymbol` 的同一份机制
+/// 约束生成器产出全部行，因此延迟物化与 EAGER 展开逐行一致。分段指示列与内部分段权重列
+/// （lambda）都是本结构的辅助列，必须一并上报，否则原生路径会错误地认为它们可以省略。
+///
+/// Follows the same pattern as SEMI: the structure holds the symbol that produced it (an `Arc`) and
+/// materializes through the very same mechanism-constraint generator, so deferred materialization
+/// stays row-identical to eager expansion. Both the segment indicator columns and the inner segment
+/// weight columns (lambda) are helpers of this structure and must be reported together; otherwise a
+/// native path would wrongly consider them omittable.
+#[derive(Debug)]
+pub struct LogisticStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<LogisticFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 辅助列（分段指示列 + 分段权重列）/ Helper columns (segment indicators + segment weights)
+    helpers: Vec<crate::variable::VariableId>,
+}
+
+impl<V> LogisticStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<LogisticFunction<V>>) -> Self {
+        let result = symbol.result_variable().id();
+        let mut helpers: Vec<crate::variable::VariableId> = symbol
+            .segment_variables()
+            .iter()
+            .map(|segment| segment.id())
+            .collect();
+        helpers.extend(
+            symbol
+                .inner
+                .lambda_variables()
+                .iter()
+                .map(|lambda| lambda.id()),
+        );
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            helpers,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取辅助列 / Get the helper columns.
+    pub fn helpers(&self) -> &[crate::variable::VariableId] {
+        &self.helpers
+    }
+
+    /// 获取输入多项式（只读）/ Get the input polynomial (read-only).
+    ///
+    /// 只暴露不可变引用，不让调用方改写结构内部状态；原生写入的准入判定需要它来判断输入是否
+    /// 恰好是「系数为 1 的单个单项式、常数项为 0」的列。
+    ///
+    /// Only an immutable reference is exposed so callers cannot mutate the structure's internal
+    /// state; native-write admission needs it to decide whether the input is exactly a single
+    /// unit-coefficient, zero-constant monomial over one column.
+    pub fn input_polynomial(&self) -> &Linear<V> {
+        &self.symbol.input
+    }
+
+    /// 获取分段线性点表（只读）/ Get the piecewise point table (read-only).
+    ///
+    /// 点表就是即时展开所用的同一份采样点（`UnivariateLinearPiecewiseFunction::points`），因此
+    /// 原生写入与 EAGER 展开描述同一条分段线性函数，不存在第二份公式。
+    ///
+    /// 无法转换为 `f64` 的坐标以 `NaN` 表示，并由原生准入的统一校验（有限性 + x 严格递增）
+    /// 整体拒绝——调用方绝不会拿到"被截断的点表"，从而不会把语义不完整的点表写进模型。
+    ///
+    /// The table is exactly the sampling points the eager path uses
+    /// (`UnivariateLinearPiecewiseFunction::points`), so a native write and eager expansion describe
+    /// the same piecewise-linear function with no second copy of the formula.
+    ///
+    /// Coordinates that cannot be converted to `f64` become `NaN` and are rejected wholesale by the
+    /// native admission's uniform validation (finiteness plus strictly increasing x), so a caller
+    /// never receives a truncated table and an incomplete point set is never written to the model.
+    pub fn points(&self) -> Vec<(f64, f64)> {
+        self.symbol
+            .points()
+            .iter()
+            .map(|point| {
+                (
+                    to_f64(&point.x).unwrap_or(f64::NAN),
+                    to_f64(&point.y).unwrap_or(f64::NAN),
+                )
+            })
+            .collect()
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for LogisticStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 分段指示列与分段权重列都属于本结构的辅助列。
+        // Both the segment indicators and the segment weights are helpers of this structure.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            self.helpers.clone(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        let helpers = self
+            .helpers
+            .iter()
+            .map(|helper| helper.unique_id().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        Some(format!(
+            "sigmoid|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            helpers
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器，保证两条路径逐行一致。
+        // Reuse the eager path's generator so both paths stay row-identical.
+        <LogisticFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+            &self.symbol,
+            symbol_to_index,
+        )
+    }
+}
+
+impl<V> FunctionSymbol<V> for LogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -864,7 +1059,7 @@ where
     }
 }
 
-impl<V> LinearIntermediateSymbol<V> for SigmoidFunction<V>
+impl<V> LinearIntermediateSymbol<V> for LogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -903,7 +1098,7 @@ mod tests {
         tx.set_result(0.0);
         tokens.add_token(tx);
 
-        let sigmoid = SigmoidFunction::new(
+        let sigmoid = LogisticFunction::new(
             20,
             "sigmoid",
             Linear::new(vec![LinearMonomial::new(1.0, 10)], 0.0),
@@ -913,13 +1108,13 @@ mod tests {
 
     #[test]
     fn sigmoid_sampling_points_full_has_expected_count() {
-        let points = SigmoidFunction::<f64>::sampling_points(SigmoidPrecision::Full, 1e-5);
+        let points = LogisticFunction::<f64>::sampling_points(SigmoidPrecision::Full, 1e-5);
         assert_eq!(points.len(), 11);
     }
 
     #[test]
     fn sigmoid_step_reuses_three_valued_condition_semantics() {
-        let step = SigmoidStepFunction::from_parts(
+        let step = SigmoidFunction::from_parts(
             Linear::constant(0.0),
             ConditionRelation::Greater,
             0.1,
@@ -939,7 +1134,7 @@ mod tests {
     #[test]
     fn sigmoid_step_rejects_invalid_boundary() {
         assert!(
-            SigmoidStepFunction::from_parts(
+            SigmoidFunction::from_parts(
                 Linear::constant(0.0),
                 ConditionRelation::Greater,
                 0.0,
@@ -954,7 +1149,7 @@ mod tests {
 
     #[test]
     fn sigmoid_step_registers_shared_conditional_indicator_constraints() {
-        let step = SigmoidStepFunction::named(
+        let step = SigmoidFunction::named(
             "step_registered",
             ConditionalIfFunction::new(
                 Linear::constant(0.0),
@@ -980,5 +1175,66 @@ mod tests {
         assert_eq!(constraints.len(), 3);
         assert_eq!(step.to_linear_polynomial().monomials().len(), 1);
         assert_eq!(step.evaluate(&0.1).unwrap(), Some(1.0));
+    }
+
+    #[test]
+    fn sigmoid_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(60_100),
+            "x",
+            VariableRange::bounded(-6.0, 6.0),
+        );
+        let points = LogisticFunction::<f64>::sampling_points(SigmoidPrecision::Half, 2.0);
+        let f: LogisticFunction<f64> = LogisticFunction::with_points(
+            7001,
+            "sigmoid_deferred",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            points,
+        );
+
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        let mut auxiliary = Vec::new();
+        <LogisticFunction<f64> as IntermediateSymbol<f64>>::register_auxiliary_tokens(
+            &f,
+            &mut auxiliary,
+        )
+        .expect("sigmoid auxiliary tokens should register");
+        let mut symbol_to_index = std::collections::HashMap::new();
+        for token in &auxiliary {
+            symbol_to_index.insert(token.id().unique_id() as usize, tokens.len());
+            tokens.push(token.clone());
+        }
+
+        let structure = f
+            .deferred_structure_with_tokens(&tokens)
+            .expect("sigmoid should always expose a deferred structure");
+        assert_eq!(structure.function_name(), "sigmoid_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("sigmoid structure should expose a usage binding");
+        assert_eq!(binding.result, f.result_variable().id());
+        // 分段指示列与分段权重列都必须上报，否则原生路径会误判它们可省略。
+        assert!(binding.helpers.len() > f.segment_variables().len());
+        assert!(structure.fingerprint().is_some());
+
+        let eager = <LogisticFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+            &f,
+            &symbol_to_index,
+        )
+        .expect("eager sigmoid constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("sigmoid structure should materialize");
+        assert!(!eager.is_empty());
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
     }
 }

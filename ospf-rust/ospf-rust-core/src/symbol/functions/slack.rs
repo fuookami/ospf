@@ -21,7 +21,10 @@ use std::ops::{Add, Mul};
 use std::sync::Arc;
 
 /// 默认 Big-M 值 / Default Big-M value
-const DEFAULT_BIG_M: f64 = 1_000_000.0;
+// The exact absolute-value formulation needs twice the maximum |left-right|
+// when a branch is inactive. Keep the unbounded fallback aligned with Kotlin.
+// 精确绝对值模型在分支未激活时需要覆盖两倍的 |left-right|，无界回退值与 Kotlin 保持一致。
+const DEFAULT_BIG_M: f64 = 2_000_000.0;
 /// 最小 Big-M 值 / Minimum Big-M value
 const MIN_BIG_M: f64 = 1.0;
 

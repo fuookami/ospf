@@ -232,12 +232,12 @@ expression, `IfElseFunction` is the preferred explicit-binary ternary form,
 `ConditionalIndicatorFunction` is the registerable relation indicator, and
 `ConditionalIfFunction` is the non-registering classifier. `semantic::if_` and
 `semantic::if_named` construct range-driven indicators; `if_legacy` preserves the old
-threshold behavior. `IfInFunction` remains discrete-set membership, while
+threshold behavior. `InValuesFunction` remains discrete-set membership, while
 `IfInRangeFunction` and `RegisterableIfInRangeFunction` describe and register a closed
 range. `ConditionalThenFunction` and `ConditionalImplyFunction` are the range-driven
 registerable forms; `IfThenConstraintFunction` and `imply_constraint` remain legacy
-Big-M compatibility entries. `SigmoidStepFunction` is the registerable relation-step
-form and `SigmoidFunction` remains the continuous PWL form.
+Big-M compatibility entries. `SigmoidFunction` is the registerable relation-step
+form and `LogisticFunction` remains the continuous PWL form. Kotlin's `Sigmoid` corresponds to the step form; the continuous PWL form has no Kotlin counterpart.
 
 For `d = lhs - rhs`, relation indicators are defined only outside the undefined gap:
 
@@ -292,6 +292,44 @@ The exact native backend scope is Gurobi and SCIP. Feature compilation proves wi
 only; native capability requires a matching library, runtime, and license probe. Gurobi
 license failures (including code `10009`) are `LICENSE`; missing libraries are
 `ENVIRONMENT`.
+
+### Function Symbol Support Matrix
+
+Function-symbol migration proceeds in four levels: semantics, structure, native. The default is
+still **eager expansion**: without an explicit policy every function symbol writes its generic
+constraints during `MetaModel -> MechanismModel`, matching historical behaviour. Deferred and
+native paths are opt-in, and any native write failure falls back to the generic expansion for the
+whole model instead of leaving a partially native one.
+
+| Level | Content | Status |
+| --- | --- | --- |
+| 1 Semantics | Eager expansion, bound tightening, Big-M derivation and boolean hulls for every function symbol | Implemented, default path |
+| 2 Structure | Solver-neutral `DeferredFunctionStructure` (symbol handle, helper columns, fixed Big-M, versioned fingerprint) | Implemented for ABS, NOT, AND, OR, MAX, MIN, SEMI, binaryzation, relation indicator, balance ternaryzation, logistic, IF, binary masking, sin, cos, polynomial masking, the MAX/MIN forwarding symbols (MinMax/MaxMin), slack range, IF-THEN, implication and in-values (discrete value-set membership; Kotlin's `IfIn` is the interval semantics, matched by Rust `RegisterableIfInRangeFunction`); every other function stays eager |
+| 3 Scheduling | `FunctionExpansionPolicy` (eager/deferred/Auto), solver capability gate, `NativeFunctionWriter` registry, model-level lowering, failure atomicity, versioned fingerprints | Implemented (solver-neutral) |
+| 4 Native writers | Concrete SDK writes | Gurobi writers for ABS (`add_genconstr_abs`), MAX/MIN (`add_genconstr_max/min`), the piecewise-linear shapes Sin/Cos/Logistic (`add_genconstr_pwl`), the relation indicator (`add_genconstr_indicator`), in-values (`add_genconstr_indicator` plus `add_genconstr_or` for the candidate aggregation), binary AND/OR (`add_genconstr_and/or`) binaryzation (`add_genconstr_indicator` with the big-M redundancy proof), implication (`add_genconstr_indicator`, two per inner sub-indicator plus three coupling rows) the conditional value (`add_genconstr_indicator`: the condition relation plus equality indicators on both branches), binary masking, the polynomial mask (`add_genconstr_indicator` with an `M ≥ |x|` containment proof) IF branch selection (`add_genconstr_indicator`, the condition rows reduced via branch equality) balanced ternaryzation (two plain rows through the container's `add_linear_row` plus four band indicators) and logical NOT (one identical plain equality row) are wired into the modelling flow through `GurobiSolver::solve_linear_with_native_lowering` and **take effect in real solves** (verified end to end by `tests/gurobi_native_function_lowering.rs`, which needs a licence). Every writer applies the same gates (fixed result column, externally referenced helpers, shapes it cannot express exactly — and, where the native form would drop rows the eager form relies on, an explicit range or big-M redundancy proof), and a real write failure makes the solver discard the SDK model and **fall back for the whole model**; further writers are still to come |
+
+Each structure materializes through the very same formula generator as the handwritten eager path
+(no second copy of the rows), so the deferred and eager paths are column-identical; every structure
+is covered twice in the test suite, once at structure level and once through the whole
+`MetaModel -> MechanismModel -> linear model` pipeline, by asserting that the resulting row names are
+equal between `Eager` and `DeferredNativeFirst`. A structure is only offered where deferral is
+semantically equivalent: non-exact maxima/minima keep their different epigraph/hypograph semantics
+eager, and a Big-M that cannot be derived at all is surfaced by the eager path instead of being
+hidden until materialization.
+
+Policy entry points: the solving side decides through `SolverConfig::function_expansion_policy`
+and `SolverConfig::resolved_function_expansion_policy`, while the modelling side adopts the same
+value via `MetaModel::apply_solver_config`; the mechanism model leaves the modelling stage carrying
+the resolved policy. `Auto` keeps structures only when the solver declares the `NativeIndicator`
+capability and otherwise falls back to eager expansion.
+
+Verification: `cargo test -p ospf-rust-core` is semantic evidence, while
+`cargo check --features gurobi10/11/12` is compilation evidence only and **does not mean a real
+solve passed**. Admission assertions for the deferred and native paths run without a licence; the
+native write itself needs the matching library and licence. Where that library and licence *are*
+present, the acceptance evidence is the previously ignored native tests and they must be run with
+`-- --include-ignored`; a green `cargo check` never substitutes for them. On this machine SCIP ships
+as Java only, so `--features scip` must be replaced by `--features scip-bundled`.
 
 ### Native Validation Matrix
 

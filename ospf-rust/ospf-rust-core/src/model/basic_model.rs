@@ -446,9 +446,13 @@ where
         }
 
         let mut auxiliary_tokens = Vec::new();
-        symbol.register_auxiliary_tokens(&mut auxiliary_tokens)?;
+        symbol.register_auxiliary_tokens_with_context(&mut auxiliary_tokens, self.tokens())?;
         let has_auxiliary_tokens = !auxiliary_tokens.is_empty();
         if has_auxiliary_tokens {
+            // 辅助令牌入表前收紧声明范围；失败时不写入任何令牌。
+            // Tighten declared ranges before the auxiliary tokens enter the table; a
+            // failure writes no token at all.
+            symbol.refine_auxiliary_tokens(&mut auxiliary_tokens, self.tokens())?;
             let mut new_ids = HashSet::with_capacity(auxiliary_tokens.len());
             for token in &auxiliary_tokens {
                 let var_id = token.id();

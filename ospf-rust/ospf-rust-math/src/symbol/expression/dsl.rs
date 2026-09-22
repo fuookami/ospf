@@ -575,3 +575,632 @@ pub(super) fn or_pair<T>(
     }
     BooleanExpression::Or(operands)
 }
+
+// ============================================================================
+// 表达式 DSL 测试 / Expression DSL tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+    use std::collections::HashSet;
+
+    use super::*;
+
+    /// 断言布尔表达式是比较表达式并返回其操作符。
+    /// Assert the boolean expression is a comparison and return its operator.
+    fn comparison_operator(expression: &BooleanExpression<ExpressionValue>) -> ComparisonOperator {
+        let BooleanExpression::Comparison { operator, .. } = expression else {
+            panic!("expected comparison expression");
+        };
+        *operator
+    }
+
+    /// 构造运行时路径引用标量，避免泛型参数推断歧义。
+    /// Build a runtime path reference scalar to avoid ambiguous generic inference.
+    fn scalar(path: &str) -> ScalarExpression<ExpressionValue> {
+        ScalarExpression::reference(path)
+    }
+
+    // ========================================================================
+    // 标量表达式 DSL / Scalar expression DSL
+    // ========================================================================
+
+    #[test]
+    fn scalar_expression_dsl_builds_each_comparison() {
+        let scalar = || ScalarExpression::<ExpressionValue>::reference("age");
+
+        assert_eq!(
+            comparison_operator(&scalar().eq_expr(18)),
+            ComparisonOperator::Eq
+        );
+        assert_eq!(
+            comparison_operator(&scalar().ne_expr(18)),
+            ComparisonOperator::Ne
+        );
+        assert_eq!(
+            comparison_operator(&scalar().lt_expr(18)),
+            ComparisonOperator::Lt
+        );
+        assert_eq!(
+            comparison_operator(&scalar().le_expr(18)),
+            ComparisonOperator::Le
+        );
+        assert_eq!(
+            comparison_operator(&scalar().gt_expr(18)),
+            ComparisonOperator::Gt
+        );
+        assert_eq!(
+            comparison_operator(&scalar().ge_expr(18)),
+            ComparisonOperator::Ge
+        );
+    }
+
+    #[test]
+    fn scalar_expression_dsl_compare_expr_uses_explicit_operator() {
+        let expression = ScalarExpression::<ExpressionValue>::reference("status")
+            .compare_expr(ComparisonOperator::Ne, "active");
+
+        assert_eq!(
+            expression,
+            BooleanExpression::ne(
+                ScalarExpression::reference("status"),
+                ScalarExpression::constant(ExpressionValue::String("active".to_string())),
+            )
+        );
+    }
+
+    #[test]
+    fn scalar_expression_dsl_accepts_path_references_as_operands() {
+        let limit = ScalarExpression::<ExpressionValue>::reference("limit");
+
+        assert_eq!(
+            limit.gt_expr(ScalarExpression::<ExpressionValue>::reference("score")),
+            BooleanExpression::gt(
+                ScalarExpression::reference("limit"),
+                ScalarExpression::reference("score"),
+            )
+        );
+    }
+
+    // ========================================================================
+    // 路径构建器 / Path builder
+    // ========================================================================
+
+    #[test]
+    fn path_builder_constructors_keep_the_same_path() {
+        let from_path = PathBuilder::<ExpressionValue>::new(PropertyPath::parse("user.age"));
+        let from_str = PathBuilder::<ExpressionValue>::parse("user.age");
+        let from_helper = path("user.age");
+
+        assert_eq!(from_path, from_str);
+        assert_eq!(from_path, from_helper);
+        assert_eq!(from_path.path(), &PropertyPath::parse("user.age"));
+        assert_eq!(from_path.clone().into_path(), PropertyPath::parse("user.age"));
+    }
+
+    #[test]
+    fn path_builder_typed_switches_value_type_and_keeps_path() {
+        let runtime = path("user.age");
+        let typed = runtime.typed::<i32>();
+
+        assert_eq!(typed.path(), runtime.path());
+        assert_eq!(typed.as_scalar(), ScalarExpression::<i32>::reference("user.age"));
+    }
+
+    #[test]
+    fn path_builder_as_scalar_builds_reference_expression() {
+        let builder = path("user.age");
+
+        assert_eq!(
+            builder.as_scalar(),
+            ScalarExpression::<ExpressionValue>::reference("user.age")
+        );
+        assert!(builder.as_scalar().contains_reference());
+    }
+
+    #[test]
+    fn path_builder_comparison_methods_match_operators() {
+        let builder = path("age");
+
+        assert_eq!(
+            comparison_operator(&builder.compare(ComparisonOperator::Le, 18)),
+            ComparisonOperator::Le
+        );
+        assert_eq!(comparison_operator(&builder.eq(18)), ComparisonOperator::Eq);
+        assert_eq!(comparison_operator(&builder.ne(18)), ComparisonOperator::Ne);
+        assert_eq!(comparison_operator(&builder.lt(18)), ComparisonOperator::Lt);
+        assert_eq!(comparison_operator(&builder.le(18)), ComparisonOperator::Le);
+        assert_eq!(comparison_operator(&builder.gt(18)), ComparisonOperator::Gt);
+        assert_eq!(comparison_operator(&builder.ge(18)), ComparisonOperator::Ge);
+
+        assert_eq!(
+            builder.gt(18),
+            BooleanExpression::gt(
+                ScalarExpression::reference("age"),
+                ScalarExpression::constant(ExpressionValue::Number(18.0)),
+            )
+        );
+    }
+
+    #[test]
+    fn path_builder_comparison_accepts_path_references_on_both_sides() {
+        let expression = typed_path::<i32>("score").lt(typed_path::<i32>("limit"));
+
+        assert_eq!(
+            expression,
+            BooleanExpression::lt(
+                ScalarExpression::reference("score"),
+                ScalarExpression::reference("limit"),
+            )
+        );
+    }
+
+    #[test]
+    fn path_builder_in_values_and_not_in_values_store_negation() {
+        let builder = path("status");
+
+        let in_expression = builder.in_values(["active", "pending"]);
+        let BooleanExpression::In {
+            value,
+            candidates,
+            negated,
+        } = in_expression
+        else {
+            panic!("expected in expression");
+        };
+        assert_eq!(value, ScalarExpression::reference("status"));
+        assert_eq!(candidates.len(), 2);
+        assert!(!negated);
+
+        let not_in_expression = builder.not_in_values(["archived"]);
+        let BooleanExpression::In {
+            value,
+            candidates,
+            negated,
+        } = not_in_expression
+        else {
+            panic!("expected in expression");
+        };
+        assert_eq!(value, ScalarExpression::reference("status"));
+        assert_eq!(candidates.len(), 1);
+        assert!(negated);
+    }
+
+    #[test]
+    fn path_builder_null_checks_use_the_builder_path() {
+        assert_eq!(
+            path("deleted_at").is_null(),
+            BooleanExpression::is_null("deleted_at")
+        );
+        assert_eq!(
+            path("profile.email").is_not_null(),
+            BooleanExpression::is_not_null("profile.email")
+        );
+        assert_eq!(path("deleted_at").is_null().type_name(), "NullCheck");
+    }
+
+    #[test]
+    fn path_builder_pattern_helpers_map_to_expected_modes() {
+        let builder = path("name");
+        let expected = [
+            (builder.like("A%"), PatternMatchMode::Like),
+            (builder.like_exact("Alice"), PatternMatchMode::Exact),
+            (builder.like_prefix("Al"), PatternMatchMode::Prefix),
+            (builder.like_suffix("ce"), PatternMatchMode::Suffix),
+            (builder.like_contains("lic"), PatternMatchMode::Contains),
+            (builder.regex("^A"), PatternMatchMode::Regex),
+        ];
+
+        for (expression, mode) in expected {
+            let BooleanExpression::PatternMatch {
+                value,
+                pattern: _,
+                mode: actual_mode,
+                negated,
+            } = expression
+            else {
+                panic!("expected pattern match expression");
+            };
+            assert_eq!(value, ScalarExpression::reference("name"));
+            assert_eq!(actual_mode, mode);
+            assert!(!negated);
+        }
+    }
+
+    #[test]
+    fn path_builder_pattern_match_sets_negation_flags() {
+        let builder = path("name");
+
+        let negated = builder.pattern_match("A%", PatternMatchMode::Like, true);
+        let BooleanExpression::PatternMatch { negated: flag, .. } = negated else {
+            panic!("expected pattern match expression");
+        };
+        assert!(flag);
+
+        let not_like = builder.not_like("A%");
+        let BooleanExpression::PatternMatch {
+            mode,
+            negated: flag,
+            ..
+        } = not_like
+        else {
+            panic!("expected pattern match expression");
+        };
+        assert_eq!(mode, PatternMatchMode::Like);
+        assert!(flag);
+    }
+
+    #[test]
+    fn path_builder_converts_into_scalar_expression() {
+        let builder = path("delta");
+
+        assert_eq!(
+            ScalarExpression::<ExpressionValue>::from(builder.clone()),
+            ScalarExpression::reference("delta")
+        );
+        assert_eq!(
+            ScalarExpression::<ExpressionValue>::from(&builder),
+            ScalarExpression::reference("delta")
+        );
+        // 转换后原构建器仍可使用 / The builder stays usable after conversion
+        assert_eq!(builder.path().value(), "delta");
+    }
+
+    #[test]
+    fn path_builder_equality_and_hashing_follow_the_path() {
+        let mut builders = HashSet::new();
+        builders.insert(typed_path::<i32>("a.b"));
+        builders.insert(typed_path::<i32>("a.b"));
+        builders.insert(typed_path::<i32>("a.c"));
+
+        assert_eq!(builders.len(), 2);
+        assert_eq!(typed_path::<i32>("a.b"), typed_path::<i32>("a.b"));
+        assert_ne!(typed_path::<i32>("a.b"), typed_path::<i32>("a.c"));
+    }
+
+    // ========================================================================
+    // 布尔表达式 DSL / Boolean expression DSL
+    // ========================================================================
+
+    #[test]
+    fn boolean_expression_dsl_composes_logically() {
+        let age = || path("age").ge(18);
+        let status = || path("status").eq("active");
+
+        let and_expression = age().and_expr(status());
+        let BooleanExpression::And(operands) = and_expression else {
+            panic!("expected AND expression");
+        };
+        assert_eq!(operands.len(), 2);
+
+        let or_expression = age().or_expr(status());
+        let BooleanExpression::Or(operands) = or_expression else {
+            panic!("expected OR expression");
+        };
+        assert_eq!(operands.len(), 2);
+
+        let not_expression = age().not_expr();
+        assert_eq!(not_expression, BooleanExpression::not_expr(age()));
+        assert_eq!(not_expression.type_name(), "Not");
+    }
+
+    #[test]
+    fn boolean_expression_dsl_flattens_same_operator_pairs() {
+        let a = || path("a").is_null();
+        let b = || path("b").is_null();
+        let c = || path("c").is_null();
+
+        let and_chain = a().and_expr(b()).and_expr(c());
+        let BooleanExpression::And(operands) = and_chain else {
+            panic!("expected flattened AND");
+        };
+        assert_eq!(operands.len(), 3);
+        assert_eq!(operands[2], c());
+
+        let or_chain = a().or_expr(b()).or_expr(c());
+        let BooleanExpression::Or(operands) = or_chain else {
+            panic!("expected flattened OR");
+        };
+        assert_eq!(operands.len(), 3);
+    }
+
+    // ========================================================================
+    // 便捷构造函数 / Convenience constructors
+    // ========================================================================
+
+    #[test]
+    fn path_and_typed_path_helpers_build_matching_builders() {
+        assert_eq!(path("user.age"), PathBuilder::<ExpressionValue>::parse("  user.age  "));
+        assert_eq!(typed_path::<i32>("user.age").path(), path("user.age").path());
+        assert_eq!(
+            scalar_path::<ExpressionValue>("user.age"),
+            ScalarExpression::reference("user.age")
+        );
+    }
+
+    #[test]
+    fn bool_expr_and_trivalent_expr_build_constants() {
+        assert_eq!(
+            bool_expr::<ExpressionValue>(true),
+            BooleanExpression::Constant(Trivalent::True)
+        );
+        assert_eq!(
+            bool_expr::<ExpressionValue>(false),
+            BooleanExpression::Constant(Trivalent::False)
+        );
+        assert_eq!(
+            trivalent_expr::<ExpressionValue>(Trivalent::Unknown),
+            BooleanExpression::Constant(Trivalent::Unknown)
+        );
+        assert_eq!(
+            trivalent_expr::<ExpressionValue>(true),
+            BooleanExpression::Constant(Trivalent::True)
+        );
+    }
+
+    #[test]
+    fn boolean_expression_helper_invokes_the_closure_exactly_once() {
+        let calls = Cell::new(0);
+
+        let expression = boolean_expression(|| {
+            calls.set(calls.get() + 1);
+            BooleanExpression::<ExpressionValue>::true_constant()
+        });
+
+        assert_eq!(calls.get(), 1);
+        assert_eq!(expression, BooleanExpression::<ExpressionValue>::true_constant());
+    }
+
+    #[test]
+    fn scalar_function_helper_builds_named_function_expression() {
+        let expression = scalar_function("max", [scalar("a"), scalar("b")]);
+
+        let ScalarExpression::Function { name, arguments } = expression else {
+            panic!("expected function expression");
+        };
+        assert_eq!(name, "max");
+        assert_eq!(arguments.len(), 2);
+    }
+
+    #[test]
+    fn string_and_numeric_helpers_build_expected_function_names() {
+        let helpers = [
+            (abs::<ExpressionValue>(scalar("a")), ScalarFunctionNames::ABS),
+            (lower::<ExpressionValue>(scalar("a")), ScalarFunctionNames::LOWER),
+            (upper::<ExpressionValue>(scalar("a")), ScalarFunctionNames::UPPER),
+            (trim::<ExpressionValue>(scalar("a")), ScalarFunctionNames::TRIM),
+            (length::<ExpressionValue>(scalar("a")), ScalarFunctionNames::LENGTH),
+        ];
+
+        for (expression, expected) in helpers {
+            let ScalarExpression::Function { name, arguments } = expression else {
+                panic!("expected function expression");
+            };
+            assert_eq!(name, expected);
+            assert_eq!(arguments.len(), 1);
+        }
+    }
+
+    #[test]
+    fn helpers_accept_path_builders_directly() {
+        let expression = abs::<ExpressionValue>(path("delta")).gt_expr(0);
+        let BooleanExpression::Comparison { left, .. } = expression else {
+            panic!("expected comparison expression");
+        };
+        assert_eq!(
+            left,
+            ScalarExpression::function(
+                ScalarFunctionNames::ABS,
+                vec![ScalarExpression::reference("delta")],
+            )
+        );
+
+        let lower_expression = lower::<ExpressionValue>(path("status")).eq_expr("active");
+        let BooleanExpression::Comparison { left, .. } = lower_expression else {
+            panic!("expected comparison expression");
+        };
+        assert_eq!(
+            left,
+            ScalarExpression::function(
+                ScalarFunctionNames::LOWER,
+                vec![ScalarExpression::reference("status")],
+            )
+        );
+    }
+
+    #[test]
+    fn coalesce_helper_keeps_argument_order() {
+        let expression = coalesce([
+            scalar("nickname"),
+            scalar("name"),
+            ScalarExpression::constant(ExpressionValue::String("fallback".to_string())),
+        ]);
+
+        let ScalarExpression::Function { name, arguments } = expression else {
+            panic!("expected function expression");
+        };
+        assert_eq!(name, ScalarFunctionNames::COALESCE);
+        assert_eq!(
+            arguments,
+            vec![
+                ScalarExpression::reference("nickname"),
+                ScalarExpression::reference("name"),
+                ScalarExpression::constant(ExpressionValue::String("fallback".to_string())),
+            ]
+        );
+    }
+
+    #[test]
+    fn quick_comparison_helpers_use_the_given_path() {
+        let helpers = [
+            (
+                compare::<ExpressionValue>("age", ComparisonOperator::Gt, 18),
+                ComparisonOperator::Gt,
+            ),
+            (eq::<ExpressionValue>("age", 18), ComparisonOperator::Eq),
+            (ne::<ExpressionValue>("age", 18), ComparisonOperator::Ne),
+            (lt::<ExpressionValue>("age", 18), ComparisonOperator::Lt),
+            (le::<ExpressionValue>("age", 18), ComparisonOperator::Le),
+            (gt::<ExpressionValue>("age", 18), ComparisonOperator::Gt),
+            (ge::<ExpressionValue>("age", 18), ComparisonOperator::Ge),
+        ];
+
+        for (expression, expected) in helpers {
+            let BooleanExpression::Comparison { operator, left, .. } = expression else {
+                panic!("expected comparison expression");
+            };
+            assert_eq!(operator, expected);
+            assert_eq!(left, ScalarExpression::reference("age"));
+        }
+    }
+
+    #[test]
+    fn quick_in_helpers_set_negation() {
+        let in_expression: ParsedBooleanExpression = in_expr("status", ["active", "pending"]);
+        let not_in_expression: ParsedBooleanExpression = not_in_expr("status", ["archived"]);
+
+        let BooleanExpression::In {
+            candidates,
+            negated,
+            ..
+        } = in_expression
+        else {
+            panic!("expected in expression");
+        };
+        assert_eq!(candidates.len(), 2);
+        assert!(!negated);
+
+        let BooleanExpression::In { negated, .. } = not_in_expression else {
+            panic!("expected in expression");
+        };
+        assert!(negated);
+    }
+
+    #[test]
+    fn quick_null_check_helpers_build_runtime_expressions() {
+        assert_eq!(is_null("deleted_at"), BooleanExpression::is_null("deleted_at"));
+        assert_eq!(
+            is_not_null("profile.email"),
+            BooleanExpression::is_not_null("profile.email")
+        );
+    }
+
+    #[test]
+    fn quick_and_or_flatten_nested_same_operator_expressions() {
+        let a = || is_null("a");
+        let b = || is_null("b");
+        let c = || is_null("c");
+
+        let and_expression = and([and([a(), b()]), c()]);
+        let BooleanExpression::And(operands) = and_expression else {
+            panic!("expected flattened AND");
+        };
+        assert_eq!(operands.len(), 3);
+
+        let or_expression = or([or([a(), b()]), c()]);
+        let BooleanExpression::Or(operands) = or_expression else {
+            panic!("expected flattened OR");
+        };
+        assert_eq!(operands.len(), 3);
+        assert_eq!(operands[0], a());
+    }
+
+    #[test]
+    #[should_panic(expected = "And expression requires at least one operand")]
+    fn quick_and_panics_on_empty_input() {
+        let _ = and(Vec::<ParsedBooleanExpression>::new());
+    }
+
+    #[test]
+    #[should_panic(expected = "Or expression requires at least one operand")]
+    fn quick_or_panics_on_empty_input() {
+        let _ = or(Vec::<ParsedBooleanExpression>::new());
+    }
+
+    #[test]
+    fn quick_not_expr_wraps_the_expression() {
+        let expression = not_expr(eq::<ExpressionValue>("status", "deleted"));
+
+        let BooleanExpression::Not(operand) = expression else {
+            panic!("expected NOT expression");
+        };
+        assert_eq!(*operand, eq::<ExpressionValue>("status", "deleted"));
+    }
+
+    // ========================================================================
+    // DSL 与解析器等价性 / DSL and parser equivalence
+    //
+    // 这些用例依赖 `parser` feature，未启用时整体跳过。
+    // These cases depend on the `parser` feature and are skipped when it is disabled.
+    // ========================================================================
+
+    #[cfg(feature = "parser")]
+    #[test]
+    fn dsl_and_parser_agree_on_simple_comparison() {
+        let dsl_expression = path("age").gt(18);
+        let parser_expression =
+            crate::symbol::expression::parse_boolean_expression("age > 18").unwrap();
+
+        assert_eq!(dsl_expression, parser_expression);
+    }
+
+    #[cfg(feature = "parser")]
+    #[test]
+    fn dsl_and_parser_agree_on_and_expression() {
+        let dsl_expression = path("age")
+            .gt(18)
+            .and_expr(path("status").eq("active"));
+        let parser_expression = crate::symbol::expression::parse_boolean_expression(
+            "age > 18 and status = 'active'",
+        )
+        .unwrap();
+
+        assert_eq!(dsl_expression, parser_expression);
+    }
+
+    #[cfg(feature = "parser")]
+    #[test]
+    fn dsl_and_parser_agree_on_in_expression() {
+        let dsl_expression = path("status").in_values(["active", "pending"]);
+        let parser_expression = crate::symbol::expression::parse_boolean_expression(
+            "status in ('active', 'pending')",
+        )
+        .unwrap();
+
+        assert_eq!(dsl_expression, parser_expression);
+    }
+
+    #[cfg(feature = "parser")]
+    #[test]
+    fn dsl_and_parser_agree_on_null_check() {
+        let dsl_expression = path("profile.email").is_not_null();
+        let parser_expression =
+            crate::symbol::expression::parse_boolean_expression("profile.email is not null")
+                .unwrap();
+
+        assert_eq!(dsl_expression, parser_expression);
+    }
+
+    #[cfg(feature = "parser")]
+    #[test]
+    fn dsl_and_parser_agree_on_pattern_match() {
+        let dsl_expression = path("name").like("A%");
+        let parser_expression =
+            crate::symbol::expression::parse_boolean_expression("name like 'A%'").unwrap();
+
+        assert_eq!(dsl_expression, parser_expression);
+    }
+
+    #[cfg(feature = "parser")]
+    #[test]
+    fn dsl_and_parser_agree_on_nested_path_reference() {
+        let dsl_expression = path("user.address.city").eq("Beijing");
+        let parser_expression = crate::symbol::expression::parse_boolean_expression(
+            "user.address.city = 'Beijing'",
+        )
+        .unwrap();
+
+        assert_eq!(dsl_expression, parser_expression);
+    }
+}

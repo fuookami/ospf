@@ -1,10 +1,10 @@
 //! P0 评估测试模块 / P0 evaluation tests module.
 
 use crate::model::BasicModel;
-use crate::symbol::flatten::{Linear, LinearMonomial};
+use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use crate::symbol::function::*;
 use crate::symbol::{FunctionSymbol, LinearExpressionSymbol};
-use crate::token::{MutableTokenList, Token, VecTokenList};
+use crate::token::{MutableTokenList, Token, TokenList, VecTokenList};
 use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId};
 use std::f64::consts::PI;
 use std::sync::Arc;
@@ -136,10 +136,14 @@ fn trigonometric_and_same_as_calculate_from_input_expression() {
 fn in_step_range_and_satisfied_amount_calculate_from_inputs() {
     let mut step_tokens = VecTokenList::new();
     add_continuous_token(&mut step_tokens, 6, 0, "x", 5.0);
-    let in_step = InStepRangeFunction::new(400, "step", linear_of(0, 1.0, 0.0), 1.0, 9.0, 2.0);
-    let in_step_value =
-        <InStepRangeFunction as FunctionSymbol>::calculate_value(&in_step, &step_tokens, false)
-            .unwrap();
+    let in_step =
+        InStepRangeIndicatorFunction::new(400, "step", linear_of(0, 1.0, 0.0), 1.0, 9.0, 2.0);
+    let in_step_value = <InStepRangeIndicatorFunction as FunctionSymbol>::calculate_value(
+        &in_step,
+        &step_tokens,
+        false,
+    )
+    .unwrap();
     assert_eq!(in_step_value, 1.0);
 
     let mut sat_tokens = VecTokenList::new();
@@ -199,13 +203,8 @@ fn first_one_of_if_else_balance_ternary_and_semi_calculate_from_inputs() {
         <IfElseFunction as FunctionSymbol>::calculate_value(&if_else, &tokens, false).unwrap();
     assert_eq!(if_else_value, 11.0);
 
-    let balance = BalanceTernaryzationFunction::new(503, "bal");
-    let pos_token = Token::from_generic(balance.positive_variable().clone(), 102);
-    pos_token.set_result(1.0);
-    tokens.add_token(pos_token);
-    let neg_token = Token::from_generic(balance.negative_variable().clone(), 103);
-    neg_token.set_result(0.0);
-    tokens.add_token(neg_token);
+    let balance =
+        BalanceTernaryzationFunction::new(503, "bal", linear_of(0, 1.0, 0.0), 1e-6, 1_000_000.0);
     let balance_value =
         <BalanceTernaryzationFunction as FunctionSymbol>::calculate_value(&balance, &tokens, false)
             .unwrap();
@@ -314,9 +313,15 @@ fn more_p0_functions_register_declared_dependencies_in_model_graph() {
     model.add_symbol(Arc::new(same_as_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9550), vec![9500]);
 
-    let step_fn =
-        InStepRangeFunction::new(9560, "step_dep", Linear::new(vec![], 8.0), 0.0, 10.0, 2.0)
-            .with_declared_dependencies(vec![9500]);
+    let step_fn = InStepRangeIndicatorFunction::new(
+        9560,
+        "step_dep",
+        Linear::new(vec![], 8.0),
+        0.0,
+        10.0,
+        2.0,
+    )
+    .with_declared_dependencies(vec![9500]);
     model.add_symbol(Arc::new(step_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9560), vec![9500]);
 
@@ -335,8 +340,14 @@ fn more_p0_functions_register_declared_dependencies_in_model_graph() {
     model.add_symbol(Arc::new(semi_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9590), vec![9500]);
 
-    let balance_fn = BalanceTernaryzationFunction::new(9600, "balance_dep")
-        .with_declared_dependencies(vec![9500]);
+    let balance_fn = BalanceTernaryzationFunction::new(
+        9600,
+        "balance_dep",
+        Linear::new(vec![], 0.0),
+        1e-6,
+        1_000_000.0,
+    )
+    .with_declared_dependencies(vec![9500]);
     model.add_symbol(Arc::new(balance_fn)).unwrap();
     assert_eq!(model.symbol_dependency_ids(9600), vec![9500]);
 
@@ -392,4 +403,127 @@ fn trigonometric_rounding_and_mod_support_f32_values() {
             .unwrap();
     assert_close_f32(sin_value, 1.0_f32);
     assert_close_f32(cos_value, 0.0_f32);
+}
+
+#[test]
+fn univariate_piecewise_interpolates_and_rejects_out_of_range_values() {
+    let mut tokens = VecTokenList::new();
+    add_continuous_token(&mut tokens, 9800, 0, "ulp_x", 0.5);
+    let function = UnivariateLinearPiecewiseFunction::new(
+        9801,
+        "ulp_boundary",
+        linear_of(0, 1.0, 0.0),
+        vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 2.0),
+            Point2::new(2.0, 4.0),
+        ],
+    );
+
+    assert_eq!(function.points()[0].x, 0.0);
+    assert_eq!(function.points()[1].x, 1.0);
+    assert_eq!(function.points()[2].x, 2.0);
+    assert_close(function.calculate_value(&tokens, false).unwrap(), 1.0);
+
+    tokens.find_by_index(0).unwrap().set_result(-1.0);
+    assert_eq!(function.calculate_value(&tokens, false), None);
+
+    tokens.find_by_index(0).unwrap().set_result(3.0);
+    assert_eq!(function.calculate_value(&tokens, false), None);
+
+    let missing = VecTokenList::<f64>::new();
+    assert_eq!(function.calculate_value(&missing, false), None);
+    assert_eq!(function.calculate_value(&missing, true), Some(0.0));
+}
+
+#[test]
+#[should_panic(expected = "univariate piecewise function requires at least two points")]
+fn univariate_piecewise_rejects_empty_points() {
+    let _ = UnivariateLinearPiecewiseFunction::<f64>::new(
+        9810,
+        "ulp_empty",
+        Linear::new(vec![], 0.0),
+        vec![],
+    );
+}
+
+#[test]
+fn bivariate_piecewise_evaluates_barycentric_coordinates_and_handles_missing_inputs() {
+    let function = BivariateLinearPiecewiseFunction::new(
+        9820,
+        "blp_value",
+        linear_of(0, 1.0, 0.0),
+        linear_of(1, 1.0, 0.0),
+        vec![Triangle3::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 10.0),
+            Point3::new(0.0, 1.0, 20.0),
+        )],
+    );
+    let mut registered = Vec::new();
+    function.register_tokens(&mut registered).unwrap();
+    assert_eq!(
+        registered.len(),
+        5,
+        "result, three lambdas, and one selector"
+    );
+
+    let mut tokens = VecTokenList::new();
+    add_continuous_token(&mut tokens, 9821, 0, "blp_x", 0.5);
+    add_continuous_token(&mut tokens, 9822, 1, "blp_y", 0.25);
+    assert_close(function.calculate_value(&tokens, false).unwrap(), 10.0);
+
+    let mut incomplete = VecTokenList::new();
+    add_continuous_token(&mut incomplete, 9823, 0, "blp_x", 0.5);
+    assert_eq!(function.calculate_value(&incomplete, false), None);
+    assert_eq!(function.calculate_value(&incomplete, true), Some(5.0));
+}
+
+#[test]
+#[should_panic(expected = "bivariate piecewise function requires at least one triangle")]
+fn bivariate_piecewise_rejects_empty_points() {
+    let _ = BivariateLinearPiecewiseFunction::<f64>::new(
+        9830,
+        "blp_empty",
+        Linear::new(vec![], 0.0),
+        Linear::new(vec![], 0.0),
+        vec![],
+    );
+}
+
+#[test]
+fn quadratic_bridge_and_min_cover_mixed_terms_missing_values_and_negative_candidates() {
+    let mut tokens = VecTokenList::new();
+    add_continuous_token(&mut tokens, 9840, 0, "qx", 2.0);
+    add_continuous_token(&mut tokens, 9841, 1, "qy", -3.0);
+
+    let mixed = Quadratic::new(
+        vec![
+            QuadraticMonomial::new_quadratic(2.0, 0, 1),
+            QuadraticMonomial::new_linear(3.0, 0),
+        ],
+        4.0,
+    );
+    let bridge = QuadraticLinearFunction::new(9842, "qlinear_value", mixed.clone());
+    assert_eq!(bridge.calculate_value(&tokens, false), Some(-2.0));
+    let mut bridge_tokens = Vec::new();
+    bridge.register_tokens(&mut bridge_tokens).unwrap();
+    assert_eq!(bridge_tokens.len(), 1);
+
+    let mut missing_y = VecTokenList::new();
+    add_continuous_token(&mut missing_y, 9843, 0, "only_x", 2.0);
+    assert_eq!(bridge.calculate_value(&missing_y, false), None);
+    assert_eq!(bridge.calculate_value(&missing_y, true), Some(10.0));
+
+    let square = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+    let tied_negative = Quadratic::new(vec![], -2.0);
+    let minimum = QuadraticMinFunction::new(
+        9844,
+        "qmin_boundaries",
+        vec![square, mixed, tied_negative],
+        true,
+    );
+    assert_eq!(minimum.calculate_value(&tokens, false), Some(-2.0));
+    assert_eq!(minimum.calculate_value(&missing_y, false), None);
+    assert_eq!(minimum.calculate_value(&missing_y, true), Some(-2.0));
 }

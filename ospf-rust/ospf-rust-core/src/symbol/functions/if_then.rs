@@ -4,6 +4,7 @@ use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
     auto_intermediate_symbol_name, next_auto_intermediate_symbol_id,
 };
+use super::big_m::infer_linear_shifted_abs_bound_from_tokens;
 use super::ConditionalIndicatorFunction;
 use super::conditional::{ConditionBounds, ConditionRelation, ConditionalIfFunction, TruthValue};
 use super::{InequalityFunction, InequalityKind};
@@ -83,6 +84,46 @@ fn relation_to_kind(relation: ConstraintRelation) -> InequalityKind {
 fn auxiliary_id(base: u64, salt: u64) -> u64 {
     base.wrapping_mul(0x9e37_79b9_7f4a_7c15)
         .wrapping_add(salt.wrapping_mul(0x517c_c1b7_2722_0a95))
+}
+
+/// 内部关系指示器允许的最小 Big-M / Minimum Big-M allowed for an internal relation indicator
+///
+/// 与 `InequalityFunction` 的推断下限保持同一个数值，保证延迟与即时两条路径解析出相同的 M。
+/// Mirrors the inference floor of `InequalityFunction` so the deferred and eager paths resolve the
+/// same M.
+const MIN_BIG_M: f64 = 1.0;
+
+/// 解析内部关系指示器的 Big-M。
+///
+/// 取法与 `InequalityFunction` 的 `mechanism_constraints_with_tokens` 完全一致：先按令牌边界推断
+/// （推断值不低于 [`MIN_BIG_M`]），取不到时回退到构造时写入的配置值；配置值不可用（无法转换、
+/// 非有限或不大于 0）时返回 `None`，由即时展开路径报出配置错误。
+///
+/// Resolve the Big-M of an internal relation indicator.
+///
+/// The resolution is identical to `mechanism_constraints_with_tokens` of `InequalityFunction`:
+/// infer from token bounds first (floored by [`MIN_BIG_M`]), fall back to the value configured at
+/// construction, and return `None` when the configured value is unusable (not convertible,
+/// non-finite or not positive) so eager expansion surfaces the configuration error.
+fn resolve_indicator_big_m<V>(
+    indicator: &InequalityFunction<V>,
+    tokens: &[Token<V>],
+) -> Option<f64>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    if let Some(inferred) = infer_linear_shifted_abs_bound_from_tokens(
+        indicator.left_polynomial(),
+        indicator.right_value(),
+        tokens,
+    ) {
+        return Some(inferred.max(MIN_BIG_M));
+    }
+    let configured = to_f64(indicator.big_m())?;
+    if !configured.is_finite() || configured <= 0.0 {
+        return None;
+    }
+    Some(configured)
 }
 
 fn evaluate_inequality<V>(
@@ -688,6 +729,257 @@ where
     Ok(())
 }
 
+/// 条件值原生写入里条件关系的核心单边映射 / Core one-sided mapping of the condition relation in a
+/// conditional-value native write
+///
+/// 即时展开的条件块由 [`relation_indicator_constraints`] 生成两条行，把条件差式 `s`（条件多项式本身）
+/// 与条件指示列 `ind` 线性化：一条在 `ind = 1` 时收紧、一条在 `ind = 0` 时收紧，另一侧恰好松弛成符号
+/// 声明的条件范围 `[bounds.lower, bounds.upper]`。因此把 `ind` 固定为 1 / 0 后，每行对 `s` 的投影里各
+/// 有一条**不含范围系数**的核心关系，本结构就是这两条核心关系（`strict_boundary` 是严格关系与包含关系
+/// 之间的正间隔）。
+///
+/// Eager expansion's condition block emits two rows through [`relation_indicator_constraints`] linearising the
+/// condition difference `s` (the condition polynomial itself) against the condition indicator column `ind`:
+/// one tightens at `ind = 1` and one at `ind = 0`, while the opposite side relaxes to exactly the declared
+/// condition range `[bounds.lower, bounds.upper]`. Fixing `ind` to 1 / 0 therefore leaves exactly one core
+/// relation per projection that carries no range coefficient, and those two core relations are what this
+/// structure holds (`strict_boundary` is the positive gap between the strict and the inclusive relation).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ConditionalValueRelationCore {
+    /// 条件指示列取真时的核心关系 `s REL rhs` / Core relation `s REL rhs` for `indicator = 1`
+    pub when_true: (ConstraintRelation, f64),
+    /// 条件指示列取假时的核心关系 `s REL rhs` / Core relation `s REL rhs` for `indicator = 0`
+    pub when_false: (ConstraintRelation, f64),
+}
+
+/// 返回条件关系在给定严格边界下的两条核心单边关系 / The two core one-sided relations of a condition
+/// relation for a given strict boundary
+///
+/// 逐关系由 [`relation_linearization_values`] 的四个系数推出（`lower` / `upper` 是条件范围，
+/// `boundary` 是严格边界）：
+///
+/// | 关系 | `ind = 1` | `ind = 0` | 被松弛的两侧 |
+/// |---|---|---|---|
+/// | `Greater`（`s > 0`） | `s >= boundary` | `s <= 0` | `s >= lower`、`s <= upper` |
+/// | `GreaterEqual`（`s >= 0`） | `s >= 0` | `s <= -boundary` | `s >= lower`、`s <= upper` |
+/// | `Less`（`s < 0`） | `s <= -boundary` | `s >= 0` | `s >= lower`、`s <= upper` |
+/// | `LessEqual`（`s <= 0`） | `s <= 0` | `s >= boundary` | `s >= lower`、`s <= upper` |
+///
+/// 四种关系被松弛掉的两侧**都是**符号声明的条件范围本身，因此原生写入的冗余证明只需要该区间是有限有序
+/// 的（见 `native.rs` 的对照说明），不需要从 SDK 读列界。
+///
+/// Derived per relation from the four coefficients of [`relation_linearization_values`] (`lower` / `upper`
+/// are the condition range and `boundary` the strict boundary):
+///
+/// | relation | `ind = 1` | `ind = 0` | relaxed sides |
+/// |---|---|---|---|
+/// | `Greater` (`s > 0`) | `s >= boundary` | `s <= 0` | `s >= lower`, `s <= upper` |
+/// | `GreaterEqual` (`s >= 0`) | `s >= 0` | `s <= -boundary` | `s >= lower`, `s <= upper` |
+/// | `Less` (`s < 0`) | `s <= -boundary` | `s >= 0` | `s >= lower`, `s <= upper` |
+/// | `LessEqual` (`s <= 0`) | `s <= 0` | `s >= boundary` | `s >= lower`, `s <= upper` |
+///
+/// In all four relations the relaxed sides are **exactly** the symbol's declared condition range, so the
+/// native write's redundancy proof only needs that interval to be finite and ordered (see the comparison in
+/// `native.rs`) and never reads SDK column bounds.
+pub fn conditional_value_relation_core(
+    relation: ConditionRelation,
+    strict_boundary: f64,
+) -> ConditionalValueRelationCore {
+    match relation {
+        ConditionRelation::Greater => ConditionalValueRelationCore {
+            when_true: (ConstraintRelation::GreaterEqual, strict_boundary),
+            when_false: (ConstraintRelation::LessEqual, 0.0),
+        },
+        ConditionRelation::GreaterEqual => ConditionalValueRelationCore {
+            when_true: (ConstraintRelation::GreaterEqual, 0.0),
+            when_false: (ConstraintRelation::LessEqual, -strict_boundary),
+        },
+        ConditionRelation::Less => ConditionalValueRelationCore {
+            when_true: (ConstraintRelation::LessEqual, -strict_boundary),
+            when_false: (ConstraintRelation::GreaterEqual, 0.0),
+        },
+        ConditionRelation::LessEqual => ConditionalValueRelationCore {
+            when_true: (ConstraintRelation::LessEqual, 0.0),
+            when_false: (ConstraintRelation::GreaterEqual, strict_boundary),
+        },
+    }
+}
+
+/// 条件值函数的延迟结构 / Deferred structure of a conditional-value function
+///
+/// 与 IF、蕴含、极值同一模式：结构持有产生它的符号（`Arc`）与创建时冻结的参数，并通过**同一个**即时
+/// 生成器物化，使延迟物化与即时展开逐行一致。本函数的即时展开没有可配置或可推断的 Big-M（条件块用符号
+/// 声明的有限条件范围，分支块用 then 多项式的显式有限范围），因此冻结参数就是 `then_bounds` 本身——
+/// 它已随符号克隆一起被冻结。
+///
+/// 结果列是条件值结果列；条件指示器的两个辅助列（结果列与条件指示列）都上报为辅助列，全部参与「是否被
+/// 外部引用 / 是否可省略」的判定。
+///
+/// Same pattern as IF, implication and the extrema: the structure holds the symbol that produced it (an
+/// `Arc`) together with the parameters frozen at creation time and materializes through the **same** eager
+/// generator, so deferred materialization matches eager expansion row by row. This function's eager expansion
+/// has no configurable or inferable Big-M (the condition block uses the symbol's declared finite condition
+/// range and the branch block the then polynomial's explicit finite range), so the frozen parameter is
+/// `then_bounds` itself, which is already frozen by cloning the symbol.
+///
+/// The result column is the conditional-value result, while the condition indicator's two helper columns (its
+/// result and its indicator column) are both reported as helpers and take part in the
+/// externally-referenced / omittable analysis.
+#[derive(Debug)]
+pub struct ConditionalThenStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<ConditionalThenFunction<V>>,
+    /// 结果列 / Result column
+    result: VariableId,
+    /// 辅助列 / Helper columns
+    helpers: Vec<VariableId>,
+    /// 冻结的 then 多项式范围 / Frozen then-polynomial range
+    then_bounds: ConditionBounds<V>,
+}
+
+impl<V> ConditionalThenStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 创建结构描述 / Create a structure description.
+    ///
+    /// 冻结参数只有 `then_bounds`：即时展开的分支块依赖它，条件块依赖符号声明的条件范围与严格边界（都在
+    /// 符号内部，随 `Arc` 一起冻结）。
+    ///
+    /// The only frozen parameter is `then_bounds`: the eager branch block depends on it while the condition
+    /// block depends on the symbol's declared condition range and strict boundary, both inside the symbol and
+    /// therefore frozen with the `Arc`.
+    pub fn new(name: impl Into<String>, symbol: Arc<ConditionalThenFunction<V>>) -> Self {
+        let result = symbol.result_variable().id();
+        let helpers = symbol
+            .condition_indicator()
+            .helper_variables()
+            .iter()
+            .map(|variable| variable.id())
+            .collect();
+        let then_bounds = symbol.then_bounds().clone();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            helpers,
+            then_bounds,
+        }
+    }
+}
+
+impl<V> ConditionalThenStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &VariableId {
+        &self.result
+    }
+
+    /// 获取辅助列 / Get the helper columns.
+    pub fn helpers(&self) -> &[VariableId] {
+        &self.helpers
+    }
+
+    /// 获取冻结的 then 多项式范围 / Get the frozen then-polynomial range.
+    pub fn then_bounds(&self) -> &ConditionBounds<V> {
+        &self.then_bounds
+    }
+
+    /// 获取产生本结构的符号（只读）/ Read-only access to the symbol that produced this structure.
+    ///
+    /// 用途：原生 writer 必须把**同一份**条件关系、条件范围、严格边界与 then 多项式写成 SDK 的一般约束，
+    /// 而不是在别处重新推导；本访问器只转发不可变引用，不复制公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** condition relation, condition range, strict boundary
+    /// and then polynomial as SDK general constraints instead of re-deriving them; this only forwards an
+    /// immutable reference, copies no formula and exposes no mutable state.
+    pub fn symbol(&self) -> &Arc<ConditionalThenFunction<V>> {
+        &self.symbol
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for ConditionalThenStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 条件指示器的两个辅助列都是本结构的辅助列，参与「是否被外部引用 / 是否可省略」的判定。
+        // Both helper columns of the condition indicator are helpers of this structure and take part in the
+        // externally-referenced and omittable analysis.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            self.helpers.clone(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        // 冻结的 then 范围与全部辅助列都进入指纹：任一语义字段变化都必须让旧记录失效。
+        // The frozen then range and every helper column are part of the fingerprint: any semantic change must
+        // invalidate old records.
+        let helpers = self
+            .helpers
+            .iter()
+            .map(|helper| helper.unique_id().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        Some(format!(
+            "conditional_then|{}|{}|{}|{}|{:.17e}|{:.17e}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            helpers,
+            self.then_bounds
+                .lower
+                .to_f64()
+                .expect("conditional then lower bound is representable"),
+            self.then_bounds
+                .upper
+                .to_f64()
+                .expect("conditional then upper bound is representable"),
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器，保证两条路径逐行一致。
+        // Reuse the eager path's generator so both paths stay row-identical.
+        self.symbol.build_mechanism_constraints(symbol_to_index)
+    }
+}
+
 impl<V> Display for ConditionalThenFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
@@ -778,6 +1070,22 @@ where
         _tokens: &[Token<V>],
     ) -> Result<Vec<LinearConstraint<V>>> {
         self.build_mechanism_constraints(symbol_to_index)
+    }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // 本函数的即时展开不需要推断或配置 Big-M（条件块用声明的条件范围，分支块用 then 范围的显式值），
+        // 因此结构总能给出；折叠情形与其它语义性拒绝留给 SDK 无关的 planner，让拒绝理由可被单独测试。
+        // This function's eager expansion needs no inferred or configured Big-M (the condition block uses the
+        // declared condition range and the branch block the explicit then range), so the structure is always
+        // offered; the folded case and the other semantic rejections are left to the SDK-free planner so their
+        // reasons can be tested on their own.
+        Some(Arc::new(ConditionalThenStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+        )))
     }
 
     fn evaluate_from_tokens(
@@ -1240,6 +1548,57 @@ where
 
         Ok(constraints)
     }
+
+    /// 收集两个内部关系指示器注册的全部辅助列。
+    ///
+    /// 直接复用两个指示器自己的令牌注册，因此等号形态下的 side 列也会被完整收集；漏报辅助列会
+    /// 让原生路径误判它可以被省略。
+    ///
+    /// Collect every helper column registered by the two internal relation indicators.
+    ///
+    /// The indicators' own token registration is reused, so the side column of the equality form is
+    /// collected as well; omitting a helper would let a native path wrongly drop it.
+    fn indicator_helper_columns(&self) -> Result<Vec<crate::variable::VariableId>> {
+        let mut tokens = Vec::new();
+        self.premise_indicator.register_tokens(&mut tokens)?;
+        self.consequence_indicator.register_tokens(&mut tokens)?;
+        Ok(tokens.iter().map(|token| token.id()).collect())
+    }
+
+    /// 使用冻结的 Big-M 生成机制约束 / Build mechanism constraints with frozen Big-M values.
+    ///
+    /// 与即时路径的 `mechanism_constraints_with_tokens` 结构一致：先前提指示器、再结论指示器、
+    /// 最后逻辑行；区别只是两个指示器的 M 来自调用方冻结的值，而不是当前令牌重新推断。
+    ///
+    /// Mirrors the eager `mechanism_constraints_with_tokens` layout: premise indicator rows,
+    /// consequence indicator rows, then the logical rows. The only difference is that both
+    /// indicators take the M frozen by the caller instead of re-inferring it from tokens.
+    fn build_mechanism_constraints_with_big_ms(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        premise_big_m: f64,
+        consequence_big_m: f64,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let premise_indicator = self
+            .premise_indicator
+            .with_big_m_value(convert_f64_to_v::<V>(premise_big_m, "if_then premise big-M")?);
+        let consequence_indicator = self.consequence_indicator.with_big_m_value(
+            convert_f64_to_v::<V>(consequence_big_m, "if_then consequence big-M")?,
+        );
+        let mut constraints =
+            <InequalityFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+                &premise_indicator,
+                symbol_to_index,
+            )?;
+        constraints.extend(
+            <InequalityFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+                &consequence_indicator,
+                symbol_to_index,
+            )?,
+        );
+        constraints.extend(self.logical_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
 }
 
 impl<V> IntermediateSymbol<V> for IfThenFunction<V>
@@ -1483,6 +1842,182 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("if_then({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Big-M 必须在结构创建时固定：两个内部关系指示器各自按令牌边界推断、再回退到构造配置值，
+        // 与即时路径逐个指示器的取法完全一致；任一指示器都取不到可用 M 时不提供结构，让即时展开
+        // 报出配置错误，而不是把错误推迟到物化阶段。
+        // The Big-M values must be fixed when the structure is created: each internal relation
+        // indicator infers from token bounds and falls back to its configured value exactly like the
+        // eager path. When neither indicator yields a usable M, no structure is offered so eager
+        // expansion surfaces the configuration error instead of deferring it to materialization.
+        let premise_big_m = resolve_indicator_big_m(&self.premise_indicator, tokens)?;
+        let consequence_big_m = resolve_indicator_big_m(&self.consequence_indicator, tokens)?;
+        let helpers = self.indicator_helper_columns().ok()?;
+        Some(Arc::new(IfThenStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+            helpers,
+            premise_big_m,
+            consequence_big_m,
+        )))
+    }
+}
+
+/// IF-THEN 蕴含的求解器无关结构描述
+/// Solver-neutral structure description of the IF-THEN implication
+///
+/// 与 IF/极值采用同一模式：持有产生它的符号（`Arc`）与创建时固定的一组 Big-M，物化时回调手写
+/// 路径的同一个公式生成器并传入同一组 M，因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。蕴含
+/// 结果二值列是结果列；两个内部关系指示器注册的结果列（以及等号形态下的 side 列）是本结构的辅助
+/// 列，全部上报以免原生路径误判可以省略。
+///
+/// Follows the same pattern as IF and the extrema: the structure holds the symbol that produced it
+/// (an `Arc`) together with the Big-M values fixed at creation time and materializes through the
+/// very same formula generator as the handwritten eager path with those same values, so deferred
+/// materialization matches eager expansion row by row, including the M values. The implication
+/// result column is the result column, while the columns registered by the two internal relation
+/// indicators (plus their side columns for the equality form) are helpers and are all reported so a
+/// native path cannot wrongly omit them.
+#[derive(Debug)]
+pub struct IfThenStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<IfThenFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 内部关系指示器的辅助列 / Helper columns of the internal relation indicators
+    helpers: Vec<crate::variable::VariableId>,
+    /// 前提指示器冻结的 Big-M / Big-M frozen for the premise indicator
+    premise_big_m: f64,
+    /// 结论指示器冻结的 Big-M / Big-M frozen for the consequence indicator
+    consequence_big_m: f64,
+}
+
+impl<V> IfThenStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(
+        name: impl Into<String>,
+        symbol: Arc<IfThenFunction<V>>,
+        helpers: Vec<crate::variable::VariableId>,
+        premise_big_m: f64,
+        consequence_big_m: f64,
+    ) -> Self {
+        let result = symbol.result_variable().id();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            helpers,
+            premise_big_m,
+            consequence_big_m,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取辅助列 / Get the helper columns.
+    pub fn helpers(&self) -> &[crate::variable::VariableId] {
+        &self.helpers
+    }
+
+    /// 获取前提指示器冻结的 Big-M / Get the Big-M frozen for the premise indicator.
+    pub fn premise_big_m(&self) -> f64 {
+        self.premise_big_m
+    }
+
+    /// 获取结论指示器冻结的 Big-M / Get the Big-M frozen for the consequence indicator.
+    pub fn consequence_big_m(&self) -> f64 {
+        self.consequence_big_m
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for IfThenStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 两个内部关系指示器的结果列与 side 列都是本结构的辅助列，参与「是否被外部引用 /
+        // 是否可省略」的判定。
+        // The result and side columns of both internal relation indicators are helpers of this
+        // structure and take part in the externally-referenced and omittable analysis.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            self.helpers.clone(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        // 两组 Big-M 与全部辅助列都进入指纹：任一语义字段变化都必须让旧记录失效。
+        // Both Big-M values and every helper column are part of the fingerprint: any semantic
+        // change must invalidate old records.
+        let helpers = self
+            .helpers
+            .iter()
+            .map(|helper| helper.unique_id().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        Some(format!(
+            "if_then|{}|{}|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            helpers,
+            crate::model::intermediate::fingerprint_float(self.premise_big_m),
+            crate::model::intermediate::fingerprint_float(self.consequence_big_m)
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器与同一组 Big-M，保证两条路径逐行一致。
+        // Reuse the eager path's generator and the same Big-M values so both paths stay
+        // row-identical.
+        self.symbol.build_mechanism_constraints_with_big_ms(
+            symbol_to_index,
+            self.premise_big_m,
+            self.consequence_big_m,
+        )
+    }
 }
 
 impl<V> FunctionSymbol<V> for IfThenFunction<V>
@@ -1548,6 +2083,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{FunctionExpansionPolicy, MetaModel};
     use crate::symbol::functions::conditional::ConditionBounds;
     use crate::token::{MutableTokenList, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableId, VariableRange};
@@ -1561,6 +2097,20 @@ mod tests {
             .enumerate()
             .map(|(index, token)| (token.id().unique_id() as usize, index + 1))
             .collect()
+    }
+
+    /// 逐行比较延迟物化与即时展开 / Compare deferred materialization with eager expansion row by row
+    fn assert_rows_match(eager: &[LinearConstraint<f64>], deferred: &[LinearConstraint<f64>]) {
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
     }
 
     fn coefficient_for_index(constraint: &LinearConstraint<f64>, index: usize) -> f64 {
@@ -1824,6 +2374,385 @@ mod tests {
                 Linear::new(vec![LinearMonomial::new(1.0, 17)], 0.0),
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn if_then_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(96_100),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        // premise = 2x + 1 <= 0：x ∈ [-2, 3] 上取值范围 [-3, 7]，推断 M = 7。
+        // premise = 2x + 1 <= 0 over x ∈ [-2, 3] spans [-3, 7], so the inferred M is 7.
+        let premise = LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            ConstraintRelation::LessEqual,
+            0.0,
+        );
+        // consequence = x >= 1：取值范围 [-2, 3] 减去右侧值后绝对界为 3，推断 M = 3。
+        // consequence = x >= 1 spans [-2, 3]; shifted by the rhs its absolute bound is 3, so the
+        // inferred M is 3.
+        let consequence = LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            ConstraintRelation::GreaterEqual,
+            1.0,
+        );
+        let function: IfThenFunction<f64> = IfThenFunction::new(
+            96_101,
+            "if_then_deferred",
+            premise,
+            consequence,
+            100.0,
+        );
+
+        let mut auxiliary_tokens = Vec::new();
+        function
+            .register_tokens(&mut auxiliary_tokens)
+            .expect("if_then tokens should be registered");
+        let symbol_to_index = token_index_map(&auxiliary_tokens);
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(auxiliary_tokens);
+
+        let structure = function
+            .deferred_structure_with_tokens(&tokens)
+            .expect("if_then should always expose a deferred structure");
+        assert_eq!(structure.function_name(), "if_then_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("if_then structure should expose a usage binding");
+        assert_eq!(binding.result, function.result_variable().id());
+        assert_eq!(
+            binding.helpers,
+            vec![
+                function.premise_indicator_variable().id(),
+                function.consequence_indicator_variable().id(),
+            ]
+        );
+        assert!(structure.fingerprint().is_some());
+
+        let eager = function
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("eager if_then constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("if_then structure should materialize");
+        assert!(!eager.is_empty());
+        assert_rows_match(&eager, &deferred);
+
+        // 结构必须冻结即时路径推断出的每个指示器 M：前提 7、结论 3。
+        // The structure must freeze the per-indicator M inferred by the eager path: 7 and 3.
+        let premise_upper = deferred
+            .iter()
+            .find(|constraint| constraint.name == "if_then_deferred_premise_ineq_ub")
+            .expect("premise upper inequality row should exist");
+        assert!((premise_upper.inequality.rhs - 7.0).abs() <= 1e-9);
+        let consequence_lower = deferred
+            .iter()
+            .find(|constraint| constraint.name == "if_then_deferred_consequence_ineq_lb")
+            .expect("consequence lower inequality row should exist");
+        assert!((consequence_lower.inequality.rhs + 3.0).abs() <= 1e-9);
+
+        // 没有令牌边界时回退到构造配置的 M，两条路径仍然逐行一致。
+        // Without token bounds the configured M is used and both paths still agree row by row.
+        let configured_structure = function
+            .deferred_structure_with_tokens(&[])
+            .expect("if_then should fall back to the configured big-M");
+        let eager_default = function
+            .mechanism_constraints_with_tokens(&symbol_to_index, &[])
+            .expect("eager if_then constraints should be generated");
+        let deferred_default = configured_structure
+            .materialize(&symbol_to_index)
+            .expect("if_then structure should materialize");
+        assert_rows_match(&eager_default, &deferred_default);
+    }
+
+    #[test]
+    fn if_then_structure_is_withheld_when_no_usable_big_m_exists() {
+        let premise = LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            ConstraintRelation::LessEqual,
+            0.0,
+        );
+        let consequence = LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            ConstraintRelation::GreaterEqual,
+            1.0,
+        );
+        // 配置 M 非正且没有令牌边界：两条取法都不可用，必须留给 EAGER 路径报错。
+        // The configured M is not positive and no token bounds exist: neither source is usable, so
+        // the error must be left to the eager path.
+        let function: IfThenFunction<f64> = IfThenFunction::new(
+            96_102,
+            "if_then_without_big_m",
+            premise,
+            consequence,
+            -1.0,
+        );
+
+        assert!(function.deferred_structure_with_tokens(&[]).is_none());
+        assert!(
+            <IfThenFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+                &function,
+                &HashMap::new(),
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn if_then_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("if_then_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(96_200),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).expect("x should register");
+            let premise = LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                ConstraintRelation::LessEqual,
+                0.0,
+            );
+            let consequence = LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                ConstraintRelation::GreaterEqual,
+                1.0,
+            );
+            let function: IfThenFunction<f64> = IfThenFunction::new(
+                96_201,
+                "if_then_pipeline",
+                premise,
+                consequence,
+                100.0,
+            );
+            model
+                .add_symbol(Arc::new(function))
+                .expect("if_then symbol should register");
+
+            let mechanism = model
+                .try_into_mechanism_model()
+                .expect("mechanism model should build");
+            if policy.is_deferred() {
+                // 延迟策略下不写即时行，但保留结构描述。
+                // A deferred policy writes no eager row while keeping the structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "if_then_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行，并使用同一组推断 Big-M。
+        // The deferred path must produce the same rows as eager expansion once materialized, using
+        // the same inferred Big-M values.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    /// 条件值原生写入的 6 条指示必须在**二元域**上与即时展开的全部行实现「公开列投影点集等价」
+    /// The conditional-value native write's six indicators must be **point-set equivalent over the public
+    /// projection on the binary domain** to every eager row.
+    ///
+    /// 先把即时行数清点清楚（这是本批最容易漏的地方）：条件块 3 条（`_if_lower`、`_if_upper`、
+    /// **`_if_eq` 等式链接行**）+ 分支块 4 条 McCormick 行 = **7 条**。原生 6 条指示 =
+    /// 条件核心关系 2 条 + 分支等式对**两个内部二值列各一遍** 4 条。
+    ///
+    /// **这不是逐行对应**：即时那条 `result_ind = ind` 的等式链接行在原生写入里被**推导**出来——两列取值
+    /// 不同时原生分支等式会强制 `t = 0` 且 `result = 0`，而该公开列点恰好也是即时展开在「两列同取假」时的
+    /// 可行点。因此等价成立的前提是 `ind`、`result_ind` 都是**二元列**；本测试同时给出反例：`ind = 0.5` 时
+    /// 即时因等式链接行不可行，而原生（该列两条指示都不激活）可行。
+    ///
+    /// The test first counts the eager rows (the easiest thing to miss in this batch): three condition rows
+    /// (`_if_lower`, `_if_upper` and the **`_if_eq` equality link**) plus four branch McCormick rows = **7**.
+    /// The six native indicators are two condition core relations plus the branch equalities written **once per
+    /// internal binary column**.
+    ///
+    /// **This is not a row-by-row correspondence**: the eager `result_ind = ind` link row is **derived** in the
+    /// native write — when the two columns disagree the native branch equalities force `t = 0` and `result = 0`,
+    /// and that public-column point is exactly an eager-feasible point with both columns false. The equivalence
+    /// therefore holds while `ind` and `result_ind` are **binary**; the test also gives the counterexample:
+    /// at `ind = 0.5` eager is infeasible because of the link row while native is feasible (neither indicator
+    /// keyed on that column is active).
+    #[test]
+    fn conditional_value_native_projection_matches_eager_rows_in_the_binary_domain() {
+        // 列号口径：条件变量 0、then 变量 1、条件指示列 2、条件指示器结果列 3、结果列 4。
+        // Column numbering: condition variable 0, then variable 1, condition indicator 2, condition indicator
+        // result 3, result column 4.
+        const CONDITION_COLUMN: usize = 0;
+        const THEN_COLUMN: usize = 1;
+        const INDICATOR_COLUMN: usize = 2;
+        const CONDITION_RESULT_COLUMN: usize = 3;
+        const RESULT_COLUMN: usize = 4;
+
+        // 条件 `x - 1 >= 0`（声明范围 [-2, 2]，严格边界 0.1）；then 多项式 `2y + 1`。
+        // Condition `x - 1 >= 0` (declared range [-2, 2], strict boundary 0.1); then polynomial `2y + 1`.
+        let function = ConditionalThenFunction::from_parts_with_bounds(
+            Linear::new(vec![LinearMonomial::new(1.0, CONDITION_COLUMN)], -1.0),
+            ConditionRelation::GreaterEqual,
+            0.1,
+            ConditionBounds {
+                lower: -2.0,
+                upper: 2.0,
+            },
+            Linear::new(vec![LinearMonomial::new(2.0, THEN_COLUMN)], 1.0),
+            ConditionBounds {
+                lower: -1.0,
+                upper: 3.0,
+            },
+        )
+        .expect("the conditional-value function should build");
+
+        let symbol_to_index = HashMap::from([
+            (
+                function
+                    .condition_indicator()
+                    .indicator_variable()
+                    .id()
+                    .unique_id() as usize,
+                INDICATOR_COLUMN,
+            ),
+            (
+                function
+                    .condition_indicator()
+                    .result_variable()
+                    .id()
+                    .unique_id() as usize,
+                CONDITION_RESULT_COLUMN,
+            ),
+            (
+                function.result_variable().id().unique_id() as usize,
+                RESULT_COLUMN,
+            ),
+        ]);
+        let eager = function
+            .mechanism_constraints(&symbol_to_index)
+            .expect("the eager rows should be generated");
+        let names = eager
+            .iter()
+            .map(|row| row.name.clone())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            eager.len(),
+            7,
+            "three condition rows plus four branch rows are expected, got {names:?}"
+        );
+        assert!(
+            names.iter().any(|name| name.ends_with("_if_eq")),
+            "the condition indicator's equality link row is part of the eager set: {names:?}"
+        );
+
+        let core = conditional_value_relation_core(ConditionRelation::GreaterEqual, 0.1);
+        let satisfies = |lhs: f64, relation: ConstraintRelation, rhs: f64| match relation {
+            ConstraintRelation::LessEqual => lhs <= rhs + 1e-12,
+            ConstraintRelation::GreaterEqual => lhs + 1e-12 >= rhs,
+            ConstraintRelation::Equal => (lhs - rhs).abs() <= 1e-12,
+        };
+        let evaluate = |row: &LinearConstraint<f64>, values: &HashMap<usize, f64>| {
+            let mut lhs = *row.inequality.polynomial.constant_term();
+            for monomial in row.inequality.polynomial.monomials() {
+                lhs += *monomial.coefficient()
+                    * values.get(&monomial.var_index()).copied().unwrap_or(0.0);
+            }
+            satisfies(lhs, row.inequality.relation, row.inequality.rhs)
+        };
+
+        // 原生侧：条件核心关系（ind）+ 分支等式（result_ind 与 ind 各一遍）。
+        // Native side: the condition core relation (ind) plus the branch equalities (once for result_ind and
+        // once for ind).
+        let native_feasible = |x: f64, y: f64, indicator: f64, condition_result: f64, result: f64| {
+            let difference = x - 1.0;
+            let keyed = |column: f64, when_true: bool| -> bool {
+                if (column - 1.0).abs() <= 1e-12 {
+                    when_true
+                } else if column.abs() <= 1e-12 {
+                    !when_true
+                } else {
+                    false
+                }
+            };
+            let branch = |when_true: bool| -> bool {
+                if when_true {
+                    (result - (2.0 * y + 1.0)).abs() <= 1e-12
+                } else {
+                    result.abs() <= 1e-12
+                }
+            };
+            let mut satisfied = true;
+            if indicator.abs() <= 1e-12 {
+                satisfied &= satisfies(difference, core.when_false.0, core.when_false.1);
+            }
+            if (indicator - 1.0).abs() <= 1e-12 {
+                satisfied &= satisfies(difference, core.when_true.0, core.when_true.1);
+            }
+            if keyed(indicator, true) {
+                satisfied &= branch(true);
+            }
+            if keyed(indicator, false) {
+                satisfied &= branch(false);
+            }
+            if keyed(condition_result, true) {
+                satisfied &= branch(true);
+            }
+            if keyed(condition_result, false) {
+                satisfied &= branch(false);
+            }
+            satisfied
+        };
+
+        // 二元域逐点比较：ind、result_ind 取 0/1，x 取两侧，result 取若干值（t = 2y + 1 = 2）。
+        // Pointwise comparison on the binary domain: ind and result_ind take 0/1, x takes both sides and result
+        // takes several values (t = 2y + 1 = 2).
+        for indicator in [0.0f64, 1.0] {
+            for condition_result in [0.0f64, 1.0] {
+                for x in [0.5f64, 1.5] {
+                    for result in [0.0f64, 1.0, 2.0, 3.0] {
+                        let values = HashMap::from([
+                            (CONDITION_COLUMN, x),
+                            (THEN_COLUMN, 0.5),
+                            (INDICATOR_COLUMN, indicator),
+                            (CONDITION_RESULT_COLUMN, condition_result),
+                            (RESULT_COLUMN, result),
+                        ]);
+                        let eager_feasible = eager.iter().all(|row| evaluate(row, &values));
+                        let native = native_feasible(x, 0.5, indicator, condition_result, result);
+                        assert_eq!(
+                            eager_feasible, native,
+                            "mismatch at (x, ind, result_ind, result) = ({x}, {indicator}, {condition_result}, {result})"
+                        );
+                    }
+                }
+            }
+        }
+
+        // 非二元内部列上两者必须分歧：即时等式链接行直接不可行，而原生该列的两条指示都不激活。
+        // The two must disagree on a non-binary internal column: eager's equality link row is outright
+        // infeasible while neither native indicator keyed on that column is active.
+        let values = HashMap::from([
+            (CONDITION_COLUMN, 1.5),
+            (THEN_COLUMN, 0.5),
+            (INDICATOR_COLUMN, 0.5),
+            (CONDITION_RESULT_COLUMN, 0.0),
+            (RESULT_COLUMN, 0.0),
+        ]);
+        assert!(
+            !eager.iter().all(|row| evaluate(row, &values)),
+            "eager must reject a non-binary condition indicator column"
+        );
+        assert!(
+            native_feasible(1.5, 0.5, 0.5, 0.0, 0.0),
+            "the native rows must accept it, which is why the writer verifies binaryness"
         );
     }
 }

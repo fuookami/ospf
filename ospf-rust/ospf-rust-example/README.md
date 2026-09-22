@@ -37,7 +37,7 @@ The crate is primarily executable. The stable surface is its command names and d
 | --- | --- | --- |
 | `core:demo1` | Core modeling demo. | Gurobi feature |
 | `core:all` | Run core demo set. | Gurobi feature |
-| `core:generic-number` | Generic-number modeling path. | Gurobi feature |
+| `core:capability-gate` | Capability gating demo. | Gurobi feature |
 | `core:shortcuts` | `MetaModel` shortcut API demo. | Gurobi feature |
 | `framework:demo1` | Framework routing/bandwidth context demo. | Gurobi feature |
 | `framework:demo2` | Adaptive Benders and MILP fallback demo. | Gurobi feature |
@@ -60,7 +60,7 @@ Runtime demos requiring backend:
 ```powershell
 cargo run -p ospf-rust-example --features backend-gurobi -- core:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- core:all
-cargo run -p ospf-rust-example --features backend-gurobi -- core:generic-number
+cargo run -p ospf-rust-example --features backend-gurobi -- core:capability-gate
 cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2

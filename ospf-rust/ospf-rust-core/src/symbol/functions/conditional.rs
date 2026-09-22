@@ -1,11 +1,11 @@
 //! 条件关系的共享语义与线性化 / Shared conditional-relation semantics and linearization
 
-use std::fmt::Debug;
-use num_traits::{FromPrimitive, ToPrimitive};
-use ospf_rust_math::symbol::Comparison;
 use crate::error::{CoreError, ModelError, Result};
 use crate::model::LinearInequality;
 use crate::symbol::flatten::{Linear, LinearMonomial};
+use num_traits::{FromPrimitive, ToPrimitive};
+use ospf_rust_math::symbol::Comparison;
+use std::fmt::Debug;
 
 /// 受支持的条件关系 / Supported conditional relations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -637,12 +637,14 @@ mod tests {
 
     #[test]
     fn rejects_invalid_bounds_and_equality() {
-        assert!(ConditionBounds {
-            lower: 2.0,
-            upper: 1.0
-        }
-        .validate()
-        .is_err());
+        assert!(
+            ConditionBounds {
+                lower: 2.0,
+                upper: 1.0
+            }
+            .validate()
+            .is_err()
+        );
         assert!(ConditionRelation::try_from(Comparison::Equal).is_err());
         assert!(classify(&0.0, ConditionRelation::Greater, &0.0).is_err());
     }
@@ -664,13 +666,15 @@ mod tests {
             lower: 0.01,
             upper: 0.09,
         };
-        assert!(ConditionalIfFunction::new(
-            Linear::constant(0.0),
-            ConditionRelation::Greater,
-            0.1,
-            bounds,
-        )
-        .is_err());
+        assert!(
+            ConditionalIfFunction::new(
+                Linear::constant(0.0),
+                ConditionRelation::Greater,
+                0.1,
+                bounds,
+            )
+            .is_err()
+        );
 
         let false_bounds = ConditionBounds {
             lower: -2.0,
@@ -688,20 +692,24 @@ mod tests {
             lower: -2.0,
             upper: 2.0,
         };
-        assert!(ConditionalIfFunction::new(
-            Linear::constant(f64::NAN),
-            ConditionRelation::Greater,
-            0.1,
-            bounds.clone(),
-        )
-        .is_err());
-        assert!(ConditionalIfFunction::new(
-            Linear::new(vec![LinearMonomial::new(f64::INFINITY, 0)], 0.0),
-            ConditionRelation::Greater,
-            0.1,
-            bounds,
-        )
-        .is_err());
+        assert!(
+            ConditionalIfFunction::new(
+                Linear::constant(f64::NAN),
+                ConditionRelation::Greater,
+                0.1,
+                bounds.clone(),
+            )
+            .is_err()
+        );
+        assert!(
+            ConditionalIfFunction::new(
+                Linear::new(vec![LinearMonomial::new(f64::INFINITY, 0)], 0.0),
+                ConditionRelation::Greater,
+                0.1,
+                bounds,
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -710,20 +718,24 @@ mod tests {
             lower: -1.0,
             upper: f64::MAX,
         };
-        assert!(relation_indicator_constraints(
-            &Linear::constant(0.0),
-            7,
-            ConditionRelation::GreaterEqual,
-            &bounds,
-            &f64::MAX,
-        )
-        .is_err());
-        assert!(ConditionalIfFunction::new(
-            Linear::constant(0.0),
-            ConditionRelation::GreaterEqual,
-            f64::MAX,
-            bounds,
-        )
-        .is_err());
+        assert!(
+            relation_indicator_constraints(
+                &Linear::constant(0.0),
+                7,
+                ConditionRelation::GreaterEqual,
+                &bounds,
+                &f64::MAX,
+            )
+            .is_err()
+        );
+        assert!(
+            ConditionalIfFunction::new(
+                Linear::constant(0.0),
+                ConditionRelation::GreaterEqual,
+                f64::MAX,
+                bounds,
+            )
+            .is_err()
+        );
     }
 }

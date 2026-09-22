@@ -191,3 +191,141 @@ impl ScalarFunctionNames {
     /// 合并空值函数 / Coalesce function
     pub const COALESCE: &'static str = "coalesce";
 }
+
+// ============================================================================
+// 操作符测试 / Operator tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::*;
+
+    #[test]
+    fn unary_operator_symbols_match_kotlin_text() {
+        assert_eq!(UnaryOperator::Negate.symbol(), "-");
+        assert_eq!(UnaryOperator::Positive.symbol(), "+");
+        assert_eq!(UnaryOperator::Abs.symbol(), "abs");
+    }
+
+    #[test]
+    fn binary_operator_symbols_cover_all_variants() {
+        assert_eq!(BinaryOperator::Add.symbol(), "+");
+        assert_eq!(BinaryOperator::Subtract.symbol(), "-");
+        assert_eq!(BinaryOperator::Multiply.symbol(), "*");
+        assert_eq!(BinaryOperator::Divide.symbol(), "/");
+        assert_eq!(BinaryOperator::Modulo.symbol(), "%");
+        assert_eq!(BinaryOperator::Power.symbol(), "^");
+    }
+
+    #[test]
+    fn comparison_operator_symbols_cover_all_variants() {
+        assert_eq!(ComparisonOperator::Eq.symbol(), "=");
+        assert_eq!(ComparisonOperator::Ne.symbol(), "<>");
+        assert_eq!(ComparisonOperator::Lt.symbol(), "<");
+        assert_eq!(ComparisonOperator::Le.symbol(), "<=");
+        assert_eq!(ComparisonOperator::Gt.symbol(), ">");
+        assert_eq!(ComparisonOperator::Ge.symbol(), ">=");
+    }
+
+    #[test]
+    fn comparison_inverse_maps_to_opposite_operator() {
+        assert_eq!(ComparisonOperator::Eq.inverse(), ComparisonOperator::Ne);
+        assert_eq!(ComparisonOperator::Ne.inverse(), ComparisonOperator::Eq);
+        assert_eq!(ComparisonOperator::Lt.inverse(), ComparisonOperator::Gt);
+        assert_eq!(ComparisonOperator::Le.inverse(), ComparisonOperator::Ge);
+        assert_eq!(ComparisonOperator::Gt.inverse(), ComparisonOperator::Lt);
+        assert_eq!(ComparisonOperator::Ge.inverse(), ComparisonOperator::Le);
+    }
+
+    #[test]
+    fn comparison_inverse_is_involutive_and_never_identity() {
+        let operators = [
+            ComparisonOperator::Eq,
+            ComparisonOperator::Ne,
+            ComparisonOperator::Lt,
+            ComparisonOperator::Le,
+            ComparisonOperator::Gt,
+            ComparisonOperator::Ge,
+        ];
+        for operator in operators {
+            // 二次取反回到原操作符，且单次取反一定不是自身。
+            // Double inversion returns the original operator, and one inversion is never identity.
+            assert_eq!(operator.inverse().inverse(), operator);
+            assert_ne!(operator.inverse(), operator);
+        }
+    }
+
+    #[test]
+    fn boolean_operator_symbols_are_lowercase_keywords() {
+        assert_eq!(BooleanOperator::And.symbol(), "and");
+        assert_eq!(BooleanOperator::Or.symbol(), "or");
+        assert_eq!(BooleanOperator::Not.symbol(), "not");
+    }
+
+    #[test]
+    fn null_check_type_symbols_read_as_sql_phrases() {
+        assert_eq!(NullCheckType::IsNull.symbol(), "is null");
+        assert_eq!(NullCheckType::IsNotNull.symbol(), "is not null");
+    }
+
+    #[test]
+    fn scalar_function_names_are_stable_lowercase_identifiers() {
+        let names = [
+            ScalarFunctionNames::ABS,
+            ScalarFunctionNames::LOWER,
+            ScalarFunctionNames::UPPER,
+            ScalarFunctionNames::TRIM,
+            ScalarFunctionNames::LENGTH,
+            ScalarFunctionNames::COALESCE,
+        ];
+
+        assert_eq!(ScalarFunctionNames::ABS, "abs");
+        assert_eq!(ScalarFunctionNames::LOWER, "lower");
+        assert_eq!(ScalarFunctionNames::UPPER, "upper");
+        assert_eq!(ScalarFunctionNames::TRIM, "trim");
+        assert_eq!(ScalarFunctionNames::LENGTH, "length");
+        assert_eq!(ScalarFunctionNames::COALESCE, "coalesce");
+
+        for name in names {
+            assert_eq!(name, name.to_ascii_lowercase());
+            assert!(!name.is_empty());
+        }
+        assert_eq!(names.iter().collect::<HashSet<_>>().len(), names.len());
+    }
+
+    #[test]
+    fn operators_are_usable_as_hash_set_members() {
+        // 操作符需要可哈希，便于在集合与结构键中做去重。
+        // Operators must be hashable so they can be deduplicated in sets and structural keys.
+        let mut binary = HashSet::new();
+        assert!(binary.insert(BinaryOperator::Add));
+        assert!(!binary.insert(BinaryOperator::Add));
+        assert!(binary.insert(BinaryOperator::Power));
+        assert_eq!(binary.len(), 2);
+
+        let mut modes = HashSet::new();
+        assert!(modes.insert(PatternMatchMode::Exact));
+        assert!(modes.insert(PatternMatchMode::Prefix));
+        assert!(modes.insert(PatternMatchMode::Suffix));
+        assert!(modes.insert(PatternMatchMode::Contains));
+        assert!(modes.insert(PatternMatchMode::Like));
+        assert!(modes.insert(PatternMatchMode::Regex));
+        assert_eq!(modes.len(), 6);
+    }
+
+    #[test]
+    fn operators_are_copyable_without_clone_noise() {
+        let operator = ComparisonOperator::Ge;
+        let copied = operator;
+        assert_eq!(copied, operator);
+        assert_eq!(copied.inverse().symbol(), "<=");
+
+        let unary = UnaryOperator::Abs;
+        assert_eq!(unary.symbol(), "abs");
+        assert_eq!(PatternMatchMode::Like, PatternMatchMode::Like);
+        assert_ne!(PatternMatchMode::Like, PatternMatchMode::Regex);
+        assert_ne!(NullCheckType::IsNull, NullCheckType::IsNotNull);
+    }
+}

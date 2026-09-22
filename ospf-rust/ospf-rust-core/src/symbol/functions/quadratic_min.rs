@@ -54,16 +54,22 @@ where
                 )
             })
             .collect();
+        // A linear input is represented directly.  Only a genuinely
+        // quadratic input gets a bridge result variable/token; this keeps
+        // the constructor in sync with QuadraticLinearFunction's helper
+        // registration contract.
         let linear_inputs: Vec<Linear<V>> = bridges
             .iter()
             .map(|bridge| {
-                Linear::new(
-                    vec![LinearMonomial::new(
-                        from_f64(1.0).expect("convert 1.0"),
-                        bridge.result_variable().index(),
-                    )],
-                    from_f64(0.0).expect("convert 0.0"),
-                )
+                bridge.input_linear_polynomial().unwrap_or_else(|| {
+                    Linear::new(
+                        vec![LinearMonomial::new(
+                            from_f64(1.0).expect("convert 1.0"),
+                            bridge.result_variable().index(),
+                        )],
+                        from_f64(0.0).expect("convert 0.0"),
+                    )
+                })
             })
             .collect();
         let inner = MinFunction::new(id, name, linear_inputs, exact);
@@ -88,6 +94,40 @@ where
     /// Return the result variable.
     pub fn result_variable(&self) -> &ContinuousVariableItem {
         self.inner.result_variable()
+    }
+
+    fn mapped_inputs(&self, symbol_to_index: &HashMap<usize, usize>) -> Result<Vec<Linear<V>>> {
+        self.bridges
+            .iter()
+            .map(|bridge| {
+                if !bridge.has_quadratic_terms() {
+                    return bridge.input_linear_polynomial().ok_or_else(|| {
+                        ModelError::InvalidConstraint(
+                            "quadratic min linear candidate cannot be represented as linear"
+                                .to_string(),
+                        )
+                        .into()
+                    });
+                }
+
+                let bridge_index = symbol_to_index
+                    .get(&(bridge.result_variable().id().unique_id() as usize))
+                    .copied()
+                    .ok_or_else(|| {
+                        ModelError::SymbolNotRegistered(format!(
+                            "quadratic min bridge variable id {}",
+                            bridge.result_variable().id().unique_id()
+                        ))
+                    })?;
+                Ok(Linear::new(
+                    vec![LinearMonomial::new(
+                        from_f64(1.0).expect("convert 1.0"),
+                        bridge_index,
+                    )],
+                    from_f64(0.0).expect("convert 0.0"),
+                ))
+            })
+            .collect()
     }
 }
 
@@ -177,28 +217,7 @@ where
         symbol_to_index: &HashMap<usize, usize>,
     ) -> Result<Vec<LinearConstraint<V>>> {
         let mut constraints = Vec::new();
-        for bridge in &self.bridges {
-            constraints.extend(bridge.mechanism_constraints(symbol_to_index)?);
-        }
-        let mut mapped_inputs = Vec::with_capacity(self.bridges.len());
-        for bridge in &self.bridges {
-            let bridge_index = symbol_to_index
-                .get(&(bridge.result_variable().id().unique_id() as usize))
-                .copied()
-                .ok_or_else(|| {
-                    ModelError::SymbolNotRegistered(format!(
-                        "quadratic min bridge variable id {}",
-                        bridge.result_variable().id().unique_id()
-                    ))
-                })?;
-            mapped_inputs.push(Linear::new(
-                vec![LinearMonomial::new(
-                    from_f64(1.0).expect("convert 1.0"),
-                    bridge_index,
-                )],
-                from_f64(0.0).expect("convert 0.0"),
-            ));
-        }
+        let mapped_inputs = self.mapped_inputs(symbol_to_index)?;
         let mapped_inner = self.inner.with_polynomials(mapped_inputs);
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
         Ok(constraints)
@@ -210,28 +229,7 @@ where
         tokens: &[Token<V>],
     ) -> Result<Vec<LinearConstraint<V>>> {
         let mut constraints = Vec::new();
-        for bridge in &self.bridges {
-            constraints.extend(bridge.mechanism_constraints(symbol_to_index)?);
-        }
-        let mut mapped_inputs = Vec::with_capacity(self.bridges.len());
-        for bridge in &self.bridges {
-            let bridge_index = symbol_to_index
-                .get(&(bridge.result_variable().id().unique_id() as usize))
-                .copied()
-                .ok_or_else(|| {
-                    ModelError::SymbolNotRegistered(format!(
-                        "quadratic min bridge variable id {}",
-                        bridge.result_variable().id().unique_id()
-                    ))
-                })?;
-            mapped_inputs.push(Linear::new(
-                vec![LinearMonomial::new(
-                    from_f64(1.0).expect("convert 1.0"),
-                    bridge_index,
-                )],
-                from_f64(0.0).expect("convert 0.0"),
-            ));
-        }
+        let mapped_inputs = self.mapped_inputs(symbol_to_index)?;
         let mapped_inner = self.inner.with_polynomials(mapped_inputs);
         let big_m = infer_big_m_for_quadratic_polynomials(&self.inputs, tokens, MIN_BIG_M);
         match big_m {

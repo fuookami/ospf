@@ -10,11 +10,12 @@ use ospf_rust_core::model::{
 };
 use ospf_rust_core::solver::solvers::GurobiSolver;
 use ospf_rust_core::symbol::function::{
-    BinaryzationMethod, InequalityKind, Point2, Point3, QuadraticBinaryzationFunction,
+    BinaryzationMethod, InequalityKind, Point2, Point3, Triangle3, QuadraticBinaryzationFunction,
     QuadraticBivariateLinearPiecewiseFunction, QuadraticCosFunction, QuadraticInStepRangeFunction,
     QuadraticInequalityFunction, QuadraticMaskingFunction, QuadraticMaskingRangeFunction,
     QuadraticMaxFunction, QuadraticMinFunction, QuadraticModFunction, QuadraticRoundingFunction,
-    QuadraticSemiFunction, QuadraticSigmoidFunction, QuadraticSinFunction, QuadraticSlackFunction,
+    QuadraticPositivePartFunction, QuadraticLogisticFunction, QuadraticSinFunction,
+    QuadraticSlackFunction,
     QuadraticSlackRangeFunction, QuadraticUnivariateLinearPiecewiseFunction,
 };
 use ospf_rust_core::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId};
@@ -120,7 +121,7 @@ fn gurobi_solves_quadratic_sigmoid_function_symbol_model() {
         vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
         0.0,
     );
-    let qsigmoid = QuadraticSigmoidFunction::new(1921, "qsigmoid", input);
+    let qsigmoid = QuadraticLogisticFunction::new(1921, "qsigmoid", input);
     let y_id = qsigmoid.result_variable().id();
     model.add_symbol(Arc::new(qsigmoid)).unwrap();
 
@@ -155,23 +156,21 @@ fn gurobi_solves_quadratic_sigmoid_function_symbol_model() {
 }
 
 #[test]
-fn gurobi_solves_quadratic_masking_range_with_polynomial_bounds() {
+fn gurobi_solves_quadratic_masking_range_with_binary_mask() {
     let mut model = MetaModel::<f64>::new("quadratic_masking_range_poly");
 
     let x = ContinuousVariableItem::create(VariableId::standalone(1930), "x");
-    let mask = ContinuousVariableItem::create(VariableId::standalone(1931), "mask");
+    let mask = BinaryVariableItem::create(VariableId::standalone(1931), "mask");
     let x_index = model.register_variable(x).unwrap();
-    let mask_index = model.register_variable(mask).unwrap();
+    let mask_index = model.register_variable(mask.clone()).unwrap();
 
-    let mask_poly = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, mask_index)], 0.0);
-    let lower_poly = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, x_index)], -1.0); // x - 1
-    let upper_poly = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, x_index)], 1.0); // x + 1
-    let qmask_range = QuadraticMaskingRangeFunction::with_quadratic_bounds(
+    let input = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)], 0.0);
+    let qmask_range = QuadraticMaskingRangeFunction::with_big_m(
         1932,
-        "qmask_range_poly",
-        mask_poly,
-        lower_poly,
-        upper_poly,
+        "qmask_range_binary",
+        input,
+        mask.clone(),
+        100.0,
     );
     let y_id = qmask_range.result_variable().id();
     model.add_symbol(Arc::new(qmask_range)).unwrap();
@@ -199,7 +198,7 @@ fn gurobi_solves_quadratic_masking_range_with_polynomial_bounds() {
         LinearInequality::new(
             Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
             ConstraintRelation::Equal,
-            3.0,
+            4.0,
         ),
         "y_eq_3",
     ));
@@ -236,7 +235,7 @@ fn gurobi_solves_quadratic_masking_range_with_polynomial_bounds() {
         LinearInequality::new(
             Linear::new(vec![LinearMonomial::new(1.0, y_index2)], 0.0),
             ConstraintRelation::Equal,
-            3.5,
+            4.5,
         ),
         "y_eq_3_5",
     ));
@@ -259,7 +258,7 @@ fn gurobi_solves_quadratic_in_step_range_value_model() {
     let x_index = model.register_variable(x).unwrap();
 
     let upper_poly = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, x_index)], 0.0);
-    let qstep = QuadraticInStepRangeFunction::new(1941, "qstep", upper_poly, 0.0, 4.0, 2.0);
+    let qstep = QuadraticInStepRangeFunction::new(1941, "qstep", upper_poly, 0.0, 4.0);
     let y_id = qstep.result_variable().id();
     model.add_symbol(Arc::new(qstep)).unwrap();
 
@@ -280,9 +279,9 @@ fn gurobi_solves_quadratic_in_step_range_value_model() {
         LinearInequality::new(
             Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
             ConstraintRelation::Equal,
-            2.0,
+            3.7,
         ),
-        "y_eq_2",
+        "y_eq_3_7",
     ));
     let feasible_output = solver
         .solve_quadratic(&feasible.into_quadratic_tetrad_model())
@@ -307,9 +306,9 @@ fn gurobi_solves_quadratic_in_step_range_value_model() {
         LinearInequality::new(
             Linear::new(vec![LinearMonomial::new(1.0, y_index2)], 0.0),
             ConstraintRelation::Equal,
-            3.0,
+            0.0,
         ),
-        "y_eq_3",
+        "y_eq_0",
     ));
     let infeasible_output = solver
         .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
@@ -1031,22 +1030,22 @@ fn gurobi_solves_quadratic_slack_range_with_non_linear_input() {
 }
 
 #[test]
-fn gurobi_solves_quadratic_semi_with_non_linear_input() {
-    let mut model = MetaModel::<f64>::new("quadratic_semi_non_linear");
+fn gurobi_solves_quadratic_positive_part_with_non_linear_input() {
+    let mut model = MetaModel::<f64>::new("quadratic_positive_part_non_linear");
 
     let x = ContinuousVariableItem::create(VariableId::standalone(2020), "x");
     let x_index = model.register_variable(x).unwrap();
 
-    let qsemi = QuadraticSemiFunction::new(
+    let positive_part = QuadraticPositivePartFunction::new(
         2021,
-        "qsemi_non_linear",
+        "qpositive_part_non_linear",
         Quadratic::new(
             vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
             0.0,
         ),
     );
-    let y_id = qsemi.result_variable().id();
-    model.add_symbol(Arc::new(qsemi)).unwrap();
+    let y_id = positive_part.result_variable().id();
+    model.add_symbol(Arc::new(positive_part)).unwrap();
 
     let solver = GurobiSolver::new();
     let base = model.try_into_mechanism_model().unwrap();
@@ -1388,10 +1387,16 @@ fn gurobi_solves_quadratic_bivariate_piecewise_with_non_linear_input() {
             0.0,
         ),
         vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(4.0, 0.0, 4.0),
-            Point3::new(0.0, 4.0, 4.0),
-            Point3::new(4.0, 4.0, 8.0),
+            Triangle3::new(
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(4.0, 0.0, 4.0),
+                Point3::new(0.0, 4.0, 4.0),
+            ),
+            Triangle3::new(
+                Point3::new(4.0, 0.0, 4.0),
+                Point3::new(4.0, 4.0, 8.0),
+                Point3::new(0.0, 4.0, 4.0),
+            ),
         ],
     );
     let z_id = qblp.result_variable().id();
@@ -1477,7 +1482,7 @@ fn gurobi_solves_quadratic_sigmoid_with_non_linear_input() {
     let x = ContinuousVariableItem::create(VariableId::standalone(2070), "x");
     let x_index = model.register_variable(x).unwrap();
 
-    let qsigmoid = QuadraticSigmoidFunction::new(
+    let qsigmoid = QuadraticLogisticFunction::new(
         2071,
         "qsigmoid_non_linear_mapping",
         Quadratic::new(

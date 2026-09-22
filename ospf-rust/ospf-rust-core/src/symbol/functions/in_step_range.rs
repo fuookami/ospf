@@ -4,11 +4,12 @@ use super::super::{
     Category, FunctionSymbol, IntermediateSymbol, IntermediateSymbolId, LinearIntermediateSymbol,
 };
 use super::big_m::{BigMPolicy, infer_linear_bounds_from_tokens};
+use super::floor::FloorFunction;
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
-use crate::variable::{BinaryVariableItem, VariableId, new_group_id};
+use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, new_group_id};
 use num_traits::{FromPrimitive, ToPrimitive, Zero};
 use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
@@ -78,12 +79,15 @@ const BIG_M_POLICY: BigMPolicy = BigMPolicy::new(DEFAULT_BIG_M, 1.0);
 /// 最大步进点数 / Maximum number of step points
 const MAX_STEP_POINTS: usize = 4096;
 /// 步进精度容差 / Step epsilon tolerance
-const STEP_EPSILON: f64 = 1e-8;
+///
+/// This is shared with the floor encoding's strict-boundary margin so the
+/// endpoint and membership variants agree at an integer boundary.
+const STEP_EPSILON: f64 = 1e-10;
 
 /// 步进范围函数，判断值是否在步进范围内。
 /// In-step-range function, checks if a value falls within a stepped range.
 #[derive(Debug, Clone)]
-pub struct InStepRangeFunction<V = f64>
+pub struct InStepRangeIndicatorFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -97,6 +101,8 @@ where
     upper: V,
     /// 步长 / Step size
     step: V,
+    /// Optional explicit Big-M value / 可选显式 Big-M 值
+    big_m: Option<V>,
     /// 辅助变量组 ID / Auxiliary variable group ID
     aux_group_id: usize,
     /// 结果二值变量 / Result binary variable
@@ -105,7 +111,7 @@ where
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> InStepRangeFunction<V>
+impl<V> InStepRangeIndicatorFunction<V>
 where
     V: Clone
         + Debug
@@ -119,6 +125,28 @@ where
         + FromPrimitive,
     f64: IntoValue<V>,
 {
+    fn validate_input(input: &Linear<V>) {
+        assert!(
+            to_f64(input.constant_term())
+                .map(|value| value.is_finite())
+                .unwrap_or(false)
+                && input.monomials().iter().all(|monomial| {
+                    to_f64(monomial.coefficient())
+                        .map(|value| value.is_finite())
+                        .unwrap_or(false)
+                }),
+            "InStepRangeIndicatorFunction input polynomial must contain finite values"
+        );
+    }
+
+    fn validate_big_m(big_m: &V) {
+        let value = to_f64(big_m).expect("in-step-range indicator Big-M must convert to f64");
+        assert!(
+            value.is_finite() && value > 0.0,
+            "InStepRangeIndicatorFunction requires a positive finite Big-M"
+        );
+    }
+
     /// 创建新函数 / Create a new function
     /// 创建新的步进范围函数 / Creates a new in-step-range function.
     ///
@@ -130,6 +158,22 @@ where
     /// - `upper` — 上界 / Upper bound
     /// - `step` — 步长 / Step size
     pub fn new(id: u64, name: &str, input: Linear<V>, lower: V, upper: V, step: V) -> Self {
+        let lower_f64 = to_f64(&lower).expect("in-step-range lower bound must convert to f64");
+        let upper_f64 = to_f64(&upper).expect("in-step-range upper bound must convert to f64");
+        let step_f64 = to_f64(&step).expect("in-step-range step must convert to f64");
+        assert!(
+            lower_f64.is_finite() && upper_f64.is_finite(),
+            "InStepRangeIndicatorFunction requires finite bounds"
+        );
+        assert!(
+            lower_f64 <= upper_f64,
+            "InStepRangeIndicatorFunction requires lower <= upper"
+        );
+        assert!(
+            step_f64.is_finite() && step_f64 > 0.0,
+            "InStepRangeIndicatorFunction requires a positive finite step"
+        );
+        Self::validate_input(&input);
         let aux_group_id = new_group_id();
         let result_var = BinaryVariableItem::create(VariableId::new(aux_group_id, 0), name);
 
@@ -139,10 +183,28 @@ where
             lower,
             upper,
             step,
+            big_m: None,
             aux_group_id,
             result_var,
             declared_dependency_ids: Vec::new(),
         }
+    }
+
+    /// 创建使用显式 Big-M 的成员指示函数。
+    /// Create a membership indicator with an explicit Big-M value.
+    pub fn with_big_m(
+        id: u64,
+        name: &str,
+        input: Linear<V>,
+        lower: V,
+        upper: V,
+        step: V,
+        big_m: V,
+    ) -> Self {
+        Self::validate_big_m(&big_m);
+        let mut function = Self::new(id, name, input, lower, upper, step);
+        function.big_m = Some(big_m);
+        function
     }
 
     /// 设置显式声明的依赖标识符 / Sets the explicitly declared dependency identifiers.
@@ -174,6 +236,12 @@ where
     /// 返回步长的引用 / Returns a reference to the step size.
     pub fn step(&self) -> &V {
         &self.step
+    }
+
+    /// 获取显式 Big-M；未指定时返回 `None`。
+    /// Return the explicit Big-M, or `None` when the shared policy is used.
+    pub fn big_m(&self) -> Option<&V> {
+        self.big_m.as_ref()
     }
 
     fn step_points_f64(&self) -> Result<Vec<f64>>
@@ -211,23 +279,32 @@ where
             return Ok(Vec::new());
         }
 
-        let step = step_raw.abs();
-        if step <= STEP_EPSILON {
-            return Ok(vec![lower]);
+        let step = step_raw;
+        if step <= 0.0 {
+            return Err(ModelError::InvalidConstraint(format!(
+                "in_step_range `{}` requires a positive step",
+                self.id.name
+            ))
+            .into());
         }
 
         let estimate = ((upper + STEP_EPSILON - lower) / step).floor();
         if !estimate.is_finite() || estimate < 0.0 {
-            return Ok(Vec::new());
+            return Err(ModelError::InvalidConstraint(format!(
+                "in_step_range `{}` step-point count is not finite",
+                self.id.name
+            ))
+            .into());
         }
-        let estimated_count = estimate as usize + 1;
-        if estimated_count > MAX_STEP_POINTS {
+        if estimate > (MAX_STEP_POINTS - 1) as f64 {
+            let estimated_count = estimate as usize;
             return Err(ModelError::InvalidConstraint(format!(
                 "in_step_range `{}` expands to {} step points (> {}), refusing linear mechanism injection",
                 self.id.name, estimated_count, MAX_STEP_POINTS
             ))
             .into());
         }
+        let estimated_count = estimate as usize + 1;
 
         let mut points = Vec::with_capacity(estimated_count);
         for k in 0..estimated_count {
@@ -294,9 +371,9 @@ where
                 Arc::new(self.clone()),
             )]);
         }
-        if !big_m.is_finite() || big_m < 0.0 {
+        if !big_m.is_finite() || big_m <= 0.0 {
             return Err(ModelError::InvalidConstraint(format!(
-                "in_step_range `{}` requires finite non-negative big-M",
+                "in_step_range `{}` requires finite positive big-M",
                 self.id.name
             ))
             .into());
@@ -487,6 +564,407 @@ where
     }
 }
 
+impl<V> Display for InStepRangeIndicatorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "in_step_range({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for InStepRangeIndicatorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for InStepRangeIndicatorFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for InStepRangeIndicatorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let big_m = self
+            .big_m
+            .as_ref()
+            .map(|value| {
+                to_f64(value).ok_or_else(|| {
+                    ModelError::InvalidConstraint(format!(
+                        "in_step_range `{}` Big-M cannot be converted to f64",
+                        self.id.name
+                    ))
+                })
+            })
+            .transpose()?
+            .unwrap_or_else(|| BIG_M_POLICY.fallback());
+        self.build_mechanism_constraints(symbol_to_index, big_m)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let points = self.step_points_f64()?;
+        let big_m = match self.big_m.as_ref() {
+            Some(value) => to_f64(value).ok_or_else(|| {
+                ModelError::InvalidConstraint(format!(
+                    "in_step_range `{}` Big-M cannot be converted to f64",
+                    self.id.name
+                ))
+            })?,
+            None => BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens, &points)),
+        };
+        self.build_mechanism_constraints(symbol_to_index, big_m)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_var.index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("in_step_range({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for InStepRangeIndicatorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        tokens.push(Token::from_generic(
+            self.result_var.clone(),
+            self.result_var.index(),
+        ));
+        let points = self.step_points_f64()?;
+        for i in 0..points.len() {
+            let point_var = self.point_indicator_variable(i);
+            tokens.push(Token::from_generic(point_var.clone(), point_var.index()));
+        }
+        for i in 0..points.len() {
+            let side_var = self.point_side_variable(points.len(), i);
+            tokens.push(Token::from_generic(side_var.clone(), side_var.index()));
+        }
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let value = to_f64(&evaluate_linear(&self.input, token_table, zero_if_none)?)?;
+        let lower = to_f64(&self.lower)?;
+        let upper = to_f64(&self.upper)?;
+        let step = to_f64(&self.step)?;
+        let eps = STEP_EPSILON;
+
+        let in_range = value + eps >= lower && value <= upper + eps;
+        if !in_range {
+            return from_f64(0.0);
+        }
+
+        if step <= eps {
+            return from_f64(if (value - lower).abs() <= eps {
+                1.0
+            } else {
+                0.0
+            });
+        }
+
+        let offset = (value - lower) / step;
+        let on_step = (offset - offset.round()).abs() <= eps;
+        from_f64(if on_step { 1.0 } else { 0.0 })
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for InStepRangeIndicatorFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                self.result_var.index(),
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 步进区间端点函数：`result = lower + floor((upper-lower)/step) * step`。
+///
+/// Stepped-range endpoint function:
+/// `result = lower + floor((upper-lower)/step) * step`.
+///
+/// 该类型与 Kotlin 的 `InStepRangeFunction` 采用同一语义。旧的“输入是否属于离散点集”
+/// 能力由 [`InStepRangeIndicatorFunction`] 明确表示。
+/// This type has the same semantics as Kotlin's `InStepRangeFunction`. The former
+/// stepped-set membership operation is exposed explicitly as [`InStepRangeIndicatorFunction`].
+#[derive(Debug, Clone)]
+pub struct InStepRangeFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    lower: Linear<V>,
+    upper: Linear<V>,
+    step: V,
+    floor: FloorFunction<V>,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> InStepRangeFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    /// 创建步进区间端点函数。 / Create a stepped-range endpoint function.
+    pub fn new(id: u64, name: &str, lower: Linear<V>, upper: Linear<V>, step: V) -> Self {
+        let step_f64 = to_f64(&step).expect("convert in-step-range step to f64");
+        assert!(
+            step_f64.is_finite() && step_f64 > 0.0,
+            "InStepRangeFunction requires a positive finite step"
+        );
+
+        let upper_constant =
+            to_f64(upper.constant_term()).expect("convert in-step-range upper constant to f64");
+        let lower_constant =
+            to_f64(lower.constant_term()).expect("convert in-step-range lower constant to f64");
+        assert!(
+            upper_constant.is_finite() && lower_constant.is_finite(),
+            "InStepRangeFunction bounds must contain finite values"
+        );
+        let mut quotient_terms =
+            Vec::with_capacity(upper.monomials().len() + lower.monomials().len());
+        for monomial in upper.monomials() {
+            let coefficient = to_f64(monomial.coefficient())
+                .expect("convert in-step-range upper coefficient to f64");
+            assert!(
+                coefficient.is_finite(),
+                "InStepRangeFunction bounds must contain finite coefficients"
+            );
+            let scaled = coefficient / step_f64;
+            assert!(
+                scaled.is_finite(),
+                "InStepRangeFunction scaled bound coefficient must be finite"
+            );
+            quotient_terms.push(LinearMonomial::new(
+                from_f64(scaled).expect("convert in-step-range scaled upper coefficient"),
+                monomial.var_index(),
+            ));
+        }
+        for monomial in lower.monomials() {
+            let coefficient = to_f64(monomial.coefficient())
+                .expect("convert in-step-range lower coefficient to f64");
+            assert!(
+                coefficient.is_finite(),
+                "InStepRangeFunction bounds must contain finite coefficients"
+            );
+            let scaled = -coefficient / step_f64;
+            assert!(
+                scaled.is_finite(),
+                "InStepRangeFunction scaled bound coefficient must be finite"
+            );
+            quotient_terms.push(LinearMonomial::new(
+                from_f64(scaled).expect("convert in-step-range scaled lower coefficient"),
+                monomial.var_index(),
+            ));
+        }
+        let quotient_constant = (upper_constant - lower_constant) / step_f64;
+        assert!(
+            quotient_constant.is_finite(),
+            "InStepRangeFunction quotient constant must be finite"
+        );
+        let quotient = Linear::new(
+            quotient_terms,
+            from_f64(quotient_constant).expect("convert in-step-range quotient constant"),
+        );
+        let floor = FloorFunction::new(
+            id.wrapping_mul(10_000).wrapping_add(91),
+            &format!("{}_quotient", name),
+            quotient,
+        );
+
+        Self {
+            id: IntermediateSymbolId::new(id, name),
+            lower,
+            upper,
+            step,
+            floor,
+            declared_dependency_ids: Vec::new(),
+        }
+    }
+
+    /// 设置显式依赖。 / Set explicitly declared dependencies.
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 返回下界表达式。 / Return the lower-bound expression.
+    pub fn lower_polynomial(&self) -> &Linear<V> {
+        &self.lower
+    }
+
+    /// 返回上界表达式。 / Return the upper-bound expression.
+    pub fn upper_polynomial(&self) -> &Linear<V> {
+        &self.upper
+    }
+
+    /// 返回正步长。 / Return the positive step.
+    pub fn step(&self) -> &V {
+        &self.step
+    }
+
+    /// 返回内部商的向下取整变量。 / Return the internal floored-quotient variable.
+    pub fn quotient_variable(&self) -> &ContinuousVariableItem {
+        self.floor.result_variable()
+    }
+
+    fn bounds_constraint(&self) -> Result<LinearConstraint<V>> {
+        let mut terms =
+            Vec::with_capacity(self.upper.monomials().len() + self.lower.monomials().len());
+        for monomial in self.upper.monomials() {
+            terms.push(monomial.clone());
+        }
+        for monomial in self.lower.monomials() {
+            let coefficient = to_f64(monomial.coefficient()).ok_or_else(|| {
+                ModelError::InvalidConstraint(format!(
+                    "in-step-range `{}` lower coefficient cannot be converted to f64",
+                    self.id.name
+                ))
+            })?;
+            terms.push(LinearMonomial::new(
+                convert_f64_to_v(-coefficient, "in-step-range negated lower coefficient")?,
+                monomial.var_index(),
+            ));
+        }
+        let constant = to_f64(self.upper.constant_term()).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "in-step-range `{}` upper constant cannot be converted to f64",
+                self.id.name
+            ))
+        })? - to_f64(self.lower.constant_term()).ok_or_else(|| {
+            ModelError::InvalidConstraint(format!(
+                "in-step-range `{}` lower constant cannot be converted to f64",
+                self.id.name
+            ))
+        })?;
+        Ok(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(
+                    terms,
+                    convert_f64_to_v(constant, "in-step-range bounds constant")?,
+                ),
+                ConstraintRelation::GreaterEqual,
+                convert_f64_to_v(0.0, "in-step-range bounds rhs")?,
+            ),
+            &format!("{}_bounds", self.id.name),
+            Arc::new(self.clone()),
+        ))
+    }
+}
+
 impl<V> Display for InStepRangeFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
@@ -568,7 +1046,9 @@ where
         &self,
         symbol_to_index: &std::collections::HashMap<usize, usize>,
     ) -> Result<Vec<LinearConstraint<V>>> {
-        self.build_mechanism_constraints(symbol_to_index, BIG_M_POLICY.fallback())
+        let mut constraints = self.floor.mechanism_constraints(symbol_to_index)?;
+        constraints.push(self.bounds_constraint()?);
+        Ok(constraints)
     }
 
     fn mechanism_constraints_with_tokens(
@@ -576,9 +1056,11 @@ where
         symbol_to_index: &std::collections::HashMap<usize, usize>,
         tokens: &[Token<V>],
     ) -> Result<Vec<LinearConstraint<V>>> {
-        let points = self.step_points_f64()?;
-        let big_m = BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens, &points));
-        self.build_mechanism_constraints(symbol_to_index, big_m)
+        let mut constraints = self
+            .floor
+            .mechanism_constraints_with_tokens(symbol_to_index, tokens)?;
+        constraints.push(self.bounds_constraint()?);
+        Ok(constraints)
     }
 
     fn evaluate_from_tokens(
@@ -590,7 +1072,13 @@ where
     }
 
     fn prepare(&self, values: &std::collections::HashMap<usize, V>) -> Option<V> {
-        values.get(&self.result_var.index()).cloned()
+        let quotient = values.get(&self.floor.result_variable().index())?.clone();
+        let mut lower = self.lower.constant_term().clone();
+        for monomial in self.lower.monomials() {
+            lower =
+                lower + monomial.coefficient().clone() * values.get(&monomial.var_index())?.clone();
+        }
+        Some(lower + self.step.clone() * quotient)
     }
 
     fn to_raw_string(&self, _unfold: u64) -> String {
@@ -613,46 +1101,17 @@ where
     f64: IntoValue<V>,
 {
     fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
-        tokens.push(Token::from_generic(
-            self.result_var.clone(),
-            self.result_var.index(),
-        ));
-        let points = self.step_points_f64()?;
-        for i in 0..points.len() {
-            let point_var = self.point_indicator_variable(i);
-            tokens.push(Token::from_generic(point_var.clone(), point_var.index()));
-        }
-        for i in 0..points.len() {
-            let side_var = self.point_side_variable(points.len(), i);
-            tokens.push(Token::from_generic(side_var.clone(), side_var.index()));
-        }
-        Ok(())
+        self.floor.register_tokens(tokens)
     }
 
     fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
-        let value = to_f64(&evaluate_linear(&self.input, token_table, zero_if_none)?)?;
-        let lower = to_f64(&self.lower)?;
-        let upper = to_f64(&self.upper)?;
+        let lower = to_f64(&evaluate_linear(&self.lower, token_table, zero_if_none)?)?;
+        let upper = to_f64(&evaluate_linear(&self.upper, token_table, zero_if_none)?)?;
         let step = to_f64(&self.step)?;
-        let eps = 1e-8;
-
-        let in_range = value + eps >= lower && value <= upper + eps;
-        if !in_range {
-            return from_f64(0.0);
+        if !lower.is_finite() || !upper.is_finite() || lower > upper {
+            return None;
         }
-
-        if step.abs() <= eps {
-            return from_f64(if (value - lower).abs() <= eps {
-                1.0
-            } else {
-                0.0
-            });
-        }
-
-        let step = step.abs();
-        let offset = (value - lower) / step;
-        let on_step = (offset - offset.round()).abs() <= eps;
-        from_f64(if on_step { 1.0 } else { 0.0 })
+        from_f64(lower + ((upper - lower) / step).floor() * step)
     }
 }
 
@@ -671,13 +1130,12 @@ where
     f64: IntoValue<V>,
 {
     fn to_linear_polynomial(&self) -> Linear<V> {
-        Linear::new(
-            vec![LinearMonomial::new(
-                from_f64(1.0).expect("convert 1.0"),
-                self.result_var.index(),
-            )],
-            from_f64(0.0).expect("convert 0.0"),
-        )
+        let mut terms = self.lower.monomials().to_vec();
+        terms.push(LinearMonomial::new(
+            self.step.clone(),
+            self.floor.result_variable().index(),
+        ));
+        Linear::new(terms, self.lower.constant_term().clone())
     }
 
     fn to_quadratic_polynomial(&self) -> Quadratic<V> {
@@ -700,7 +1158,7 @@ mod tests {
             "x",
             VariableRange::bounded(0.0, 2.0),
         );
-        let f: InStepRangeFunction<f64> = InStepRangeFunction::new(
+        let f: InStepRangeIndicatorFunction<f64> = InStepRangeIndicatorFunction::new(
             8000,
             "in_step_bound",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -739,14 +1197,14 @@ mod tests {
             .expect("point selector term should exist");
 
         // x in [0, 2] and point=0 => |x-0| bound is 2.
-        assert!((band_ub.inequality.rhs - (2.0 + 2.0e-8)).abs() <= 1e-9);
+        assert!((band_ub.inequality.rhs - (2.0 + 2.0e-10)).abs() <= 1e-9);
         assert!((*point_term.coefficient() - 2.0).abs() <= 1e-9);
     }
 
     #[test]
     fn in_step_range_function_falls_back_to_default_big_m_without_bounds() {
         let x = ContinuousVariableItem::create(VariableId::standalone(80_010), "x");
-        let f: InStepRangeFunction<f64> = InStepRangeFunction::new(
+        let f: InStepRangeIndicatorFunction<f64> = InStepRangeIndicatorFunction::new(
             8001,
             "in_step_default",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -784,7 +1242,7 @@ mod tests {
             .find(|monomial| monomial.var_index() == 2)
             .expect("point selector term should exist");
 
-        assert!((band_ub.inequality.rhs - (DEFAULT_BIG_M + 2.0e-8)).abs() <= 1e-6);
+        assert!((band_ub.inequality.rhs - (DEFAULT_BIG_M + 2.0e-10)).abs() <= 1e-6);
         assert!((*point_term.coefficient() - DEFAULT_BIG_M).abs() <= 1e-9);
     }
 }
