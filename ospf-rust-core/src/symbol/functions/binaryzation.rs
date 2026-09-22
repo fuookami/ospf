@@ -520,6 +520,138 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("binary({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Big-M 必须在结构创建时固定：优先用令牌边界推断值，取不到时用配置值；两者都不可用时
+        // 不提供结构，让即时展开给出配置错误，而不是把错误推迟到物化阶段。
+        // The Big-M must be fixed at creation time: the token-inferred value first, the configured
+        // value second; when neither is available no structure is offered so eager expansion
+        // surfaces the configuration error instead of deferring it to materialization.
+        let big_m = match self.infer_big_m_from_tokens(tokens) {
+            Some(inferred) => inferred,
+            None => self.configured_big_m().ok()?,
+        };
+        Some(Arc::new(BinaryzationStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+            big_m,
+        )))
+    }
+}
+
+/// 二值化的求解器无关结构描述 / Solver-neutral structure description of binaryzation
+///
+/// 与 ABS/极值采用同一模式：持有产生它的符号（`Arc`）与创建时固定的 Big-M，物化时回调手写路径
+/// 的同一个公式生成器并传入同一个 M，因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。二值化
+/// 没有辅助指示列，结构只涉及结果列。
+///
+/// Follows the same pattern as ABS and the extrema: the structure holds the symbol that produced it
+/// (an `Arc`) together with the Big-M fixed at creation time and materializes through the very same
+/// formula generator as the handwritten eager path with that same M, so deferred materialization
+/// matches eager expansion row by row, including the M value. Binaryzation has no auxiliary
+/// indicator column, so the structure only involves the result column.
+#[derive(Debug)]
+pub struct BinaryzationStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<BinaryzationFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 创建时固定的 Big-M / Big-M fixed at creation time
+    big_m: f64,
+}
+
+impl<V> BinaryzationStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<BinaryzationFunction<V>>, big_m: f64) -> Self {
+        let result = symbol.result_variable().id();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            big_m,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取固定的 Big-M / Get the fixed Big-M.
+    pub fn big_m(&self) -> f64 {
+        self.big_m
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for BinaryzationStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 二值化没有辅助列，只上报结果列。
+        // Binaryzation has no helper columns, so only the result column is reported.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            Vec::new(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        // Big-M 进入指纹：模型边界变化导致 M 变化时，旧记录必须失效。
+        // The Big-M is part of the fingerprint: when model bounds change M, old records must fail.
+        Some(format!(
+            "binaryzation|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            crate::model::intermediate::fingerprint_float(self.big_m)
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器与同一个 Big-M，保证两条路径逐行一致。
+        // Reuse the eager path's generator and the same Big-M so both paths stay row-identical.
+        self.symbol
+            .build_mechanism_constraints(symbol_to_index, self.big_m)
+    }
 }
 
 impl<V> FunctionSymbol<V> for BinaryzationFunction<V>
@@ -633,6 +765,72 @@ mod tests {
         // 2x + 1 with x in [-2, 3] => range [-3, 7], threshold=0 => M = 7.
         assert!((*y_term.coefficient() + 7.0).abs() <= 1e-9);
         assert!((lower.inequality.rhs + 7.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn binaryzation_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(30_100),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        let f: BinaryzationFunction<f64> = BinaryzationFunction::with_big_m(
+            4001,
+            "bin_deferred",
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            100.0,
+        );
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize)]);
+        let tokens = vec![
+            Token::from_generic(x, 0),
+            Token::from_generic(f.result_variable().clone(), 1),
+        ];
+
+        let structure = f
+            .deferred_structure_with_tokens(&tokens)
+            .expect("binaryzation should expose a deferred structure");
+        assert_eq!(structure.function_name(), "bin_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("binaryzation structure should expose a usage binding");
+        assert_eq!(binding.result, f.result_variable().id());
+        assert!(binding.helpers.is_empty());
+        assert!(structure.fingerprint().is_some());
+
+        let eager = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("eager binary constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("binaryzation structure should materialize");
+        assert!(!eager.is_empty());
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+
+        // 没有令牌边界时退回配置 Big-M，两条路径仍一致。
+        // Without token bounds the configured Big-M is used and both paths still agree.
+        let no_tokens_structure = f
+            .deferred_structure_with_tokens(&[])
+            .expect("binaryzation should fall back to the configured big-M");
+        let eager_default = <BinaryzationFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+            &f,
+            &symbol_to_index,
+        )
+        .expect("eager binary constraints should be generated");
+        let deferred_default = no_tokens_structure
+            .materialize(&symbol_to_index)
+            .expect("binaryzation structure should materialize");
+        assert_eq!(eager_default.len(), deferred_default.len());
+        assert_eq!(eager_default[0].name, deferred_default[0].name);
     }
 
     #[test]

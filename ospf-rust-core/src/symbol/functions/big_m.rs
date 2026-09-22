@@ -4,6 +4,7 @@ use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearInequality};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::Token;
+use crate::variable::VariableRange;
 use num_traits::{FromPrimitive, ToPrimitive};
 use std::fmt::Debug;
 
@@ -1123,6 +1124,169 @@ where
 {
     let (lower, upper) = infer_quadratic_difference_bounds_from_tokens(left, right, tokens)?;
     Some(lower.abs().max(upper.abs()))
+}
+
+/// 使用有限值域收紧令牌的声明范围。
+///
+/// 只收紧、不放宽：已有上下界会与传入区间取交集，因此调用方可以在自动推断出的
+/// 结果范围内安全地调用本函数。非法区间、矛盾边界和不可转换的取值都返回错误，
+/// 调用方据此避免把矛盾的辅助变量边界写入模型。
+///
+/// Tighten a token's declared range using a finite domain.
+///
+/// Bounds are only tightened, never widened: existing bounds are intersected with the
+/// supplied interval, so callers may safely pass an automatically inferred result range.
+/// Invalid intervals, contradictory bounds, and unconvertible values return an error so
+/// callers never write contradictory helper bounds into the model.
+pub fn tighten_token_range<V>(token: &mut Token<V>, lower: f64, upper: f64) -> Result<()>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    if !lower.is_finite() || !upper.is_finite() || lower > upper {
+        return Err(ModelError::InvalidConstraint(format!(
+            "helper bounds [{lower}, {upper}] are not a finite interval"
+        ))
+        .into());
+    }
+
+    let mut lower_bound = lower;
+    let mut upper_bound = upper;
+    if let Some(existing) = token.variable.lower_bound().and_then(|value| value.to_f64()) {
+        lower_bound = lower_bound.max(existing);
+    }
+    if let Some(existing) = token.variable.upper_bound().and_then(|value| value.to_f64()) {
+        upper_bound = upper_bound.min(existing);
+    }
+    if lower_bound > upper_bound {
+        return Err(ModelError::InvalidConstraint(format!(
+            "derived helper interval [{lower}, {upper}] contradicts the declared range [{lower_bound}, {upper_bound}]"
+        ))
+        .into());
+    }
+
+    let (Some(lower_bound), Some(upper_bound)) =
+        (from_f64::<V>(lower_bound), from_f64::<V>(upper_bound))
+    else {
+        return Err(ModelError::InvalidConstraint(format!(
+            "derived helper interval [{lower}, {upper}] cannot be converted into the model value type"
+        ))
+        .into());
+    };
+    token.set_range(VariableRange::bounded(lower_bound, upper_bound));
+    Ok(())
+}
+
+/// 推断极值函数结果的有限值域。
+///
+/// 当且仅当每个输入多项式都有有限值域时返回 `Some((lower, upper))`：最大值取各输入
+/// 上界的最大者作为上界、各输入下界的最大者作为下界；最小值取各输入上界的最小者
+/// 作为上界、各输入下界的最小者作为下界。与 Kotlin 版本的 `applyExtremumBounds`
+/// 一致，任一候选缺少有限界时不收紧结果范围。
+///
+/// Infer the finite result domain of an extremum function.
+///
+/// Returns `Some((lower, upper))` only when every input polynomial has a finite domain:
+/// a maximum takes the largest input upper bound as its upper bound and the largest input
+/// lower bound as its lower bound, while a minimum takes the smallest input upper bound
+/// and the smallest input lower bound. Matching the Kotlin `applyExtremumBounds` helper,
+/// the result range stays untouched whenever any candidate lacks finite bounds.
+pub fn infer_extremum_result_bounds<V>(
+    polynomials: &[Linear<V>],
+    tokens: &[Token<V>],
+    minimum: bool,
+) -> Option<(f64, f64)>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    if polynomials.is_empty() {
+        return None;
+    }
+
+    let mut result_lower: Option<f64> = None;
+    let mut result_upper: Option<f64> = None;
+    for polynomial in polynomials {
+        let (polynomial_lower, polynomial_upper) =
+            infer_linear_bounds_from_tokens(polynomial, tokens)?;
+        result_lower = Some(match result_lower {
+            None => polynomial_lower,
+            Some(current) if minimum => current.min(polynomial_lower),
+            Some(current) => current.max(polynomial_lower),
+        });
+        result_upper = Some(match result_upper {
+            None => polynomial_upper,
+            Some(current) if minimum => current.min(polynomial_upper),
+            Some(current) => current.max(polynomial_upper),
+        });
+    }
+
+    let lower = result_lower?;
+    let upper = result_upper?;
+    if !lower.is_finite() || !upper.is_finite() || lower > upper {
+        return None;
+    }
+    Some((lower, upper))
+}
+
+/// 为极值函数的每个候选多项式推断非对称 Big-M。
+///
+/// 最大值使用 `max(upper) - lower_i`，最小值使用 `upper_i - min(lower)`，与 Kotlin
+/// 版本按候选收紧的取值一致。任一候选缺少有限域时返回 `None`，由调用方退回统一的
+/// 回退 Big-M。返回值按候选顺序排列，并保证不小于 `min_big_m`。
+///
+/// Infer an asymmetric Big-M per candidate polynomial of an extremum function.
+///
+/// A maximum uses `max(upper) - lower_i` and a minimum uses `upper_i - min(lower)`,
+/// matching the per-candidate tightening of the Kotlin implementation. `None` is
+/// returned when any candidate lacks a finite domain so that callers fall back to the
+/// unified fallback Big-M. Values are ordered by candidate and never fall below
+/// `min_big_m`.
+pub fn infer_extremum_candidate_big_ms<V>(
+    polynomials: &[Linear<V>],
+    tokens: &[Token<V>],
+    minimum: bool,
+    min_big_m: f64,
+) -> Option<Vec<f64>>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    if polynomials.is_empty() {
+        return None;
+    }
+
+    let mut bounds = Vec::with_capacity(polynomials.len());
+    for polynomial in polynomials {
+        bounds.push(infer_linear_bounds_from_tokens(polynomial, tokens)?);
+    }
+
+    let reference = if minimum {
+        bounds
+            .iter()
+            .map(|(lower, _)| *lower)
+            .fold(f64::INFINITY, f64::min)
+    } else {
+        bounds
+            .iter()
+            .map(|(_, upper)| *upper)
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+    if !reference.is_finite() {
+        return None;
+    }
+
+    let minimum_big_m = ensure_positive_big_m(min_big_m).ok()?;
+    let mut big_ms = Vec::with_capacity(bounds.len());
+    for (lower, upper) in &bounds {
+        let value = if minimum {
+            upper - reference
+        } else {
+            reference - lower
+        };
+        if !value.is_finite() || value < 0.0 {
+            return None;
+        }
+        big_ms.push(value.max(minimum_big_m));
+    }
+    Some(big_ms)
 }
 
 /// 为线性多项式集合推断 Big-M / Infer a Big-M value for linear polynomials.

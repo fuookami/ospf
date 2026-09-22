@@ -464,6 +464,165 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("bal_ternary({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Big-M 与即时路径完全相同：先用令牌边界推断输入绝对值上界，再叠加 eps 与边界余量；
+        // 推断不到时用配置值，配置值也不可用时不提供结构，让即时展开给出配置错误。
+        // The Big-M matches the eager path exactly: infer the input's absolute bound from tokens and
+        // add eps plus the strict-boundary margin; fall back to the configured value, and when that
+        // is unavailable too, offer no structure so eager expansion surfaces the configuration error.
+        let epsilon = to_f64(&self.epsilon).unwrap_or(0.0);
+        let strict_boundary = to_f64(&self.strict_boundary).unwrap_or(DEFAULT_STRICT_BOUNDARY);
+        let big_m = infer_linear_abs_bound_from_tokens(&self.input, tokens)
+            .map(|bound| (bound + epsilon + strict_boundary).max(MIN_BIG_M))
+            .unwrap_or(self.configured_big_m().ok()?);
+        Some(Arc::new(BalanceTernaryzationStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+            big_m,
+        )))
+    }
+}
+
+/// 平衡三值化的求解器无关结构描述
+/// Solver-neutral structure description of balance ternaryzation
+///
+/// 与二值化采用同一模式：持有产生它的符号与创建时固定的 Big-M（来源与即时路径完全一致），
+/// 物化时回调手写路径的同一个公式生成器并传入同一个 M，因此延迟物化与 EAGER 展开逐行一致
+/// （含 M 取值）。正负号指示列属于本结构的辅助列。
+///
+/// Follows the same pattern as binaryzation: the structure holds the symbol that produced it and the
+/// Big-M fixed at creation time (from exactly the same sources as the eager path) and materializes
+/// through the very same formula generator with that same M, so deferred materialization matches
+/// eager expansion row by row, including the M value. The positive/negative sign columns are
+/// helpers of this structure.
+#[derive(Debug)]
+pub struct BalanceTernaryzationStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<BalanceTernaryzationFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 正号指示辅助列 / Positive sign helper column
+    positive: crate::variable::VariableId,
+    /// 负号指示辅助列 / Negative sign helper column
+    negative: crate::variable::VariableId,
+    /// 创建时固定的 Big-M / Big-M fixed at creation time
+    big_m: f64,
+}
+
+impl<V> BalanceTernaryzationStructure<V>
+where
+    V: Clone
+        + Debug
+        + PartialOrd
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(
+        name: impl Into<String>,
+        symbol: Arc<BalanceTernaryzationFunction<V>>,
+        big_m: f64,
+    ) -> Self {
+        let result = symbol.result_variable().id();
+        let positive = symbol.positive_variable().id();
+        let negative = symbol.negative_variable().id();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            positive,
+            negative,
+            big_m,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取固定的 Big-M / Get the fixed Big-M.
+    pub fn big_m(&self) -> f64 {
+        self.big_m
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V>
+    for BalanceTernaryzationStructure<V>
+where
+    V: Clone
+        + Debug
+        + PartialOrd
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 正负号指示列是本结构的辅助列，参与「是否被外部引用 / 是否可省略」的判定。
+        // The sign columns are helpers of this structure and take part in the externally-referenced
+        // and omittable analysis.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            vec![self.positive.clone(), self.negative.clone()],
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        Some(format!(
+            "balance_ternaryzation|{}|{}|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            self.positive.unique_id(),
+            self.negative.unique_id(),
+            crate::model::intermediate::fingerprint_float(self.big_m)
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器与同一个 Big-M，保证两条路径逐行一致。
+        // Reuse the eager path's generator and the same Big-M so both paths stay row-identical.
+        self.symbol
+            .build_mechanism_constraints(symbol_to_index, self.big_m)
+    }
 }
 
 impl<V> FunctionSymbol<V> for BalanceTernaryzationFunction<V>
@@ -542,5 +701,93 @@ where
 
     fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use super::*;
+    use crate::token::Token;
+    use crate::variable::{ContinuousVariableItem, VariableId, VariableRange};
+
+    #[test]
+    fn balance_ternaryzation_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(50_100),
+            "x",
+            VariableRange::bounded(-4.0, 4.0),
+        );
+        let f: BalanceTernaryzationFunction<f64> = BalanceTernaryzationFunction::new(
+            6001,
+            "bal_ternary_deferred",
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            0.5,
+            100.0,
+        );
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let positive_id = f.positive_variable().id().unique_id() as usize;
+        let negative_id = f.negative_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([
+            (result_id, 1usize),
+            (positive_id, 2usize),
+            (negative_id, 3usize),
+        ]);
+        let tokens = vec![
+            Token::from_generic(x, 0),
+            Token::from_generic(f.result_variable().clone(), 1),
+            Token::from_generic(f.positive_variable().clone(), 2),
+            Token::from_generic(f.negative_variable().clone(), 3),
+        ];
+
+        let structure = f
+            .deferred_structure_with_tokens(&tokens)
+            .expect("balance ternaryzation should expose a deferred structure");
+        assert_eq!(structure.function_name(), "bal_ternary_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("balance ternaryzation structure should expose a usage binding");
+        assert_eq!(binding.result, f.result_variable().id());
+        assert_eq!(
+            binding.helpers,
+            vec![f.positive_variable().id(), f.negative_variable().id()]
+        );
+        assert!(structure.fingerprint().is_some());
+
+        let eager = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("eager balance ternary constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("balance ternaryzation structure should materialize");
+        assert!(!eager.is_empty());
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+
+        // 没有令牌边界时退回配置 Big-M，两条路径仍一致。
+        // Without token bounds the configured Big-M is used and both paths still agree.
+        let no_tokens_structure = f
+            .deferred_structure_with_tokens(&[])
+            .expect("balance ternaryzation should fall back to the configured big-M");
+        let eager_default =
+            <BalanceTernaryzationFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+                &f,
+                &symbol_to_index,
+            )
+            .expect("eager balance ternary constraints should be generated");
+        let deferred_default = no_tokens_structure
+            .materialize(&symbol_to_index)
+            .expect("balance ternaryzation structure should materialize");
+        assert_eq!(eager_default.len(), deferred_default.len());
+        assert_eq!(eager_default[0].name, deferred_default[0].name);
     }
 }

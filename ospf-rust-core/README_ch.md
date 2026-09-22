@@ -275,6 +275,37 @@ proof、incumbent 和取消链；未知 schema 或身份不匹配会在恢复前
 匹配的库、运行时和许可证探针。Gurobi 许可证错误（含代码 `10009`）归类为 `LICENSE`，
 缺少动态库归类为 `ENVIRONMENT`。
 
+### 函数符号支持矩阵
+
+函数符号的迁移按「语义 → 结构 → 原生」四级推进。默认仍是**即时展开（EAGER）**：不设置策略
+时，所有函数符号都在 `MetaModel -> MechanismModel` 阶段写入通用约束，行为与历史版本一致。
+延迟与原生路径都需要显式开启，且任何原生写入失败都会回退整模型的通用展开，不会留下部分
+原生的模型。
+
+| 级别 | 内容 | 当前状态 |
+| --- | --- | --- |
+| 1 通用语义 | 所有函数符号的 EAGER 展开、边界收紧、Big-M 推导与布尔 hull | 已实现，默认路径 |
+| 2 延迟结构 | 求解器无关的 `DeferredFunctionStructure`（符号句柄、辅助列、固定 Big-M、版本化指纹） | 已实现：ABS、NOT、AND、OR、MAX、MIN、SEMI、二值化、关系指示、平衡三值化、Sigmoid、IF、二值掩码；其余函数继续 EAGER |
+| 3 调度与策略 | `FunctionExpansionPolicy`（EAGER/deferred/Auto）、求解器能力门、`NativeFunctionWriter` registry、模型级 lowering、失败原子性、版本化指纹 | 已实现（求解器无关） |
+| 4 原生 writer | 具体 SDK 的原生写入 | 仅 Gurobi ABS 的准入判定与 writer；**尚未接入 Gurobi 建模流程**，因此真实求解中暂不生效 |
+
+每个结构的物化都调用手写路径的同一个公式生成器（不存在第二份公式），因此延迟路径与 EAGER
+逐列一致；每个结构在测试中都被覆盖两次：结构层一次，贯穿
+`MetaModel -> MechanismModel -> 线性模型` 管线一次，断言 `Eager` 与 `DeferredNativeFirst`
+产出的行名完全相同。只在语义等价处提供结构：非精确极值保持其 epigraph/hypograph 语义继续
+EAGER，完全无法推导 Big-M 的情形由 EAGER 路径报错，而不是推迟到物化阶段才暴露。
+
+策略入口：求解侧通过 `SolverConfig::function_expansion_policy` 与
+`SolverConfig::resolved_function_expansion_policy` 决定，建模侧用
+`MetaModel::apply_solver_config` 采用同一取值；机制模型会带着解析后的策略离开建模阶段。
+`Auto` 只在求解器声明 `NativeIndicator` 能力时保留结构，否则退回 EAGER。
+
+验证口径：`cargo test -p ospf-rust-core` 是语义证据；`cargo check --features gurobi10/11/12`
+只是编译证据，**不等于真实求解通过**。延迟与原生路径的准入判定断言可在没有许可证的机器上
+运行；原生写入本身需要匹配的库与许可证。在有匹配库与许可证的机器上，验收证据来自此前被忽略的
+原生测试，必须用 `-- --include-ignored` 运行，`cargo check` 全绿不能替代它们。本机 SCIP 只有
+Java 版，`--features scip` 需改用 `--features scip-bundled`。
+
 ### Solver 原生验收矩阵
 
 `cargo check` 只是编译证据。无法加载 backend 的原生测试应记为 `unsupported`（主动要求

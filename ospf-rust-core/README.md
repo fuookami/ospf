@@ -293,6 +293,44 @@ only; native capability requires a matching library, runtime, and license probe.
 license failures (including code `10009`) are `LICENSE`; missing libraries are
 `ENVIRONMENT`.
 
+### Function Symbol Support Matrix
+
+Function-symbol migration proceeds in four levels: semantics, structure, native. The default is
+still **eager expansion**: without an explicit policy every function symbol writes its generic
+constraints during `MetaModel -> MechanismModel`, matching historical behaviour. Deferred and
+native paths are opt-in, and any native write failure falls back to the generic expansion for the
+whole model instead of leaving a partially native one.
+
+| Level | Content | Status |
+| --- | --- | --- |
+| 1 Semantics | Eager expansion, bound tightening, Big-M derivation and boolean hulls for every function symbol | Implemented, default path |
+| 2 Structure | Solver-neutral `DeferredFunctionStructure` (symbol handle, helper columns, fixed Big-M, versioned fingerprint) | Implemented for ABS, NOT, AND, OR, MAX, MIN, SEMI, binaryzation, relation indicator, balance ternaryzation, sigmoid, IF and binary masking; every other function stays eager |
+| 3 Scheduling | `FunctionExpansionPolicy` (eager/deferred/Auto), solver capability gate, `NativeFunctionWriter` registry, model-level lowering, failure atomicity, versioned fingerprints | Implemented (solver-neutral) |
+| 4 Native writers | Concrete SDK writes | Gurobi ABS admission and writer only; **not yet wired into the Gurobi modelling flow**, so it does not take effect in real solves |
+
+Each structure materializes through the very same formula generator as the handwritten eager path
+(no second copy of the rows), so the deferred and eager paths are column-identical; every structure
+is covered twice in the test suite, once at structure level and once through the whole
+`MetaModel -> MechanismModel -> linear model` pipeline, by asserting that the resulting row names are
+equal between `Eager` and `DeferredNativeFirst`. A structure is only offered where deferral is
+semantically equivalent: non-exact maxima/minima keep their different epigraph/hypograph semantics
+eager, and a Big-M that cannot be derived at all is surfaced by the eager path instead of being
+hidden until materialization.
+
+Policy entry points: the solving side decides through `SolverConfig::function_expansion_policy`
+and `SolverConfig::resolved_function_expansion_policy`, while the modelling side adopts the same
+value via `MetaModel::apply_solver_config`; the mechanism model leaves the modelling stage carrying
+the resolved policy. `Auto` keeps structures only when the solver declares the `NativeIndicator`
+capability and otherwise falls back to eager expansion.
+
+Verification: `cargo test -p ospf-rust-core` is semantic evidence, while
+`cargo check --features gurobi10/11/12` is compilation evidence only and **does not mean a real
+solve passed**. Admission assertions for the deferred and native paths run without a licence; the
+native write itself needs the matching library and licence. Where that library and licence *are*
+present, the acceptance evidence is the previously ignored native tests and they must be run with
+`-- --include-ignored`; a green `cargo check` never substitutes for them. On this machine SCIP ships
+as Java only, so `--features scip` must be replaced by `--features scip-bundled`.
+
 ### Native Validation Matrix
 
 `cargo check` is compile evidence only. Native tests that cannot load their backend are

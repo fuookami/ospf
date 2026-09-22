@@ -80,6 +80,26 @@ impl VariableType {
             VariableType::UContinuous => "UContinuous",
         }
     }
+
+    /// 变量类型的默认上下界 / Default lower and upper bounds of the variable type.
+    ///
+    /// 返回 `None` 表示该方向无默认界。用于判断某个辅助列是否带有额外边界：当且仅当声明
+    /// 范围等于默认范围时，该列没有额外边界。
+    ///
+    /// `None` means the direction has no default bound. Used to decide whether a helper column
+    /// carries extra bounds: it does not exactly when its declared range equals the default.
+    pub fn default_bounds(&self) -> (Option<f64>, Option<f64>) {
+        match self {
+            VariableType::Binary => (Some(0.0), Some(1.0)),
+            VariableType::Ternary => (Some(0.0), Some(2.0)),
+            VariableType::BalancedTernary => (Some(-1.0), Some(1.0)),
+            VariableType::Percentage => (Some(0.0), Some(1.0)),
+            VariableType::Integer => (None, None),
+            VariableType::UInteger => (Some(0.0), None),
+            VariableType::Continuous => (None, None),
+            VariableType::UContinuous => (Some(0.0), None),
+        }
+    }
 }
 
 // ============================================================================

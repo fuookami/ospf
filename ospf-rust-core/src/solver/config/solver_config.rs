@@ -1,6 +1,8 @@
 //! 求解器配置
 //! Solver Configuration
 
+use crate::model::FunctionExpansionPolicy;
+use crate::solver::SolverCapability;
 use std::time::Duration;
 
 /// 求解器配置 / Solver Configuration
@@ -38,6 +40,15 @@ pub struct SolverConfig {
     pub memory_limit: Option<usize>,
     /// 随机种子 / Random seed
     pub seed: Option<u64>,
+    /// 函数符号展开策略 / Function-symbol expansion policy
+    ///
+    /// 默认 [`FunctionExpansionPolicy::Eager`]，与历史行为一致。求解方设置该字段后，建模侧通过
+    /// [`crate::model::MetaModel::apply_solver_config`] 采用同一取值。
+    ///
+    /// Defaults to [`FunctionExpansionPolicy::Eager`] to match historical behaviour. Once a solver
+    /// sets this field, the modelling side adopts the same value through
+    /// [`crate::model::MetaModel::apply_solver_config`].
+    pub function_expansion_policy: FunctionExpansionPolicy,
 }
 
 impl SolverConfig {
@@ -60,6 +71,39 @@ impl SolverConfig {
             threads: None,
             memory_limit: None,
             seed: None,
+            function_expansion_policy: FunctionExpansionPolicy::default(),
+        }
+    }
+
+    /// 结合求解器能力解析函数符号展开策略。
+    ///
+    /// - [`FunctionExpansionPolicy::Eager`] 与 [`FunctionExpansionPolicy::DeferredNativeFirst`]
+    ///   原样返回，它们是调用方的明确意图；
+    /// - [`FunctionExpansionPolicy::Auto`] 按能力门解析：求解器声明了原生函数相关能力
+    ///   （当前为 [`SolverCapability::NativeIndicator`]）时按 deferred 保留结构并尝试原生接口；
+    ///   没有任何相关能力时退回 [`FunctionExpansionPolicy::Eager`]——既然没有原生接口可用，
+    ///   推迟必然发生的通用展开只会增加状态与失败面。
+    ///
+    /// Resolve the function-symbol expansion policy against solver capabilities.
+    ///
+    /// `Eager` and `DeferredNativeFirst` are explicit intents and pass through unchanged. `Auto`
+    /// goes through the capability gate: when the solver declares a native function-related
+    /// capability (currently [`SolverCapability::NativeIndicator`]) the structure is kept deferred
+    /// for a native attempt, otherwise the policy falls back to `Eager`, because deferring an
+    /// expansion that is bound to happen anyway only adds state and failure surface.
+    pub fn resolved_function_expansion_policy(
+        &self,
+        capabilities: &[SolverCapability],
+    ) -> FunctionExpansionPolicy {
+        match self.function_expansion_policy {
+            FunctionExpansionPolicy::Auto => {
+                if capabilities.contains(&SolverCapability::NativeIndicator) {
+                    FunctionExpansionPolicy::DeferredNativeFirst
+                } else {
+                    FunctionExpansionPolicy::Eager
+                }
+            }
+            explicit => explicit,
         }
     }
 
@@ -240,12 +284,80 @@ mod tests {
             .with_interruptible_gap(0.05)
             .with_improve_threshold(1e-6);
 
-        assert_eq!(
-            config.no_improvement_time_limit,
-            Some(Duration::from_secs(11))
-        );
+        assert_eq!(config.no_improvement_time_limit, Some(Duration::from_secs(11)));
         assert_eq!(config.interruptible_time, Some(Duration::from_secs(60)));
         assert_eq!(config.interruptible_gap, Some(0.05));
         assert_eq!(config.improve_threshold, Some(1e-6));
+    }
+
+    #[test]
+    fn default_function_expansion_policy_stays_eager() {
+        let config = SolverConfig::new("default_policy");
+        assert_eq!(
+            config.function_expansion_policy,
+            FunctionExpansionPolicy::Eager
+        );
+        // 默认配置在任何能力集合下都解析为 Eager，保证历史行为不变。
+        // The default configuration resolves to Eager under any capability set, keeping
+        // historical behaviour.
+        assert_eq!(
+            config.resolved_function_expansion_policy(&[SolverCapability::NativeIndicator]),
+            FunctionExpansionPolicy::Eager
+        );
+        assert_eq!(
+            SolverConfig::recommended_defaults("recommended").function_expansion_policy,
+            FunctionExpansionPolicy::Eager
+        );
+    }
+
+    #[test]
+    fn auto_policy_passes_the_capability_gate() {
+        let mut config = SolverConfig::new("auto_policy");
+        config.function_expansion_policy = FunctionExpansionPolicy::Auto;
+
+        // 求解器声明原生 indicator 能力时保留结构并尝试原生接口。
+        // With native indicator support the structure is kept for a native attempt.
+        assert_eq!(
+            config.resolved_function_expansion_policy(&[
+                SolverCapability::Linear,
+                SolverCapability::NativeIndicator,
+            ]),
+            FunctionExpansionPolicy::DeferredNativeFirst
+        );
+
+        // 没有任何原生函数相关能力时退回即时展开，不保留无用的延迟状态。
+        // Without any native function-related capability the policy falls back to eager expansion
+        // instead of keeping useless deferred state.
+        for capabilities in [
+            Vec::new(),
+            vec![SolverCapability::Linear],
+            vec![
+                SolverCapability::Mip,
+                SolverCapability::Quadratic,
+                SolverCapability::NativeSOS1,
+            ],
+        ] {
+            assert_eq!(
+                config.resolved_function_expansion_policy(&capabilities),
+                FunctionExpansionPolicy::Eager
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_policies_ignore_the_capability_gate() {
+        let mut eager = SolverConfig::new("explicit_eager");
+        eager.function_expansion_policy = FunctionExpansionPolicy::Eager;
+        assert_eq!(
+            eager.resolved_function_expansion_policy(&[SolverCapability::NativeIndicator]),
+            FunctionExpansionPolicy::Eager
+        );
+
+        let mut deferred = SolverConfig::new("explicit_deferred");
+        deferred.function_expansion_policy = FunctionExpansionPolicy::DeferredNativeFirst;
+        assert_eq!(
+            deferred.resolved_function_expansion_policy(&[]),
+            FunctionExpansionPolicy::DeferredNativeFirst
+        );
     }
 }

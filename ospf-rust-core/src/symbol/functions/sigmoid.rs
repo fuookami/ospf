@@ -834,6 +834,161 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("sigmoid({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Sigmoid 的机制约束不依赖令牌边界：分段点、权重与所有参数都已固定在符号自身，因此总是
+        // 提供结构；是否真的走原生接口由 writer 按其能力决定，回退语义留在模型层。
+        // Sigmoid's mechanism constraints do not depend on token bounds: the breakpoints, weights and
+        // all parameters are intrinsic to the symbol, so a structure is always offered. Whether the
+        // native interface is actually used is the writer's decision, while fallback semantics stay
+        // in the model layer.
+        Some(Arc::new(SigmoidStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+        )))
+    }
+}
+
+/// Sigmoid 的求解器无关结构描述 / Solver-neutral structure description of sigmoid
+///
+/// 与 SEMI 采用同一模式：持有产生它的符号（`Arc`），物化时通过 `IntermediateSymbol` 的同一份机制
+/// 约束生成器产出全部行，因此延迟物化与 EAGER 展开逐行一致。分段指示列与内部分段权重列
+/// （lambda）都是本结构的辅助列，必须一并上报，否则原生路径会错误地认为它们可以省略。
+///
+/// Follows the same pattern as SEMI: the structure holds the symbol that produced it (an `Arc`) and
+/// materializes through the very same mechanism-constraint generator, so deferred materialization
+/// stays row-identical to eager expansion. Both the segment indicator columns and the inner segment
+/// weight columns (lambda) are helpers of this structure and must be reported together; otherwise a
+/// native path would wrongly consider them omittable.
+#[derive(Debug)]
+pub struct SigmoidStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<SigmoidFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 辅助列（分段指示列 + 分段权重列）/ Helper columns (segment indicators + segment weights)
+    helpers: Vec<crate::variable::VariableId>,
+}
+
+impl<V> SigmoidStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<SigmoidFunction<V>>) -> Self {
+        let result = symbol.result_variable().id();
+        let mut helpers: Vec<crate::variable::VariableId> = symbol
+            .segment_variables()
+            .iter()
+            .map(|segment| segment.id())
+            .collect();
+        helpers.extend(
+            symbol
+                .inner
+                .lambda_variables()
+                .iter()
+                .map(|lambda| lambda.id()),
+        );
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            helpers,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取辅助列 / Get the helper columns.
+    pub fn helpers(&self) -> &[crate::variable::VariableId] {
+        &self.helpers
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for SigmoidStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 分段指示列与分段权重列都属于本结构的辅助列。
+        // Both the segment indicators and the segment weights are helpers of this structure.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            self.helpers.clone(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        let helpers = self
+            .helpers
+            .iter()
+            .map(|helper| helper.unique_id().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        Some(format!(
+            "sigmoid|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            helpers
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器，保证两条路径逐行一致。
+        // Reuse the eager path's generator so both paths stay row-identical.
+        <SigmoidFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+            &self.symbol,
+            symbol_to_index,
+        )
+    }
 }
 
 impl<V> FunctionSymbol<V> for SigmoidFunction<V>
@@ -980,5 +1135,66 @@ mod tests {
         assert_eq!(constraints.len(), 3);
         assert_eq!(step.to_linear_polynomial().monomials().len(), 1);
         assert_eq!(step.evaluate(&0.1).unwrap(), Some(1.0));
+    }
+
+    #[test]
+    fn sigmoid_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(60_100),
+            "x",
+            VariableRange::bounded(-6.0, 6.0),
+        );
+        let points = SigmoidFunction::<f64>::sampling_points(SigmoidPrecision::Half, 2.0);
+        let f: SigmoidFunction<f64> = SigmoidFunction::with_points(
+            7001,
+            "sigmoid_deferred",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            points,
+        );
+
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        let mut auxiliary = Vec::new();
+        <SigmoidFunction<f64> as IntermediateSymbol<f64>>::register_auxiliary_tokens(
+            &f,
+            &mut auxiliary,
+        )
+        .expect("sigmoid auxiliary tokens should register");
+        let mut symbol_to_index = std::collections::HashMap::new();
+        for token in &auxiliary {
+            symbol_to_index.insert(token.id().unique_id() as usize, tokens.len());
+            tokens.push(token.clone());
+        }
+
+        let structure = f
+            .deferred_structure_with_tokens(&tokens)
+            .expect("sigmoid should always expose a deferred structure");
+        assert_eq!(structure.function_name(), "sigmoid_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("sigmoid structure should expose a usage binding");
+        assert_eq!(binding.result, f.result_variable().id());
+        // 分段指示列与分段权重列都必须上报，否则原生路径会误判它们可省略。
+        assert!(binding.helpers.len() > f.segment_variables().len());
+        assert!(structure.fingerprint().is_some());
+
+        let eager = <SigmoidFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+            &f,
+            &symbol_to_index,
+        )
+        .expect("eager sigmoid constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("sigmoid structure should materialize");
+        assert!(!eager.is_empty());
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
     }
 }

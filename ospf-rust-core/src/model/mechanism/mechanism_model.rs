@@ -3,8 +3,9 @@
 
 use super::super::flatten::{Linear, LinearMonomial, Quadratic, QuadraticMonomial};
 use super::super::intermediate::{
-    BasicLinearTriadModel, BasicQuadraticTetradModel, LinearTriadModel, QuadraticTetradModel,
-    SparseMatrix, SparseVector,
+    BasicLinearTriadModel, BasicQuadraticTetradModel, FunctionUsageSummary, LinearTriadModel,
+    NativeFunctionWriterRegistry, NativeLoweringReport, NativeWriteOutcome, NativeWriteRequest,
+    QuadraticTetradModel, SparseMatrix, SparseVector,
 };
 use super::super::object::{Objective, ObjectiveCategory};
 use super::super::{ModelBuildingStage, ModelBuildingStatus, ModelBuildingStatusCallback};
@@ -52,6 +53,67 @@ where
     objective: Objective<V>,
 }
 
+/// 求解器列视图的一列 / One column of the solver column view
+///
+/// 两阶段原生写入（先建列、再做 lowering、最后装载行）需要在**转换之前**构造求解器变量，因此
+/// 需要一个与转换等价的列描述。该视图按 `BasicMechanismModel::tokens()` 的顺序给出，边界与类型
+/// 采用与 `BasicLinearTriadModel::add_variable` 完全相同的规则，顺序也与它一致，从而保证两阶段
+/// 建立的列与随后转换得到的三角模型逐列对应。
+///
+/// Two-phase native writing (create columns, then lower, then load rows) has to build solver variables
+/// *before* the conversion, so it needs a column description equivalent to that conversion. This view
+/// follows the order of `BasicMechanismModel::tokens()` and uses exactly the bound and type rules of
+/// `BasicLinearTriadModel::add_variable`, in the same order, so the columns created in phase one line
+/// up column-for-column with the triad produced afterwards.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinearColumnView {
+    /// 列 ID / Column ID
+    pub id: crate::variable::VariableId,
+    /// 列名称 / Column name
+    pub name: String,
+    /// 下界 / Lower bound
+    pub lb: f64,
+    /// 上界 / Upper bound
+    pub ub: f64,
+    /// 变量类型 / Variable type
+    pub var_type: crate::variable::VariableType,
+    /// 初始值（`Start`）/ Initial value (`Start`)
+    pub start: Option<f64>,
+}
+
+impl<V> MechanismModel<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + num_traits::ToPrimitive,
+{
+    /// 构造与线性三角模型逐列等价的求解器列视图 / Build the solver column view equivalent to the linear triad
+    ///
+    /// 顺序、边界与类型都与 `try_into_linear_triad_model*` 的变量转换一致。
+    ///
+    /// The order, bounds and types match the variable conversion of `try_into_linear_triad_model*`.
+    pub fn linear_column_view(&self) -> Vec<LinearColumnView> {
+        self.basic
+            .tokens()
+            .iter()
+            .map(|token| LinearColumnView {
+                id: token.id(),
+                name: token.variable.name().to_string(),
+                lb: token
+                    .variable
+                    .lower_bound()
+                    .and_then(|bound| bound.to_f64())
+                    .unwrap_or(f64::NEG_INFINITY),
+                ub: token
+                    .variable
+                    .upper_bound()
+                    .and_then(|bound| bound.to_f64())
+                    .unwrap_or(f64::INFINITY),
+                var_type: token.var_type(),
+                start: token.get_result().and_then(|value| value.to_f64()),
+            })
+            .collect()
+    }
+}
+
 impl<V> MechanismModel<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
@@ -90,6 +152,184 @@ where
     /// 提取基本模型 / Extract basic model
     pub fn into_basic(self) -> BasicMechanismModel<V> {
         self.basic
+    }
+
+    /// 在最终列编号之前尝试原生 lowering，并为其余结构物化通用 fallback。
+    ///
+    /// 这是求解器适配器接入原生接口的唯一入口，流程为：
+    ///
+    /// 1. 策略为 [`FunctionExpansionPolicy::Eager`] 或没有待展开结构时是空操作；
+    /// 2. 用每个结构的 `usage_binding` 与模型已有的引用关系计算使用语境摘要，构造原生写入请求；
+    /// 3. [`NativeFunctionWriterRegistry`] 按注册顺序决定每个结构的去向；
+    /// 4. 已原生写入的结构从待展开列表丢弃（不能再次物化，否则与原生行重复），其余结构一次性
+    ///    物化通用 fallback，保证与 EAGER 展开逐列一致；
+    /// 5. 任一 writer 失败时错误向上传播，模型保持原样，由调用方对整模型回退。
+    ///
+    /// Try native lowering before final column numbering and materialize the generic fallback for
+    /// the remaining structures.
+    ///
+    /// This is the single entry point for a solver adapter to reach native interfaces:
+    ///
+    /// 1. it is a no-op when the policy is [`FunctionExpansionPolicy::Eager`] or nothing is pending;
+    /// 2. requests are built from each structure's `usage_binding` and the model's existing
+    ///    references;
+    /// 3. [`NativeFunctionWriterRegistry`] decides every structure's destination in registration
+    ///    order;
+    /// 4. natively written structures are dropped from the pending list (materializing them again
+    ///    would duplicate the native rows) while the rest are materialized in one step, staying
+    ///    column-identical to eager expansion;
+    /// 5. any writer failure propagates with the model unchanged so the caller can fall back for
+    ///    the whole model.
+    pub fn lower_deferred_functions<C>(
+        &mut self,
+        registry: &NativeFunctionWriterRegistry<C, V>,
+        container: &mut C,
+    ) -> Result<NativeLoweringReport>
+    where
+        C: 'static,
+        V: num_traits::ToPrimitive,
+    {
+        if self.basic.deferred_functions().is_empty() {
+            return Ok(NativeLoweringReport {
+                outcomes: Vec::new(),
+                materialized_fallbacks: 0,
+                native_writes: 0,
+            });
+        }
+
+        let outcomes = {
+            let mut requests = Vec::with_capacity(self.basic.deferred_functions().len());
+            for (index, structure) in self.basic.deferred_functions().iter().enumerate() {
+                let usage = match structure.usage_binding() {
+                    Some(binding) => self.function_usage_summary(
+                        binding.source_symbol_id,
+                        binding.result,
+                        &binding.helpers,
+                    ),
+                    None => FunctionUsageSummary::default(),
+                };
+                requests.push(NativeWriteRequest {
+                    index,
+                    structure: structure.as_ref(),
+                    usage,
+                });
+            }
+            let batch = registry.write_batch(container, &requests)?;
+            // writer 未提供指纹时按结构内容补齐，保证写入记录始终可被恢复阶段校验。
+            // When a writer leaves the fingerprint out, the model fills it from the structure so
+            // every record stays verifiable during recovery.
+            let mut resolved: Vec<NativeWriteOutcome> = Vec::with_capacity(batch.len());
+            for (position, outcome) in batch.into_iter().enumerate() {
+                resolved.push(match outcome {
+                    NativeWriteOutcome::Native(record) => {
+                        // 函数名与指纹都由模型按结构补齐：记录因此可以独立回答"这条原生写入
+                        // 属于哪个函数、写的是什么内容"，恢复阶段不需要再持有结构列表。
+                        // The model fills both the function name and the fingerprint from the
+                        // structure, so a record alone answers "which function and which content";
+                        // recovery does not need to keep the structure list around.
+                        let record = record.with_function(
+                            requests[position].structure.function_name().to_string(),
+                        );
+                        if record.fingerprint.is_none() {
+                            NativeWriteOutcome::Native(
+                                record
+                                    .with_fingerprint(requests[position].structure.fingerprint()),
+                            )
+                        } else {
+                            NativeWriteOutcome::Native(record)
+                        }
+                    }
+                    other => other,
+                });
+            }
+            resolved
+        };
+
+        self.basic.apply_native_lowering(&outcomes)
+    }
+
+    /// 计算某个函数符号结果列与辅助列的使用语境（含目标函数）。
+    ///
+    /// 结果进入目标函数时置位 `in_objective`；结果进入非本函数的约束行时置位 `in_constraint`，
+    /// 其中来自其它中间符号的行同时置位 `nested_as_input`；除结果列之外的辅助列被目标或外部
+    /// 约束引用时置位 `externally_referenced`。
+    ///
+    /// Compute how a function symbol's result and helper columns are used, including the
+    /// objective.
+    ///
+    /// `in_objective` is set when the result enters the objective; `in_constraint` when the result
+    /// enters a constraint row that is not this function's own, with `nested_as_input` additionally
+    /// set for rows coming from another intermediate symbol; `externally_referenced` when a helper
+    /// column other than the result is referenced by the objective or an external constraint.
+    pub fn function_usage_summary(
+        &self,
+        source_symbol_id: u64,
+        result_id: VariableId,
+        helper_ids: &[VariableId],
+    ) -> FunctionUsageSummary
+    where
+        V: num_traits::ToPrimitive,
+    {
+        let mut summary = self
+            .basic
+            .function_usage_summary(source_symbol_id, result_id, helper_ids);
+
+        let result_index = self.basic.find_token(result_id).map(|token| token.solver_index);
+        let helper_indices: Vec<usize> = helper_ids
+            .iter()
+            .filter_map(|id| self.basic.find_token(*id).map(|token| token.solver_index))
+            .collect();
+
+        for sub_objective in &self.objective.sub_objectives {
+            let references_result = result_index.is_some_and(|result_index| {
+                sub_objective
+                    .polynomial
+                    .monomials()
+                    .iter()
+                    .any(|monomial| monomial.var_index() == result_index)
+            });
+            if references_result {
+                summary.in_objective = true;
+            }
+            let references_helper = sub_objective.polynomial.monomials().iter().any(|monomial| {
+                helper_indices
+                    .iter()
+                    .any(|helper_index| monomial.var_index() == *helper_index)
+            });
+            if references_helper {
+                summary.externally_referenced = true;
+            }
+        }
+
+        summary
+    }
+
+    /// 判断某个辅助列是否可以被原生 writer 省略。
+    ///
+    /// 在基本机理模型的判定之上，额外要求该列没有被目标函数引用。`source_symbol_id` 指向本
+    /// 函数符号，用于排除自身的关系行。
+    ///
+    /// Whether a helper column may be omitted by a native writer.
+    ///
+    /// On top of the basic mechanism model check, the column must also be absent from the
+    /// objective. `source_symbol_id` identifies the function symbol so its own rows are excluded.
+    pub fn helper_is_omittable(&self, source_symbol_id: u64, helper_id: VariableId) -> bool
+    where
+        V: num_traits::ToPrimitive,
+    {
+        if !self.basic.helper_is_omittable(source_symbol_id, helper_id) {
+            return false;
+        }
+        let Some(index) = self.basic.find_token(helper_id).map(|token| token.solver_index) else {
+            return false;
+        };
+        !self.objective.sub_objectives.iter().any(|sub_objective| {
+            sub_objective
+                .polynomial
+                .monomials()
+                .iter()
+                .any(|monomial| monomial.var_index() == index)
+        })
     }
 }
 
@@ -1235,9 +1475,14 @@ impl MechanismModel<f64> {
 
     /// 带建模状态回调地转换为线性模型 / Convert to a linear model with a build-status callback.
     pub fn try_into_linear_triad_model_with_status_callback(
-        self,
+        mut self,
         callback: Option<&ModelBuildingStatusCallback>,
     ) -> Result<LinearTriadModel> {
+        // 非原生入口必须获得完整 fallback：转换前物化所有仍然待展开的延迟函数结构。
+        // Non-native entries must receive the complete fallback: materialize every deferred
+        // function structure that is still pending before the conversion.
+        self.basic.materialize_deferred_functions()?;
+
         let mut basic_linear = BasicLinearTriadModel::new(&self.basic.name);
         let model_name = self.basic.name.clone();
         let token_total = self.basic.tokens().len();
@@ -1422,9 +1667,13 @@ impl MechanismModel<f64> {
 
     /// 带建模状态回调地转换为二次模型 / Convert to a quadratic model with a build-status callback.
     pub fn try_into_quadratic_tetrad_model_with_status_callback(
-        self,
+        mut self,
         callback: Option<&ModelBuildingStatusCallback>,
     ) -> Result<QuadraticTetradModel> {
+        // 与线性入口一致：先物化仍然待展开的延迟函数结构。
+        // Same as the linear entry: materialize deferred structures that are still pending.
+        self.basic.materialize_deferred_functions()?;
+
         let model_name = self.basic.name.clone();
         let linear = self
             .clone()

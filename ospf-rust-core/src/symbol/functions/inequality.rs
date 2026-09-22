@@ -637,6 +637,137 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("ineq({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Big-M 必须在结构创建时固定：优先令牌边界推断值，取不到时用配置值；两者都不可用时
+        // 不提供结构，让即时展开给出配置错误，而不是把错误推迟到物化阶段。
+        // The Big-M must be fixed at creation time: the token-inferred value first, the configured
+        // value second; when neither is available no structure is offered so eager expansion
+        // surfaces the configuration error instead of deferring it to materialization.
+        let big_m = match self.infer_big_m_from_tokens(tokens) {
+            Some(inferred) => inferred,
+            None => self.configured_big_m().ok()?,
+        };
+        Some(Arc::new(InequalityStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+            big_m,
+        )))
+    }
+}
+
+/// 关系指示（不等式/等式）的求解器无关结构描述
+/// Solver-neutral structure description of the relation indicator
+///
+/// 与二值化采用同一模式：持有产生它的符号与创建时固定的 Big-M，物化时回调手写路径的同一个公式
+/// 生成器并传入同一个 M，因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。关系指示没有辅助列，
+/// 结构只涉及结果列。
+///
+/// Follows the same pattern as binaryzation: the structure holds the symbol that produced it and the
+/// Big-M fixed at creation time, materializing through the very same formula generator as the
+/// handwritten eager path with that same M, so deferred materialization matches eager expansion row
+/// by row, including the M value. The relation indicator has no helper columns, so the structure
+/// only involves the result column.
+#[derive(Debug)]
+pub struct InequalityStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<InequalityFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 创建时固定的 Big-M / Big-M fixed at creation time
+    big_m: f64,
+}
+
+impl<V> InequalityStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<InequalityFunction<V>>, big_m: f64) -> Self {
+        let result = symbol.result_variable().id();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            big_m,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取固定的 Big-M / Get the fixed Big-M.
+    pub fn big_m(&self) -> f64 {
+        self.big_m
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for InequalityStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 关系指示没有辅助列，只上报结果列。
+        // The relation indicator has no helper columns, so only the result column is reported.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            Vec::new(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        Some(format!(
+            "inequality|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            crate::model::intermediate::fingerprint_float(self.big_m)
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器与同一个 Big-M，保证两条路径逐行一致。
+        // Reuse the eager path's generator and the same Big-M so both paths stay row-identical.
+        self.symbol
+            .build_mechanism_constraints(symbol_to_index, self.big_m)
+    }
 }
 
 impl<V> FunctionSymbol<V> for InequalityFunction<V>
@@ -738,6 +869,74 @@ mod tests {
             ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-9,
             ConstraintRelation::GreaterEqual => lhs + 1e-9 >= constraint.inequality.rhs,
         }
+    }
+
+    #[test]
+    fn inequality_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(40_100),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        let f: InequalityFunction<f64> = InequalityFunction::less_equal(
+            5001,
+            "ineq_deferred",
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            0.0,
+            100.0,
+        );
+        let result_id = f.result_variable().id().unique_id() as usize;
+        let symbol_to_index = HashMap::from([(result_id, 1usize)]);
+        let tokens = vec![
+            Token::from_generic(x, 0),
+            Token::from_generic(f.result_variable().clone(), 1),
+        ];
+
+        let structure = f
+            .deferred_structure_with_tokens(&tokens)
+            .expect("inequality should expose a deferred structure");
+        assert_eq!(structure.function_name(), "ineq_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("inequality structure should expose a usage binding");
+        assert_eq!(binding.result, f.result_variable().id());
+        assert!(binding.helpers.is_empty());
+        assert!(structure.fingerprint().is_some());
+
+        let eager = f
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("eager inequality constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("inequality structure should materialize");
+        assert!(!eager.is_empty());
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+
+        // 没有令牌边界时退回配置 Big-M，两条路径仍一致。
+        // Without token bounds the configured Big-M is used and both paths still agree.
+        let no_tokens_structure = f
+            .deferred_structure_with_tokens(&[])
+            .expect("inequality should fall back to the configured big-M");
+        let eager_default =
+            <InequalityFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+                &f,
+                &symbol_to_index,
+            )
+            .expect("eager inequality constraints should be generated");
+        let deferred_default = no_tokens_structure
+            .materialize(&symbol_to_index)
+            .expect("inequality structure should materialize");
+        assert_eq!(eager_default.len(), deferred_default.len());
+        assert_eq!(eager_default[0].name, deferred_default[0].name);
     }
 
     #[test]

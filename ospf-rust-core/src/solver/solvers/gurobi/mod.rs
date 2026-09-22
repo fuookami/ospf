@@ -14,6 +14,7 @@
 
 mod config;
 mod linear;
+mod native;
 mod quadratic;
 mod solver;
 
@@ -24,6 +25,7 @@ pub use config::{
     GurobiNumericDiagnosticsCallback, GurobiNumericProfile, GurobiStage, GurobiStageCallback,
     GurobiStageStatus, GurobiTelemetryCallback, GurobiTelemetryStatus,
 };
+pub use native::{AbsNativePlan, GUROBI_ABS_SCHEMA, GurobiAbsWriter, GurobiNativeContainer};
 pub use solver::GurobiSolver;
 
 #[cfg(test)]

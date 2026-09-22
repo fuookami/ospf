@@ -405,6 +405,126 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("semi({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // SEMI 只有一种固定形态（结果列 + 指示列 + 两行上下界），语义不依赖令牌边界，因此总是
+        // 提供结构；是否真的走原生接口由 writer 按其能力与范围证明决定，回退语义留在模型层。
+        // SEMI has a single fixed form (result column, indicator column and the two bound rows) and
+        // its semantics do not depend on token bounds, so a structure is always offered; whether the
+        // native interface is actually used is the writer's decision based on its capabilities and
+        // range proof, while fallback semantics stay in the model layer.
+        Some(Arc::new(SemiStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+        )))
+    }
+}
+
+/// SEMI 的求解器无关结构描述 / Solver-neutral structure description of SEMI
+///
+/// 结构与 ABS/NOT 等采用同一模式：持有产生它的符号（`Arc`），物化时回调手写路径的同一个公式
+/// 生成器，因此延迟物化与 EAGER 展开逐行一致；语义不依赖令牌边界，所以总是提供结构，由 writer
+/// 决定是否原生写入。
+///
+/// Follows the same pattern as ABS and NOT: the structure holds the symbol that produced it (an
+/// `Arc`) and materializes through the very same formula generator as the handwritten eager path, so
+/// deferred materialization stays row-identical to eager expansion. Its semantics do not depend on
+/// token bounds, so a structure is always offered and the writer decides whether to write natively.
+#[derive(Debug)]
+pub struct SemiStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<SemiFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 指示辅助列 / Indicator helper column
+    indicator: crate::variable::VariableId,
+}
+
+impl<V> SemiStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<SemiFunction<V>>) -> Self {
+        let result = symbol.result_variable().id();
+        let indicator = symbol.indicator_variable().id();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            indicator,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取指示辅助列 / Get the indicator helper column.
+    pub fn indicator(&self) -> &crate::variable::VariableId {
+        &self.indicator
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for SemiStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 指示列是本结构的辅助列：它是否被外部引用决定原生路径能否省略它。
+        // The indicator column is a helper of this structure; whether it is referenced externally
+        // decides if a native path may omit it.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            vec![self.indicator.clone()],
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        Some(format!(
+            "semi|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            self.indicator.unique_id()
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器，保证两条路径逐行一致。
+        // Reuse the eager path's generator so both paths stay row-identical.
+        <SemiFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+            &self.symbol,
+            symbol_to_index,
+        )
+    }
 }
 
 impl<V> FunctionSymbol<V> for SemiFunction<V>
@@ -474,6 +594,48 @@ where
 mod tests {
     use super::*;
     use crate::variable::VariableRange;
+
+    #[test]
+    fn semi_structure_materializes_the_same_rows_as_eager_expansion() {
+        let semi: SemiFunction<f64> = SemiFunction::new(8801, "semi_deferred", 2.0, 5.0);
+        let result_id = semi.result_variable().id().unique_id() as usize;
+        let indicator_id = semi.indicator_variable().id().unique_id() as usize;
+        let symbol_to_index = std::collections::HashMap::from([
+            (result_id, 1usize),
+            (indicator_id, 2usize),
+        ]);
+
+        let structure = semi
+            .deferred_structure_with_tokens(&[])
+            .expect("semi should always expose a deferred structure");
+        assert_eq!(structure.function_name(), "semi_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("semi structure should expose a usage binding");
+        assert_eq!(binding.result, semi.result_variable().id());
+        assert_eq!(binding.helpers, vec![semi.indicator_variable().id()]);
+        assert!(structure.fingerprint().is_some());
+
+        let eager = <SemiFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+            &semi,
+            &symbol_to_index,
+        )
+        .expect("eager semi constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("semi structure should materialize");
+        assert_eq!(eager.len(), 2);
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+    }
 
     #[test]
     fn semi_function_derives_bounds_from_variable_range() {

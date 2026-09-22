@@ -15,7 +15,7 @@
 //! 它们将二次多项式视图与基础函数符号组合在一起，为了便利和向后兼容而保留在此 / that combine quadratic polynomial views with base function symbols, kept here for convenience and backward compatibility
 
 use crate::error::{ModelError, Result};
-use crate::model::{LinearConstraint, QuadraticConstraint};
+use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality, QuadraticConstraint};
 use crate::symbol::flatten::{Linear, LinearMonomial, Quadratic};
 use crate::token::{IntoValue, Token, TokenList};
 #[cfg(test)]
@@ -35,7 +35,7 @@ use super::super::{
 };
 use super::big_m::{
     infer_big_m_for_quadratic_polynomials, infer_quadratic_abs_bound_from_tokens,
-    infer_quadratic_difference_abs_bound_from_tokens,
+    infer_quadratic_bounds_from_tokens, infer_quadratic_difference_abs_bound_from_tokens,
     infer_quadratic_shifted_abs_bound_from_tokens,
 };
 use super::quadratic_linear::*;
@@ -3554,6 +3554,17 @@ where
     }
 }
 
+/// 二次正部输入的已知符号 / Known sign of a quadratic positive-part input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KnownSign {
+    /// 输入在有限域上恒非负，结果等于输入本身。
+    /// The input is non-negative over its finite domain, so the result equals the input.
+    NonNegative,
+    /// 输入在有限域上恒非正，结果恒为零。
+    /// The input is non-positive over its finite domain, so the result is always zero.
+    NonPositive,
+}
+
 /// 二次输入的正部函数符号（max(f, 0)）/ Quadratic-input positive-part function symbol (max(f, 0))
 #[derive(Debug, Clone)]
 pub struct QuadraticPositivePartFunction<V = f64>
@@ -3724,6 +3735,126 @@ where
     }
 }
 
+impl<V> QuadraticPositivePartFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    /// 二次输入在有限域上恒非负或恒非正时，`max(p(x), 0)` 退化为恒等或恒零。
+    ///
+    /// A quadratic input that is provably non-negative or non-positive over a finite
+    /// domain degenerates `max(p(x), 0)` into the identity or into zero.
+    fn known_input_sign(&self, tokens: &[Token<V>]) -> Option<KnownSign> {
+        let (lower, upper) = infer_quadratic_bounds_from_tokens(&self.input, tokens)?;
+        if lower >= 0.0 {
+            Some(KnownSign::NonNegative)
+        } else if upper <= 0.0 {
+            Some(KnownSign::NonPositive)
+        } else {
+            None
+        }
+    }
+
+    /// 从已注册令牌判断输入符号；选择器未注册时说明注册阶段已判定符号已知。
+    ///
+    /// 选择器缺席只说明"符号已知"，不携带方向；方向必须由令牌边界重新推导，因此该路径
+    /// 要求调用方改用 [`IntermediateSymbol::mechanism_constraints_with_tokens`]。
+    ///
+    /// Determine the input sign from the registered tokens. A missing selector means the
+    /// registration step already established a known sign, but it does not carry the
+    /// direction; the direction has to be re-derived from token bounds, so this path
+    /// requires the caller to use
+    /// [`IntermediateSymbol::mechanism_constraints_with_tokens`] instead.
+    fn registered_input_sign(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Option<KnownSign>> {
+        let Some(selectors) = self.inner.selector_variables() else {
+            return Ok(None);
+        };
+        if selectors
+            .iter()
+            .any(|var| symbol_to_index.contains_key(&(var.id().unique_id() as usize)))
+        {
+            return Ok(None);
+        }
+        Err(ModelError::InvalidConstraint(format!(
+            "quadratic positive-part `{}` dropped its selectors for a sign-known input and needs the token context to rebuild the equality; use `mechanism_constraints_with_tokens`",
+            self.id.name
+        ))
+        .into())
+    }
+
+    /// 生成符号已知时的等式约束：非负输入为 `result = mapped_input`，非正输入为 `result = 0`。
+    ///
+    /// Build the equality used when the input sign is known: `result = mapped_input` for a
+    /// non-negative input and `result = 0` for a non-positive input.
+    fn sign_known_constraint(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        mapped_input: &Linear<V>,
+        sign: KnownSign,
+    ) -> Result<LinearConstraint<V>> {
+        let result_index = symbol_to_index
+            .get(&(self.inner.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic positive-part result variable id {}",
+                    self.inner.result_variable().id().unique_id()
+                ))
+            })?;
+
+        let mut monomials = vec![LinearMonomial::new(
+            from_f64(1.0).expect("convert 1.0"),
+            result_index,
+        )];
+        let constant = match sign {
+            KnownSign::NonNegative => {
+                for monomial in mapped_input.monomials() {
+                    let coefficient = to_f64(monomial.coefficient()).ok_or_else(|| {
+                        ModelError::InvalidConstraint(format!(
+                            "quadratic positive-part `{}` input coefficient cannot be converted to f64",
+                            self.id.name
+                        ))
+                    })?;
+                    monomials.push(LinearMonomial::new(
+                        convert_f64_to_v::<V>(-coefficient, "quadratic positive-part input")?,
+                        monomial.var_index(),
+                    ));
+                }
+                let constant = to_f64(mapped_input.constant_term()).ok_or_else(|| {
+                    ModelError::InvalidConstraint(format!(
+                        "quadratic positive-part `{}` input constant cannot be converted to f64",
+                        self.id.name
+                    ))
+                })?;
+                convert_f64_to_v::<V>(-constant, "quadratic positive-part constant")?
+            }
+            KnownSign::NonPositive => from_f64(0.0).expect("convert 0.0"),
+        };
+
+        Ok(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(monomials, constant),
+                ConstraintRelation::Equal,
+                from_f64(0.0).expect("convert 0.0"),
+            ),
+            &format!("{}_sign_known", self.id.name),
+            Arc::new(self.clone()),
+        ))
+    }
+}
+
 impl<V> IntermediateSymbol<V> for QuadraticPositivePartFunction<V>
 where
     V: Clone
@@ -3764,6 +3895,27 @@ where
         <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
     }
 
+    fn register_auxiliary_tokens_with_context(
+        &self,
+        tokens: &mut Vec<Token<V>>,
+        registered: &[Token<V>],
+    ) -> Result<()> {
+        if self.bridge.has_quadratic_terms() {
+            self.bridge.register_tokens(tokens)?;
+        }
+        // 输入符号已知时不需要选择器与 Big-M，只保留结果列。
+        // A known input sign needs no selector or Big-M and keeps only the result column.
+        if self.known_input_sign(registered).is_some() {
+            let result_variable = self.inner.result_variable().clone();
+            tokens.push(Token::from_generic(
+                result_variable.clone(),
+                result_variable.index(),
+            ));
+            return Ok(());
+        }
+        self.inner.register_tokens(tokens)
+    }
+
     fn mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
@@ -3774,6 +3926,10 @@ where
         } else {
             Vec::new()
         };
+        if let Some(sign) = self.registered_input_sign(symbol_to_index)? {
+            constraints.push(self.sign_known_constraint(symbol_to_index, &mapped_input, sign)?);
+            return Ok(constraints);
+        }
         let zero_input = Linear::new(vec![], from_f64(0.0).expect("convert 0.0"));
         let mapped_inner = self.inner.with_polynomials(vec![mapped_input, zero_input]);
         if let Some(big_m) = self.explicit_big_m_f64()? {
@@ -3796,6 +3952,10 @@ where
         } else {
             Vec::new()
         };
+        if let Some(sign) = self.known_input_sign(tokens) {
+            constraints.push(self.sign_known_constraint(symbol_to_index, &mapped_input, sign)?);
+            return Ok(constraints);
+        }
         let zero_input = Linear::new(vec![], from_f64(0.0).expect("convert 0.0"));
         let mapped_inner = self.inner.with_polynomials(vec![mapped_input, zero_input]);
         let inferred = infer_quadratic_abs_bound_from_tokens(&self.input, tokens);
@@ -4714,7 +4874,7 @@ mod tests {
     }
 
     #[test]
-    fn quadratic_positive_part_infers_big_m_from_original_bounds() {
+    fn quadratic_positive_part_uses_a_sign_known_equality_when_the_input_is_non_negative() {
         let x = ContinuousVariableItem::with_range(
             VariableId::standalone(0),
             "x",
@@ -4724,35 +4884,107 @@ mod tests {
         let positive_part: QuadraticPositivePartFunction<f64> =
             QuadraticPositivePartFunction::new(20102, "qpositive_part_bound", quad);
 
+        // 注册阶段即可判定输入非负，因此只保留桥接列与结果列，不再产生选择器。
+        // Registration already proves a non-negative input, so only the bridge and the
+        // result column remain and no selector is created.
         let mut aux_tokens = Vec::new();
         positive_part
-            .register_tokens(&mut aux_tokens)
+            .register_auxiliary_tokens_with_context(&mut aux_tokens, std::slice::from_ref(&{
+                Token::from_generic(x.clone(), 0)
+            }))
             .expect("quadratic positive-part tokens should be registered");
+        assert_eq!(aux_tokens.len(), 2, "bridge plus result column");
+
         let symbol_to_index = token_index_map(&aux_tokens);
-        let selector_id = aux_tokens
-            .iter()
-            .find(|token| {
-                token.id() != positive_part.bridge.result_variable().id()
-                    && token.id() != positive_part.result_variable().id()
-            })
-            .expect("positive-part selector token should exist")
-            .id()
-            .unique_id() as usize;
-        let selector_index = *symbol_to_index
-            .get(&selector_id)
-            .expect("positive-part selector index should exist");
         let mut tokens = vec![Token::from_generic(x, 0)];
         tokens.extend(aux_tokens);
 
         let constraints = positive_part
             .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
             .expect("quadratic positive-part constraints should be generated");
-        let upper = constraints
-            .iter()
-            .find(|constraint| constraint.name == "qpositive_part_bound_max_ub_0")
-            .expect("positive-part max upper constraint should exist");
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].name, "qpositive_part_bound_sign_known");
 
-        assert!((coefficient_for_index(upper, selector_index) - 4.0).abs() <= 1e-9);
+        // `result - bridge = 0`：非负输入下正部等于输入本身。
+        // `result - bridge = 0`: with a non-negative input the positive part is the input.
+        let result_index = *symbol_to_index
+            .get(&(positive_part.result_variable().id().unique_id() as usize))
+            .expect("result index should exist");
+        let bridge_index = *symbol_to_index
+            .get(&(positive_part.bridge.result_variable().id().unique_id() as usize))
+            .expect("bridge index should exist");
+        assert!((coefficient_for_index(&constraints[0], result_index) - 1.0).abs() <= 1e-9);
+        assert!((coefficient_for_index(&constraints[0], bridge_index) + 1.0).abs() <= 1e-9);
+        assert_eq!(constraints[0].inequality.relation, ConstraintRelation::Equal);
+    }
+
+    #[test]
+    fn quadratic_positive_part_uses_a_zero_equality_when_the_input_is_non_positive() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(-3.0, -1.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, 0)], 0.0);
+        let positive_part: QuadraticPositivePartFunction<f64> =
+            QuadraticPositivePartFunction::new(20103, "qpositive_part_negative", quad);
+
+        let registered = vec![Token::from_generic(x, 0)];
+        let mut aux_tokens = Vec::new();
+        positive_part
+            .register_auxiliary_tokens_with_context(&mut aux_tokens, &registered)
+            .expect("quadratic positive-part tokens should be registered");
+        assert_eq!(aux_tokens.len(), 1, "result column only");
+
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let mut tokens = registered;
+        tokens.extend(aux_tokens);
+
+        let constraints = positive_part
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic positive-part constraints should be generated");
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].name, "qpositive_part_negative_sign_known");
+        assert_eq!(constraints[0].inequality.relation, ConstraintRelation::Equal);
+        assert!(constraints[0]
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .all(|monomial| monomial.var_index() != 0));
+    }
+
+    #[test]
+    fn quadratic_positive_part_keeps_selectors_when_the_input_sign_is_unknown() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(-1.0, 2.0),
+        );
+        let quad = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], -1.0);
+        let positive_part: QuadraticPositivePartFunction<f64> =
+            QuadraticPositivePartFunction::new(20104, "qpositive_part_mixed", quad);
+
+        let registered = vec![Token::from_generic(x, 0)];
+        let mut aux_tokens = Vec::new();
+        positive_part
+            .register_auxiliary_tokens_with_context(&mut aux_tokens, &registered)
+            .expect("quadratic positive-part tokens should be registered");
+        assert_eq!(aux_tokens.len(), 4, "bridge plus result and two selectors");
+
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let mut tokens = registered;
+        tokens.extend(aux_tokens);
+
+        let constraints = positive_part
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic positive-part constraints should be generated");
+        assert!(constraints
+            .iter()
+            .any(|constraint| constraint.name == "qpositive_part_mixed_max_ub_0"));
+        assert!(!constraints
+            .iter()
+            .any(|constraint| constraint.name == "qpositive_part_mixed_sign_known"));
     }
 
     #[test]

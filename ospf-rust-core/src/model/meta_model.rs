@@ -11,11 +11,14 @@ use crate::model::mechanism::{
     SymbolicQuadraticConstraint, SymbolicQuadraticInequality,
 };
 use crate::model::{
-    BasicModel, MetaModelConfiguration, ModelBuildingStage, ModelBuildingStatus,
-    ModelBuildingStatusCallback, Objective, ObjectiveCategory, SubObjective,
+    BasicModel, FunctionExpansionPolicy, MetaModelConfiguration, ModelBuildingStage,
+    ModelBuildingStatus, ModelBuildingStatusCallback, Objective, ObjectiveCategory, SubObjective,
 };
 use crate::symbol::{IntermediateSymbol, SymbolCombination};
 use crate::token::{IntoValue, Token};
+
+use crate::solver::config::SolverConfig;
+use crate::solver::SolverCapability;
 use crate::variable::{VariableCombination, VariableId, VariableRange, VariableTypeTrait};
 use num_traits::{One, Zero};
 use ospf_rust_math::symbol::{
@@ -599,6 +602,47 @@ where
     /// Set model configuration.
     pub fn set_config(&mut self, config: MetaModelConfiguration) {
         self.config = config;
+        self.basic.config_mut().function_expansion_policy =
+            self.config.basic.function_expansion_policy;
+    }
+
+    /// 设置函数符号展开策略 / Set the function-symbol expansion policy.
+    ///
+    /// 策略同时写入元模型配置与底层基本模型配置，保证建模转换读取到同一个取值。
+    ///
+    /// The policy is written to both the meta-model configuration and the underlying basic model
+    /// configuration so the model conversion reads a single value.
+    pub fn set_function_expansion_policy(&mut self, policy: FunctionExpansionPolicy) {
+        self.config.basic.function_expansion_policy = policy;
+        self.basic.config_mut().function_expansion_policy = policy;
+    }
+
+    /// 获取函数符号展开策略 / Get the function-symbol expansion policy.
+    pub fn function_expansion_policy(&self) -> FunctionExpansionPolicy {
+        self.basic.config().function_expansion_policy
+    }
+
+    /// 采用求解器配置决定的函数符号展开策略。
+    ///
+    /// 求解器配置是求解侧的唯一入口：这里按 [`SolverConfig::resolved_function_expansion_policy`]
+    /// 结合求解器能力解析策略（`Auto` 经能力门解析），再写入元模型与其底层基本模型配置，保证
+    /// 建模转换读取到同一个取值。默认配置为 `Eager`，因此不调用本方法时行为与历史一致。
+    ///
+    /// Adopt the function-symbol expansion policy decided by a solver configuration.
+    ///
+    /// The solver configuration is the single entry point on the solving side: the policy is
+    /// resolved against the given solver capabilities through
+    /// [`SolverConfig::resolved_function_expansion_policy`] (so `Auto` passes the capability gate)
+    /// and then written to both the meta model and its underlying basic model configuration so the
+    /// conversion reads a single value. The default configuration is `Eager`, so behaviour is
+    /// unchanged when this method is not called.
+    pub fn apply_solver_config(
+        &mut self,
+        config: &SolverConfig,
+        capabilities: &[SolverCapability],
+    ) {
+        let policy = config.resolved_function_expansion_policy(capabilities);
+        self.set_function_expansion_policy(policy);
     }
 
     /// 设置目标为最大化。
@@ -932,6 +976,10 @@ where
         V: Add<Output = V>,
     {
         let mut basic_mechanism = BasicMechanismModel::new(&self.basic.name);
+        // 机制模型带着解析后的策略离开建模阶段，供求解器适配器判断是否尝试原生接口。
+        // The mechanism model leaves the modelling stage carrying the resolved policy so a solver
+        // adapter can decide whether to attempt native interfaces.
+        basic_mechanism.set_function_expansion_policy(self.basic.config().function_expansion_policy);
         let model_name = self.basic.name.clone();
 
         let mut symbol_to_index: HashMap<usize, usize> = HashMap::new();
@@ -1070,16 +1118,35 @@ where
 
         for (symbol_index, symbol) in self.basic.symbols().iter().enumerate() {
             let mut auxiliary_tokens = Vec::new();
-            symbol.register_auxiliary_tokens(&mut auxiliary_tokens)?;
+            symbol.register_auxiliary_tokens_with_context(&mut auxiliary_tokens, self.basic.tokens())?;
 
-            let mut generated_constraints =
-                symbol.mechanism_constraints_with_tokens(&symbol_to_index, self.basic.tokens())?;
-            let mut generated_quadratic_constraints = symbol
-                .quadratic_mechanism_constraints_with_tokens(
-                    &symbol_to_index,
-                    self.basic.tokens(),
-                )?;
-            if !auxiliary_tokens.is_empty()
+            // 非 EAGER 策略下优先保留求解器无关结构；没有结构的符号继续即时展开，
+            // 作为通用 fallback，不产生空模型。
+            // A non-EAGER policy prefers the solver-neutral structure; symbols without a
+            // structure keep eager expansion as the generic fallback instead of producing an
+            // empty model.
+            let deferred_structure = if self.basic.config().function_expansion_policy.is_eager() {
+                None
+            } else {
+                symbol.deferred_structure_with_tokens(self.basic.tokens())
+            };
+
+            let mut generated_constraints = if deferred_structure.is_some() {
+                Vec::new()
+            } else {
+                symbol.mechanism_constraints_with_tokens(&symbol_to_index, self.basic.tokens())?
+            };
+            let mut generated_quadratic_constraints = if deferred_structure.is_some() {
+                Vec::new()
+            } else {
+                symbol
+                    .quadratic_mechanism_constraints_with_tokens(
+                        &symbol_to_index,
+                        self.basic.tokens(),
+                    )?
+            };
+            if deferred_structure.is_none()
+                && !auxiliary_tokens.is_empty()
                 && generated_constraints.is_empty()
                 && generated_quadratic_constraints.is_empty()
             {
@@ -1090,17 +1157,24 @@ where
                 .into());
             }
 
-            for mut generated_constraint in generated_constraints.drain(..) {
-                if generated_constraint.from.is_none() {
-                    generated_constraint.set_from(symbol.clone());
+            if let Some(structure) = deferred_structure {
+                // 结构化描述与即时展开二选一：注册列，但不写入即时行。
+                // The structure description and eager expansion are mutually exclusive:
+                // columns are registered, eager rows are not.
+                basic_mechanism.add_deferred_function(structure);
+            } else {
+                for mut generated_constraint in generated_constraints.drain(..) {
+                    if generated_constraint.from.is_none() {
+                        generated_constraint.set_from(symbol.clone());
+                    }
+                    basic_mechanism.add_constraint(generated_constraint);
                 }
-                basic_mechanism.add_constraint(generated_constraint);
-            }
-            for mut generated_constraint in generated_quadratic_constraints.drain(..) {
-                if generated_constraint.from.is_none() {
-                    generated_constraint.set_from(symbol.clone());
+                for mut generated_constraint in generated_quadratic_constraints.drain(..) {
+                    if generated_constraint.from.is_none() {
+                        generated_constraint.set_from(symbol.clone());
+                    }
+                    basic_mechanism.add_quadratic_constraint(generated_constraint);
                 }
-                basic_mechanism.add_quadratic_constraint(generated_constraint);
             }
             Self::emit_model_building_status(
                 callback,
@@ -1819,10 +1893,12 @@ where
 #[cfg(test)]
 mod tests {
     use crate::error::Result;
-    use crate::model::intermediate::{LinearTriadModel, QuadraticTetradModel};
+    use crate::model::intermediate::{
+        FunctionUsageSummary, LinearTriadModel, QuadraticTetradModel,
+    };
     use crate::model::{
-        ConstraintRelation, LinearConstraint, LinearInequality, MetaConstraint, ModelBuildingStage,
-        ModelBuildingStatusCallback, ObjectiveCategory,
+        ConstraintRelation, FunctionExpansionPolicy, LinearConstraint, LinearInequality,
+        MetaConstraint, ModelBuildingStage, ModelBuildingStatusCallback, ObjectiveCategory,
     };
     use crate::solver::{
         LinearSolver, QuadraticSolver, SolverCapability, SolverInfo, SolverOutput, SolverStatus,
@@ -1836,6 +1912,7 @@ mod tests {
         OrFunction, RoundingFunction, SameAsFunction, SatisfiedAmountFunction, SemiFunction,
         SigmoidFunction, SinFunction, XorFunction,
     };
+    use crate::token::Token;
     use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange};
     use ospf_rust_math::symbol::{
         Linear as MathLinear, LinearMonomial as MathLinearMonomial, Quadratic as MathQuadratic,
@@ -4011,6 +4088,1226 @@ mod tests {
                 .iter()
                 .any(|constraint| !satisfies_constraint(constraint, &infeasible_wrong_abs))
         );
+    }
+
+    #[test]
+    fn binary_logic_hull_is_injected_into_mechanism_model() {
+        let mut model = MetaModel::<f64>::new("binary_logic_hull_injection");
+        let x = BinaryVariableItem::create(VariableId::standalone(90_100), "x");
+        let y = BinaryVariableItem::create(VariableId::standalone(90_101), "y");
+        let x_index = model.register_variable(x).unwrap();
+        let y_index = model.register_variable(y).unwrap();
+
+        let and_fn = AndFunction::new(
+            920,
+            "and_hull",
+            vec![
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ],
+        );
+        let and_id = and_fn.result_variable().id();
+        model.add_symbol(Arc::new(and_fn)).unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+
+        // 直接二值输入只注册结果列，不再产生非零指示与侧辅助变量。
+        // Direct binary inputs register the result column only, with no nonzero indicator
+        // or side helper variables.
+        assert_eq!(mechanism.tokens().len(), 3);
+        assert!(mechanism.find_token(and_id).is_some());
+        assert!(
+            mechanism
+                .tokens()
+                .iter()
+                .all(|token| !token.name().contains("_and_nz") && !token.name().contains("_and_side"))
+        );
+
+        let and_constraints = mechanism
+            .constraints()
+            .iter()
+            .filter(|constraint| {
+                constraint
+                    .from
+                    .as_ref()
+                    .map(|symbol| symbol.id().id == 920)
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        let names = and_constraints
+            .iter()
+            .map(|constraint| constraint.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "and_hull_binary_le_0",
+                "and_hull_binary_le_1",
+                "and_hull_binary_sum"
+            ]
+        );
+
+        let x_solver_index = mechanism
+            .tokens()
+            .iter()
+            .find(|token| token.name() == "x")
+            .map(|token| token.solver_index)
+            .unwrap();
+        let y_solver_index = mechanism
+            .tokens()
+            .iter()
+            .find(|token| token.name() == "y")
+            .map(|token| token.solver_index)
+            .unwrap();
+        let result_solver_index = mechanism.find_token(and_id).unwrap().solver_index;
+
+        for x_value in [0.0_f64, 1.0] {
+            for y_value in [0.0_f64, 1.0] {
+                let expected = if x_value == 1.0 && y_value == 1.0 {
+                    1.0
+                } else {
+                    0.0
+                };
+                for result in [0.0_f64, 1.0] {
+                    let values = HashMap::from([
+                        (x_solver_index, x_value),
+                        (y_solver_index, y_value),
+                        (result_solver_index, result),
+                    ]);
+                    let feasible = and_constraints
+                        .iter()
+                        .all(|constraint| satisfies_constraint(constraint, &values));
+                    assert_eq!(
+                        feasible,
+                        result == expected,
+                        "and hull mismatch for x={x_value}, y={y_value}, result={result}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn deferred_expansion_materializes_the_same_abs_rows_as_eager_expansion() {
+        fn abs_rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("abs_expansion_policy");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(91_000),
+                "x",
+                VariableRange::bounded(-3.0, 7.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let abs = AbsFunction::new(
+                940,
+                "abs_policy",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            );
+            model.add_symbol(Arc::new(abs)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 延迟策略在建模阶段不写行，但仍保留结构描述。
+                // A deferred policy writes no row while building but keeps the structure.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+            }
+
+            // 非原生入口（此处为转为线性模型）必须获得完整 fallback。
+            // A non-native entry (here the conversion into a linear model) must receive the
+            // complete fallback.
+            let linear = mechanism.into_linear_triad_model();
+            let mut rows = linear
+                .basic
+                .constraint_names
+                .iter()
+                .enumerate()
+                .map(|(index, name)| {
+                    let mut entries = linear.basic.A.rows[index].entries.clone();
+                    entries.sort_by_key(|(column, _)| *column);
+                    let coefficients = entries
+                        .iter()
+                        .map(|(column, coefficient)| format!("{column}:{coefficient:.12}"))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    format!(
+                        "{name}|{}|{:.12}|{coefficients}",
+                        linear.basic.var_types.len(),
+                        linear.basic.b[index]
+                    )
+                })
+                .collect::<Vec<_>>();
+            rows.sort();
+            rows
+        }
+
+        let eager = abs_rows(FunctionExpansionPolicy::Eager);
+        assert_eq!(eager.len(), 4);
+        // 逐行比较：名称、列类型快照、右端项与稀疏系数都必须一致。
+        // Compare row by row: name, column-type snapshot, right-hand side and sparse
+        // coefficients must all match.
+        assert_eq!(eager, abs_rows(FunctionExpansionPolicy::DeferredNativeFirst));
+        assert_eq!(eager, abs_rows(FunctionExpansionPolicy::Auto));
+    }
+
+    #[test]
+    fn repeated_conversion_of_a_materialized_model_does_not_pollute_canonical_rows() {
+        let mut model = MetaModel::<f64>::new("abs_repeat_conversion");
+        model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(91_040),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+        let abs = AbsFunction::new(
+            944,
+            "abs_repeat",
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        );
+        model.add_symbol(Arc::new(abs)).unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        // 同一 canonical 机制模型重复转换：第二次不得因为第一次物化而多写或少写行。
+        // Converting the same canonical mechanism model twice: the second conversion must not
+        // gain or lose rows because of the first materialization.
+        let first = mechanism
+            .clone()
+            .try_into_linear_triad_model_with_status_callback(None)
+            .unwrap();
+        let second = mechanism
+            .clone()
+            .try_into_linear_triad_model_with_status_callback(None)
+            .unwrap();
+        assert_eq!(first.basic.constraint_names, second.basic.constraint_names);
+        assert_eq!(first.basic.b, second.basic.b);
+        assert_eq!(
+            first.basic.constraint_names.len(),
+            mechanism.as_basic().constraints().len() + 4
+        );
+    }
+
+    #[test]
+    fn deferred_materialization_is_idempotent() {
+        let mut model = MetaModel::<f64>::new("abs_deferred_idempotent");
+        model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(91_010),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+        let abs = AbsFunction::new(
+            941,
+            "abs_idempotent",
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        );
+        model.add_symbol(Arc::new(abs)).unwrap();
+
+        let mut mechanism = model.try_into_mechanism_model().unwrap();
+        mechanism.basic.materialize_deferred_functions().unwrap();
+        assert_eq!(mechanism.as_basic().constraints().len(), 4);
+        assert!(mechanism.as_basic().deferred_functions().is_empty());
+
+        // 重复物化不得重复写行。
+        // Repeated materialization must not duplicate rows.
+        mechanism.basic.materialize_deferred_functions().unwrap();
+        assert_eq!(mechanism.as_basic().constraints().len(), 4);
+
+        // 物化后再转换仍得到同一批行。
+        // Converting after materialization still yields the same rows.
+        let linear = mechanism.into_linear_triad_model();
+        assert_eq!(linear.basic.constraint_names.len(), 4);
+    }
+
+    #[test]
+    fn deferred_materialization_failure_writes_nothing() {
+        let mut mechanism = crate::model::mechanism::BasicMechanismModel::<f64>::new("abs_atomic");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(91_020),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        mechanism.add_token(Token::from_generic(x, 0));
+
+        // 结构引用了未注册的结果列与侧列，物化必须失败。
+        // The structure references unregistered result and side columns, so materialization
+        // must fail.
+        let abs = AbsFunction::<f64>::new(
+            942,
+            "abs_missing_columns",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+        );
+        let structure = <AbsFunction<f64> as crate::symbol::IntermediateSymbol<f64>>::deferred_structure_with_tokens(
+            &abs,
+            mechanism.tokens(),
+        )
+        .expect("abs should expose a deferred structure");
+        mechanism.add_deferred_function(structure);
+        mechanism.add_constraint(LinearConstraint::from_symbol(
+            LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+                ConstraintRelation::LessEqual,
+                1.0_f64,            ),
+            "sentinel",
+            Arc::new(abs.clone()),
+        ));
+
+        let before = mechanism.constraints().len();
+        assert!(mechanism.materialize_deferred_functions().is_err());
+        // 失败必须原子：既不写行，也不丢弃待物化结构。
+        // A failure must be atomic: no row is written and no pending structure is dropped.
+        assert_eq!(mechanism.constraints().len(), before);
+        assert_eq!(mechanism.deferred_functions().len(), 1);
+    }
+
+    #[test]
+    fn deferred_policy_keeps_eager_rows_for_symbols_without_a_structure() {
+        let mut model = MetaModel::<f64>::new("deferred_without_structure");
+        model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(91_030),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+
+        // 非精确 epigraph 形态的 MAX 不提供求解器无关结构描述（语义不同：不收紧结果列），
+        // 必须继续即时展开而不是留下空模型。
+        // The non-exact epigraph form of MAX offers no solver-neutral structure (different
+        // semantics: it does not tighten the result column) and must keep eager expansion instead
+        // of leaving an empty model.
+        let max = MaxFunction::new(
+            943,
+            "max_no_structure",
+            vec![Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0)],
+            false,
+        );
+        model.add_symbol(Arc::new(max)).unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        assert!(!mechanism.as_basic().constraints().is_empty());
+        assert!(mechanism.as_basic().deferred_functions().is_empty());
+
+        // 精确选择器形态则相反：延迟策略下不写即时行、保留结构描述。
+        // The exact selector form is the opposite: under a deferred policy it writes no eager row
+        // and keeps its structure description.
+        let mut exact_model = MetaModel::<f64>::new("deferred_exact_extremum");
+        exact_model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+        let exact_x = ContinuousVariableItem::with_range(
+            VariableId::standalone(95_200),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        let exact_index = exact_model.register_variable(exact_x).unwrap();
+        let exact_max = MaxFunction::new(
+            944,
+            "max_with_structure",
+            vec![Linear::new(
+                vec![LinearMonomial::new(1.0, exact_index)],
+                0.0,
+            )],
+            true,
+        );
+        exact_model.add_symbol(Arc::new(exact_max)).unwrap();
+
+        let exact_mechanism = exact_model.try_into_mechanism_model().unwrap();
+        assert!(exact_mechanism.as_basic().constraints().is_empty());
+        assert_eq!(exact_mechanism.as_basic().deferred_functions().len(), 1);
+    }
+
+    #[test]
+    fn function_usage_summary_separates_own_rows_from_external_use() {
+        // 列顺序：x(0)、第一个 abs 的结果(1)与侧列(2)、第二个 abs 的结果(3)与侧列(4)。
+        // Column order: x(0), the first abs result(1) and side(2), the second abs result(3) and
+        // side(4).
+        let mut model = MetaModel::<f64>::new("usage_nested");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(93_000),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+
+        let first = AbsFunction::new(
+            950,
+            "abs_outer",
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        );
+        let first_result = first.result_variable().id();
+        let first_side = first.side_variable().id();
+        model.add_symbol(Arc::new(first)).unwrap();
+
+        let second = AbsFunction::new(
+            951,
+            "abs_inner",
+            Linear::new(vec![LinearMonomial::new(1.0, 1)], 0.0),
+        );
+        let second_result = second.result_variable().id();
+        let second_side = second.side_variable().id();
+        model.add_symbol(Arc::new(second)).unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+
+        // 外层函数的结果被内层函数当作输入消费。
+        // The outer function's result is consumed as input by the inner function.
+        let outer = mechanism.function_usage_summary(950, first_result, &[first_side]);
+        assert!(outer.in_constraint);
+        assert!(outer.nested_as_input);
+        assert!(!outer.in_objective);
+        assert!(!outer.externally_referenced);
+        assert!(outer.requires_referenceable_result());
+        assert!(outer.helpers_are_exclusive());
+
+        // 内层函数只被自身关系行引用。
+        // The inner function is referenced only by its own relation rows.
+        let inner = mechanism.function_usage_summary(951, second_result, &[second_side]);
+        assert_eq!(inner, FunctionUsageSummary::default());
+        assert!(!inner.requires_referenceable_result());
+    }
+
+    #[test]
+    fn function_usage_summary_detects_objective_and_helper_references() {
+        let mut model = MetaModel::<f64>::new("usage_objective");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(93_010),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+
+        let abs = AbsFunction::new(
+            952,
+            "abs_used",
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        );
+        let result_id = abs.result_variable().id();
+        let side_id = abs.side_variable().id();
+        model.add_symbol(Arc::new(abs)).unwrap();
+
+        // 结果进入目标与用户约束；侧列被另一条用户约束引用。索引即列序号：结果(1)、侧列(2)。
+        // The result enters the objective and a user constraint while the side column is
+        // referenced by another user constraint. Indices are column positions: result(1), side(2).
+        model.add_linear_objective(&[(1, 1.0)], "abs_objective");
+        model
+            .add_linear_constraint(&[(1, 1.0)], ConstraintRelation::LessEqual, 10.0, "result_cap")
+            .unwrap();
+        model
+            .add_linear_constraint(&[(2, 1.0)], ConstraintRelation::LessEqual, 1.0, "side_cap")
+            .unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        let summary = mechanism.function_usage_summary(952, result_id, &[side_id]);
+        assert!(summary.in_objective);
+        assert!(summary.in_constraint);
+        assert!(!summary.nested_as_input);
+        assert!(summary.externally_referenced);
+        assert!(!summary.helpers_are_exclusive());
+
+        // 侧列被外部约束引用，且结果进入目标，两者都不允许省略辅助列。
+        // The side column is referenced externally and the result enters the objective, so the
+        // helper column may not be omitted.
+        assert!(!mechanism.helper_is_omittable(952, side_id));
+    }
+
+    #[test]
+    fn exclusive_helpers_without_extra_bounds_are_omittable() {
+        let mut model = MetaModel::<f64>::new("usage_omittable");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(93_020),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        let x_index = model.register_variable(x).unwrap();
+
+        let abs = AbsFunction::new(
+            953,
+            "abs_exclusive",
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        );
+        let side_id = abs.side_variable().id();
+        model.add_symbol(Arc::new(abs)).unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        // 侧列只在自身关系行中出现，且保持二值变量的默认范围。
+        // The side column appears only in its own relation rows and keeps the binary default
+        // range.
+        assert!(mechanism.helper_is_omittable(953, side_id));
+
+        // 给侧列加额外边界后不再允许省略。
+        // Adding an extra bound to the side column makes it non-omittable.
+        let mut bounded = mechanism.clone();
+        if let Some(index) = bounded
+            .as_basic()
+            .tokens()
+            .iter()
+            .position(|token| token.id() == side_id)
+        {
+            let mut tokens: Vec<Token<f64>> = bounded.as_basic().tokens().to_vec();
+            tokens[index].set_range(VariableRange::bounded(0.0, 0.5));
+            let mut rebuilt = crate::model::mechanism::BasicMechanismModel::<f64>::new("bounded");
+            for token in tokens {
+                rebuilt.add_token(token);
+            }
+            for constraint in bounded.as_basic().constraints() {
+                rebuilt.add_constraint(constraint.clone());
+            }
+            assert!(!rebuilt.helper_is_omittable(953, side_id));
+        }
+    }
+
+    #[test]
+    fn selective_materialization_expands_only_the_requested_structures() {
+        fn build_model() -> MetaModel<f64> {
+            let mut model = MetaModel::<f64>::new("abs_selective_materialization");
+            model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(93_100),
+                "x",
+                VariableRange::bounded(-3.0, 7.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+
+            let first = AbsFunction::new(
+                960,
+                "abs_native_subset",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            );
+            model.add_symbol(Arc::new(first)).unwrap();
+
+            // 第二个函数消费第一个函数的结果，保证两个结构的列都真实存在。
+            // The second function consumes the first one's result so both structures reference
+            // real columns.
+            let second = AbsFunction::new(
+                961,
+                "abs_fallback_subset",
+                Linear::new(vec![LinearMonomial::new(1.0, 1)], 0.0),
+            );
+            model.add_symbol(Arc::new(second)).unwrap();
+            model
+        }
+
+        let mut mechanism = build_model().try_into_mechanism_model().unwrap();
+        assert!(mechanism.as_basic().constraints().is_empty());
+        assert_eq!(mechanism.as_basic().deferred_functions().len(), 2);
+
+        // 只物化第二个结构：第一个结构假设已由原生接口写入。
+        // Materialize only the second structure, assuming the first was written natively.
+        mechanism
+            .basic
+            .materialize_deferred_functions_at(&[1])
+            .unwrap();
+        let rows = mechanism.as_basic().constraints();
+        assert_eq!(rows.len(), 4);
+        assert!(
+            rows.iter()
+                .all(|constraint| constraint.name.starts_with("abs_fallback_subset"))
+        );
+        assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+        assert_eq!(
+            mechanism.as_basic().deferred_functions()[0].function_name(),
+            "abs_native_subset"
+        );
+
+        // 越界索引必须报错且不改动任何状态。
+        // An out-of-range index must fail without changing any state.
+        assert!(
+            mechanism
+                .basic
+                .materialize_deferred_functions_at(&[5])
+                .is_err()
+        );
+        assert_eq!(mechanism.as_basic().constraints().len(), 4);
+        assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+
+        // 剩下的结构物化后，总行数与一次性全量物化一致。
+        // After materializing the remaining structure the total row count matches a single full
+        // materialization.
+        mechanism.basic.materialize_deferred_functions().unwrap();
+        assert!(mechanism.as_basic().deferred_functions().is_empty());
+
+        let full = build_model()
+            .try_into_mechanism_model()
+            .unwrap()
+            .into_linear_triad_model();
+        let mut selective_names = mechanism
+            .as_basic()
+            .constraints()
+            .iter()
+            .map(|constraint| constraint.name.clone())
+            .collect::<Vec<_>>();
+        let mut full_names = full.basic.constraint_names.clone();
+        selective_names.sort();
+        full_names.sort();
+        assert_eq!(selective_names, full_names);
+    }
+
+    #[test]
+    fn solver_config_policy_reaches_the_mechanism_model() {
+        use crate::solver::config::SolverConfig;
+        use crate::solver::SolverCapability;
+
+        fn build_model() -> MetaModel<f64> {
+            let mut model = MetaModel::<f64>::new("solver_config_policy");
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(93_200),
+                "x",
+                VariableRange::bounded(-3.0, 7.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let abs = AbsFunction::new(
+                970,
+                "abs_solver_policy",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            );
+            model.add_symbol(Arc::new(abs)).unwrap();
+            model
+        }
+
+        // 默认求解器配置：即时展开，机制模型记录 Eager。
+        // Default solver configuration: eager expansion with the mechanism model recording Eager.
+        let mut eager_model = build_model();
+        eager_model.apply_solver_config(
+            &SolverConfig::new("default"),
+            &[SolverCapability::NativeIndicator],
+        );
+        let eager_mechanism = eager_model.try_into_mechanism_model().unwrap();
+        assert_eq!(
+            eager_mechanism.as_basic().function_expansion_policy(),
+            FunctionExpansionPolicy::Eager
+        );
+        assert_eq!(eager_mechanism.as_basic().constraints().len(), 4);
+        assert!(eager_mechanism.as_basic().deferred_functions().is_empty());
+
+        // Auto + 原生 indicator 能力：延迟保留结构，机制模型记录解析后的 DeferredNativeFirst。
+        // Auto with native indicator support: the structure stays deferred and the mechanism model
+        // records the resolved DeferredNativeFirst.
+        let mut auto_config = SolverConfig::new("auto");
+        auto_config.function_expansion_policy = FunctionExpansionPolicy::Auto;
+        let mut deferred_model = build_model();
+        deferred_model.apply_solver_config(
+            &auto_config,
+            &[SolverCapability::Linear, SolverCapability::NativeIndicator],
+        );
+        let deferred_mechanism = deferred_model.try_into_mechanism_model().unwrap();
+        assert_eq!(
+            deferred_mechanism.as_basic().function_expansion_policy(),
+            FunctionExpansionPolicy::DeferredNativeFirst
+        );
+        assert!(deferred_mechanism.as_basic().constraints().is_empty());
+        assert_eq!(deferred_mechanism.as_basic().deferred_functions().len(), 1);
+
+        // Auto 但没有原生能力：能力门让策略退回 Eager，模型照常即时展开。
+        // Auto without native capability: the capability gate falls back to Eager and the model
+        // expands eagerly as before.
+        let mut no_native_model = build_model();
+        no_native_model.apply_solver_config(&auto_config, &[SolverCapability::Linear]);
+        let no_native_mechanism = no_native_model.try_into_mechanism_model().unwrap();
+        assert_eq!(
+            no_native_mechanism.as_basic().function_expansion_policy(),
+            FunctionExpansionPolicy::Eager
+        );
+        assert_eq!(no_native_mechanism.as_basic().constraints().len(), 4);
+    }
+
+    #[test]
+    fn fixed_result_columns_forbid_native_writes() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(93_300),
+            "x",
+            VariableRange::bounded(-3.0, 7.0),
+        );
+        let abs = AbsFunction::new(
+            975,
+            "abs_fixed_result",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+        );
+        let result_id = abs.result_variable().id();
+        let side_id = abs.side_variable().id();
+
+        fn build(abs: &AbsFunction<f64>, fixed: bool) -> crate::model::mechanism::BasicMechanismModel<f64> {
+            let mut mechanism =
+                crate::model::mechanism::BasicMechanismModel::<f64>::new("fixed_result");
+            mechanism.add_token(Token::from_generic(
+                ContinuousVariableItem::with_range(
+                    VariableId::standalone(93_300),
+                    "x",
+                    VariableRange::bounded(-3.0, 7.0),
+                ),
+                0,
+            ));
+            let mut result_token = Token::from_generic(abs.result_variable().clone(), 1);
+            if fixed {
+                result_token.set_range(VariableRange::bounded(2.0, 2.0));
+            }
+            mechanism.add_token(result_token);
+            mechanism.add_token(Token::from_generic(abs.side_variable().clone(), 2));
+            mechanism
+        }
+
+        // 未固定：允许原生写入。
+        // Not fixed: a native write is allowed.
+        let open = build(&abs, false);
+        let open_summary = open.function_usage_summary(975, result_id.clone(), &[side_id.clone()]);
+        assert!(!open_summary.result_is_fixed);
+        assert!(!open_summary.forbids_native_write());
+
+        // 结果被固定到单点：必须回退通用展开，因为常量代换会让原生关系失去意义。
+        // The result is fixed to a single point: the generic expansion must be used because
+        // substituting the column would make the native relation meaningless.
+        let fixed = build(&abs, true);
+        let fixed_summary = fixed.function_usage_summary(975, result_id, &[side_id]);
+        assert!(fixed_summary.result_is_fixed);
+        assert!(fixed_summary.forbids_native_write());
+
+        // 单侧有界或无界都不是固定列：这里只声明上界。
+        // One-sided or unbounded ranges are not fixed columns; only an upper bound is declared
+        // here.
+        let mut bounded_token = Token::from_generic(abs.result_variable().clone(), 1);
+        bounded_token.set_range(VariableRange::with_upper(5.0));
+        let mut one_sided = crate::model::mechanism::BasicMechanismModel::<f64>::new("one_sided");
+        one_sided.add_token(Token::from_generic(x, 0));
+        one_sided.add_token(bounded_token);
+        let one_sided_summary = one_sided.function_usage_summary(
+            975,
+            abs.result_variable().id(),
+            &[abs.side_variable().id()],
+        );
+        assert!(!one_sided_summary.result_is_fixed);
+    }
+
+    #[test]
+    fn not_direct_binary_input_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("not_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = BinaryVariableItem::create(VariableId::standalone(95_000), "x");
+            let x_index = model.register_variable(x).unwrap();
+            let not = NotFunction::new(
+                980,
+                "not_pipeline",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            );
+            model.add_symbol(Arc::new(not)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 直接二值输入的 NOT 在延迟策略下不写即时行，但保留结构描述。
+                // A NOT over a direct binary input writes no eager row under a deferred policy
+                // while keeping its structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "not_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        // NOT 的紧凑 hull 是一条等式，中间模型转换会把它拆成 >= 与 <= 两行。
+        // The NOT compact hull is one equality, and the intermediate-model conversion splits it
+        // into a `>=` row and a `<=` row.
+        assert_eq!(
+            eager,
+            vec![
+                "not_pipeline_binary_result_eq_ge".to_string(),
+                "not_pipeline_binary_result_eq_le".to_string(),
+            ]
+        );
+        // 延迟路径经物化后必须与 EAGER 得到同一批行。
+        // The deferred path must produce the same rows as eager expansion once materialized.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn and_or_direct_binary_inputs_defer_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy, use_and: bool) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("logic_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = BinaryVariableItem::create(VariableId::standalone(95_100), "x");
+            let x_index = model.register_variable(x).unwrap();
+            let y = BinaryVariableItem::create(VariableId::standalone(95_101), "y");
+            let y_index = model.register_variable(y).unwrap();
+            let inputs = vec![
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ];
+
+            let name = if use_and { "and_pipeline" } else { "or_pipeline" };
+            if use_and {
+                model
+                    .add_symbol(Arc::new(AndFunction::new(981, name, inputs)))
+                    .unwrap();
+            } else {
+                model
+                    .add_symbol(Arc::new(OrFunction::new(982, name, inputs)))
+                    .unwrap();
+            }
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 全直接二值输入在延迟策略下不写即时行，但保留结构描述。
+                // All-direct-binary inputs write no eager row under a deferred policy while
+                // keeping the structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    name
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        for use_and in [true, false] {
+            let eager = rows(FunctionExpansionPolicy::Eager, use_and);
+            // AND 的紧凑 hull 是「result <= input_i」加一条和式行；OR 是「result >= input_i」
+            // 加一条和式行，都至少两行。
+            // AND's compact hull is "result <= input_i" plus a sum row; OR's is
+            // "result >= input_i" plus a sum row, so both have at least two rows.
+            assert!(eager.len() >= 2, "eager rows: {eager:?}");
+            // 延迟路径经物化后必须与 EAGER 得到同一批行。
+            // The deferred path must produce the same rows as eager expansion once materialized.
+            assert_eq!(
+                eager,
+                rows(FunctionExpansionPolicy::DeferredNativeFirst, use_and)
+            );
+        }
+    }
+
+    #[test]
+    fn exact_extremum_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy, use_max: bool) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("extremum_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_300),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let candidates = vec![
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                Linear::new(vec![LinearMonomial::new(-1.0, x_index)], 2.0),
+            ];
+
+            let name = if use_max {
+                "max_pipeline"
+            } else {
+                "min_pipeline"
+            };
+            if use_max {
+                model
+                    .add_symbol(Arc::new(MaxFunction::new(983, name, candidates, true)))
+                    .unwrap();
+            } else {
+                model
+                    .add_symbol(Arc::new(MinFunction::new(984, name, candidates, true)))
+                    .unwrap();
+            }
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 精确极值在延迟策略下不写即时行，但保留结构描述。
+                // The exact extremum writes no eager row under a deferred policy while keeping its
+                // structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    name
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        for use_max in [true, false] {
+            let eager = rows(FunctionExpansionPolicy::Eager, use_max);
+            // 每个候选至少一条关系行，另有和式行与结果行，因此远多于一行。
+            // Each candidate contributes at least one relation row, plus the sum and result rows,
+            // so there are clearly more than one.
+            assert!(eager.len() > 2, "eager rows: {eager:?}");
+            // 延迟路径经物化后必须与 EAGER 得到同一批行，且 Big-M 取同一组推断值。
+            // The deferred path must produce the same rows as eager expansion once materialized,
+            // using the same inferred Big-M values.
+            assert_eq!(
+                eager,
+                rows(FunctionExpansionPolicy::DeferredNativeFirst, use_max)
+            );
+        }
+    }
+
+    #[test]
+    fn semi_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("semi_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            model
+                .add_symbol(Arc::new(SemiFunction::new(985, "semi_pipeline", 2.0, 5.0)))
+                .unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 半连续在延迟策略下不写即时行，但保留结构描述。
+                // The semi-continuous function writes no eager row under a deferred policy while
+                // keeping its structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "semi_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        // 两行上下界：`result <= upper * indicator` 与 `result >= lower * indicator`。
+        // The two bound rows are `result <= upper * indicator` and `result >= lower * indicator`.
+        assert_eq!(eager.len(), 2, "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行。
+        // The deferred path must produce the same rows as eager expansion once materialized.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn binaryzation_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("binaryzation_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_400),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let f: BinaryzationFunction<f64> = BinaryzationFunction::with_big_m(
+                986,
+                "binaryzation_pipeline",
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                100.0,
+            );
+            model.add_symbol(Arc::new(f)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 二值化在延迟策略下不写即时行，但保留结构描述。
+                // Binaryzation writes no eager row under a deferred policy while keeping its
+                // structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "binaryzation_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行，并使用同一个推断 Big-M。
+        // The deferred path must produce the same rows as eager expansion once materialized, using
+        // the same inferred Big-M.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn relation_indicator_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("relation_indicator_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_500),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let indicator = InequalityFunction::less_equal(
+                987,
+                "relation_indicator_pipeline",
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                0.0,
+                100.0,
+            );
+            model.add_symbol(Arc::new(indicator)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 关系指示在延迟策略下不写即时行，但保留结构描述。
+                // The relation indicator writes no eager row under a deferred policy while keeping
+                // its structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "relation_indicator_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行，并使用同一个推断 Big-M。
+        // The deferred path must produce the same rows as eager expansion once materialized, using
+        // the same inferred Big-M.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn balance_ternaryzation_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("balance_ternaryzation_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_600),
+                "x",
+                VariableRange::bounded(-4.0, 4.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let ternary = BalanceTernaryzationFunction::new(
+                988,
+                "balance_ternaryzation_pipeline",
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                0.5,
+                100.0,
+            );
+            model.add_symbol(Arc::new(ternary)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 平衡三值化在延迟策略下不写即时行，但保留结构描述。
+                // Balance ternaryzation writes no eager row under a deferred policy while keeping
+                // its structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "balance_ternaryzation_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行，并使用同一个推断 Big-M。
+        // The deferred path must produce the same rows as eager expansion once materialized, using
+        // the same inferred Big-M.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn sigmoid_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("sigmoid_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_700),
+                "x",
+                VariableRange::bounded(-6.0, 6.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let sigmoid = SigmoidFunction::with_points(
+                989,
+                "sigmoid_pipeline",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+                SigmoidFunction::<f64>::sampling_points(
+                    crate::symbol::functions::SigmoidPrecision::Half,
+                    2.0,
+                ),
+            );
+            model.add_symbol(Arc::new(sigmoid)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // Sigmoid 在延迟策略下不写即时行，但保留结构描述。
+                // Sigmoid writes no eager row under a deferred policy while keeping its structure
+                // description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "sigmoid_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行。
+        // The deferred path must produce the same rows as eager expansion once materialized.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn if_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("if_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_800),
+                "x",
+                VariableRange::bounded(-5.0, 5.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let if_fn = crate::symbol::function::IfFunction::new(
+                990,
+                "if_pipeline",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], -2.0),
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 3.0),
+            );
+            model.add_symbol(Arc::new(if_fn)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // IF 在延迟策略下不写即时行，但保留结构描述。
+                // IF writes no eager row under a deferred policy while keeping its structure
+                // description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "if_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行。
+        // The deferred path must produce the same rows as eager expansion once materialized.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn masking_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("masking_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_810),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let mask = BinaryVariableItem::create(VariableId::standalone(95_811), "m");
+            model.register_variable(mask.clone()).unwrap();
+            let masking = crate::symbol::function::MaskingFunction::new(
+                991,
+                "masking_pipeline",
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                mask,
+            );
+            model.add_symbol(Arc::new(masking)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 二值掩码在延迟策略下不写即时行，但保留结构描述。
+                // Binary masking writes no eager row under a deferred policy while keeping its
+                // structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "masking_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行。
+        // The deferred path must produce the same rows as eager expansion once materialized.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
+    }
+
+    #[test]
+    fn linear_column_view_matches_the_converted_triad_columns() {
+        let mut model = MetaModel::<f64>::new("column_view");
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(95_900),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        model.register_variable(x).unwrap();
+        let y = BinaryVariableItem::create(VariableId::standalone(95_901), "y");
+        model.register_variable(y).unwrap();
+        let w = ContinuousVariableItem::with_range(
+            VariableId::standalone(95_902),
+            "w",
+            VariableRange::bounded(0.0, 10.0),
+        );
+        model.register_variable(w).unwrap();
+
+        let mechanism = model.try_into_mechanism_model().unwrap();
+        // 两阶段原生写入在转换之前用该视图建列，因此它必须与转换结果逐列一致。
+        // Two-phase native writing builds its columns from this view before the conversion, so it
+        // must match the conversion column for column.
+        let view = mechanism.linear_column_view();
+        let triad = mechanism.into_linear_triad_model();
+
+        assert_eq!(view.len(), triad.basic.variables.len());
+        for (index, column) in view.iter().enumerate() {
+            let token = &triad.basic.variables[index];
+            assert_eq!(column.id, token.id(), "column {index} id");
+            assert_eq!(column.name, token.variable.name(), "column {index} name");
+            assert_eq!(column.lb, triad.lb[index], "column {index} lower bound");
+            assert_eq!(column.ub, triad.ub[index], "column {index} upper bound");
+            assert_eq!(column.var_type, triad.var_types[index], "column {index} type");
+            assert!(column.start.is_none(), "column {index} start");
+        }
+        // 顺序与线性三角模型的列顺序一致：`x`、`y`、`w`。
+        // The order matches the linear triad's column order: `x`, `y`, `w`.
+        let names: Vec<&str> = view.iter().map(|column| column.name.as_str()).collect();
+        assert_eq!(names, vec!["x", "y", "w"]);
     }
 
     #[test]
