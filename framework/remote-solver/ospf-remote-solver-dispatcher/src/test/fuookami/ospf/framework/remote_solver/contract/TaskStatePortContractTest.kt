@@ -14,7 +14,13 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.domain.TaskState
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
+import fuookami.ospf.framework.remote_solver.protocol.domain.QualityTarget
+import fuookami.ospf.framework.remote_solver.protocol.domain.ResumeMode
+import fuookami.ospf.framework.remote_solver.protocol.domain.PreemptionMode
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingEstimate
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingRequest
 import fuookami.ospf.framework.remote_solver.port.TaskStatePort
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -161,6 +167,84 @@ abstract class TaskStatePortContractTest {
                 assertNotNull(loaded)
                 assertEquals(task.taskId, loaded.taskId)
                 assertEquals("tenant-a", loaded.tenantId.value)
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun insertIfAbsentReturnsExistingTaskWithoutOverwriting() {
+        val fixture = createFixture()
+        try {
+            runSuspend {
+                val first = sampleTask(
+                    taskId = "task-idempotent-a",
+                    tenantId = "tenant-idempotent",
+                    requestId = "request-idempotent"
+                )
+                val duplicate = first.copy(
+                    taskId = fuookami.ospf.framework.remote_solver.protocol.domain.TaskId.of("task-idempotent-b"),
+                    priority = 99
+                )
+                val inserted = fixture.subject.insertIfAbsent(first)
+                assertTrue(inserted.inserted)
+                assertEquals(first, inserted.task)
+
+                val conflict = fixture.subject.insertIfAbsent(duplicate)
+                assertTrue(!conflict.inserted)
+                assertEquals(first.taskId, conflict.task.taskId)
+                assertEquals(first.priority, fixture.subject.getTask(first.taskId)?.priority)
+                assertEquals(null, fixture.subject.getTask(duplicate.taskId))
+            }
+        } finally {
+            fixture.close()
+        }
+    }
+
+    @Test
+    fun schedulingPayloadRoundTripsAllFields() {
+        val fixture = createFixture()
+        try {
+            runSuspend {
+                val scheduling = SchedulingRequest(
+                    complexity = TaskComplexity.COMPLEX,
+                    timeSensitivity = TimeSensitivity.REALTIME,
+                    priority = 17,
+                    deadline = kotlin.time.Instant.fromEpochMilliseconds(987654321L),
+                    budgetScope = fuookami.ospf.framework.remote_solver.protocol.domain.BudgetScopeId.of("budget-round-trip"),
+                    budgetLimit = fuookami.ospf.kotlin.math.algebra.number.Flt64(42.5),
+                    estimate = SchedulingEstimate(
+                        runtime = 1200.milliseconds,
+                        checkpoint = 80.milliseconds,
+                        queueWait = 30.milliseconds,
+                        cost = fuookami.ospf.kotlin.math.algebra.number.Flt64(1.25)
+                    ),
+                    modelFingerprint = "model-fingerprint",
+                    modelFingerprintSchema = "sha256-v1",
+                    checkpointRef = ObjectRef.of("checkpoint/round-trip", version = "v7", etag = "etag-cp"),
+                    incumbentRef = ObjectRef.of("incumbent/round-trip", version = "v3", etag = "etag-inc"),
+                    qualityTarget = QualityTarget(
+                        maxGap = fuookami.ospf.kotlin.math.algebra.number.Flt64(0.01),
+                        objectiveLimit = fuookami.ospf.kotlin.math.algebra.number.Flt64(12.0),
+                        requireFeasible = true,
+                        requireOptimal = false,
+                        metadata = mapOf("quality" to "strict")
+                    ),
+                    preemptionMode = PreemptionMode.CONTROLLED_RETURN,
+                    resumeMode = ResumeMode.NATIVE_CHECKPOINT,
+                    metadata = mapOf("owner" to "scheduler-test", "quoted" to "a&b=c")
+                )
+                val task = sampleTask(taskId = "task-scheduling-round-trip").copy(
+                    payload = SolvePayload(
+                        modelData = ModelData.reference(ObjectRef.of("models/scheduling-round-trip")),
+                        scheduling = scheduling
+                    )
+                )
+                fixture.subject.upsertTask(task)
+                val loaded = fixture.subject.getTask(task.taskId)
+                assertNotNull(loaded)
+                assertEquals(scheduling, loaded.payload.scheduling)
             }
         } finally {
             fixture.close()

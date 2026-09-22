@@ -30,12 +30,14 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingRequest
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TenantId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
+import fuookami.ospf.framework.remote_solver.port.TaskInsertResult
 import fuookami.ospf.framework.remote_solver.port.TaskStatePort
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import org.ktorm.database.Database
@@ -234,7 +236,7 @@ class KtormTaskStatePort(
                     UPDATE $resolvedTaskTableName
                     SET request_id = ?, tenant_id = ?, status = ?, complexity = ?, time_sensitivity = ?, priority = ?, deadline_epoch_ms = ?,
                         payload_model_path = ?, payload_model_version = ?, payload_model_etag = ?, payload_model_format = ?,
-                        payload_config_path = ?, payload_config_version = ?, payload_config_etag = ?, payload_config_json = ?,
+                        payload_config_path = ?, payload_config_version = ?, payload_config_etag = ?, payload_config_json = ?, payload_scheduling_json = ?,
                         payload_snapshot_path = ?, payload_snapshot_version = ?, payload_snapshot_etag = ?, payload_task_meta_solver_type = ?,
                         payload_task_meta_target_type = ?, payload_task_meta_time_limit_ms = ?,
                         payload_task_meta_solution_limit = ?, payload_task_meta_estimated_variable_count = ?,
@@ -260,8 +262,8 @@ class KtormTaskStatePort(
                         INSERT INTO $resolvedTaskTableName (
                             task_id, request_id, tenant_id, status, complexity, time_sensitivity, priority, deadline_epoch_ms,
                             payload_model_path, payload_model_version, payload_model_etag, payload_model_format,
-                            payload_config_path, payload_config_version, payload_config_etag, payload_config_json,
-                            payload_snapshot_path, payload_snapshot_version, payload_snapshot_etag, payload_task_meta_solver_type,
+                        payload_config_path, payload_config_version, payload_config_etag, payload_config_json, payload_scheduling_json,
+                        payload_snapshot_path, payload_snapshot_version, payload_snapshot_etag, payload_task_meta_solver_type,
                             payload_task_meta_target_type, payload_task_meta_time_limit_ms,
                             payload_task_meta_solution_limit, payload_task_meta_estimated_variable_count,
                             payload_task_meta_estimated_constraint_count, payload_task_meta_historical_runtime_ms,
@@ -275,7 +277,7 @@ class KtormTaskStatePort(
                             assigned_node_id, created_at_epoch_ms, updated_at_epoch_ms,
                             budget_scope, budget_limit, consumed_cost
                         ) VALUES (
-                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                             ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
@@ -295,6 +297,88 @@ class KtormTaskStatePort(
             }
         }
     }
+
+    /**
+     * Inserts a task under the database's task-id and tenant/request unique
+     * identities.  The pre-check is only an optimisation; the unique index is
+     * the authority for concurrent callers.  If a concurrent insert wins, the
+     * failed transaction is rolled back before reading and returning that row.
+     */
+    override suspend fun insertIfAbsent(task: TaskState): TaskInsertResult {
+        ensureSchema()
+        return withConnection { connection ->
+            connection.autoCommit = false
+            try {
+                selectTaskForInsert(connection, task)?.let { existing ->
+                    connection.rollback()
+                    return@withConnection TaskInsertResult(existing, inserted = false)
+                }
+                try {
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO $resolvedTaskTableName (
+                            task_id, request_id, tenant_id, status, complexity, time_sensitivity, priority, deadline_epoch_ms,
+                            payload_model_path, payload_model_version, payload_model_etag, payload_model_format,
+                            payload_config_path, payload_config_version, payload_config_etag, payload_config_json, payload_scheduling_json,
+                            payload_snapshot_path, payload_snapshot_version, payload_snapshot_etag, payload_task_meta_solver_type,
+                            payload_task_meta_target_type, payload_task_meta_time_limit_ms,
+                            payload_task_meta_solution_limit, payload_task_meta_estimated_variable_count,
+                            payload_task_meta_estimated_constraint_count, payload_task_meta_historical_runtime_ms,
+                            payload_task_meta_metadata, payload_extension, has_latest_result,
+                            latest_result_feasible, latest_result_optimal, latest_result_objective_value,
+                            latest_result_gap, latest_result_elapsed_ms, latest_result_checkpoint_path,
+                            latest_result_checkpoint_version, latest_result_checkpoint_etag, latest_result_result_path,
+                            latest_result_result_version, latest_result_result_etag,
+                            latest_result_message, latest_result_extension, latest_result_report_json,
+                            latest_snapshot_path, latest_snapshot_version, latest_snapshot_etag,
+                            assigned_node_id, created_at_epoch_ms, updated_at_epoch_ms,
+                            budget_scope, budget_limit, consumed_cost
+                        ) VALUES (
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                        )
+                        """.trimIndent()
+                    ).use { statement ->
+                        bindTask(statement, task, includeTaskIdAtEnd = false)
+                        statement.executeUpdate()
+                    }
+                } catch (insertFailure: Exception) {
+                    connection.rollback()
+                    val existing = selectTaskForInsert(connection, task)
+                    if (existing != null) {
+                        connection.commit()
+                        return@withConnection TaskInsertResult(existing, inserted = false)
+                    }
+                    throw insertFailure
+                }
+                connection.commit()
+                TaskInsertResult(task, inserted = true)
+            } catch (error: Exception) {
+                runCatching { connection.rollback() }
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    private fun selectTaskForInsert(connection: Connection, task: TaskState): TaskState? =
+        connection.prepareStatement(
+            """
+            SELECT * FROM $resolvedTaskTableName
+            WHERE task_id = ? OR (tenant_id = ? AND request_id = ?)
+            ORDER BY task_id
+            """.trimIndent()
+        ).use { statement ->
+            statement.setString(1, task.taskId.value)
+            statement.setString(2, task.tenantId.value)
+            statement.setString(3, task.requestId.value)
+            statement.executeQuery().use { resultSet ->
+                if (resultSet.next()) mapTask(resultSet) else null
+            }
+        }
 
     /**
      * 条件状态转换
@@ -586,6 +670,12 @@ class KtormTaskStatePort(
             index++,
             payload.config?.let { json.encodeToString(fuookami.ospf.framework.remote_solver.protocol.domain.SolverConfig.serializer(), it) }
         )
+        statement.setString(
+            index++,
+            payload.scheduling?.let {
+                json.encodeToString(SchedulingRequest.serializer(), it)
+            }
+        )
         statement.setString(index++, payload.snapshotRef?.path?.value)
         statement.setString(index++, payload.snapshotRef?.version?.value)
         statement.setString(index++, payload.snapshotRef?.etag?.value)
@@ -735,8 +825,21 @@ class KtormTaskStatePort(
                 null
             }
         }
+        val schedulingJson = resultSet.getString("payload_scheduling_json")
+        var schedulingDecodeError: String? = null
+        val scheduling = if (schedulingJson.isNullOrBlank()) {
+            null
+        } else {
+            try {
+                json.decodeFromString(SchedulingRequest.serializer(), schedulingJson)
+            } catch (error: Throwable) {
+                schedulingDecodeError = error.message ?: error::class.simpleName ?: "invalid JSON"
+                null
+            }
+        }
         val extension = decodeMap(resultSet.getString("payload_extension")).toMutableMap()
         configDecodeError?.let { extension["remote-solver.config.decode-error"] = it }
+        schedulingDecodeError?.let { extension["remote-solver.scheduling.decode-error"] = it }
         val payload = SolvePayload(
             modelData = ModelData.reference(modelRef).copy(
                 format = resultSet.getString("payload_model_format")
@@ -762,7 +865,8 @@ class KtormTaskStatePort(
                 historicalRuntimeMs = nullableLong(resultSet, "payload_task_meta_historical_runtime_ms"),
                 metadata = decodeMap(resultSet.getString("payload_task_meta_metadata"))
             ),
-            extension = extension
+            extension = extension,
+            scheduling = scheduling
         )
         val hasLatestResult = resultSet.getBoolean("has_latest_result")
         val latestResult = if (!hasLatestResult) {
@@ -1131,6 +1235,7 @@ class KtormTaskStatePort(
                             payload_config_version TEXT NULL,
                             payload_config_etag TEXT NULL,
                             payload_config_json TEXT NULL,
+                            payload_scheduling_json TEXT NULL,
                             payload_snapshot_path TEXT NULL,
                             payload_snapshot_version TEXT NULL,
                             payload_snapshot_etag TEXT NULL,
@@ -1175,6 +1280,9 @@ class KtormTaskStatePort(
                     }
                     runCatching {
                         statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN payload_config_json TEXT NULL")
+                    }
+                    runCatching {
+                        statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN payload_scheduling_json TEXT NULL")
                     }
                     runCatching {
                         statement.execute("ALTER TABLE $resolvedTaskTableName ADD COLUMN latest_result_report_json TEXT NULL")

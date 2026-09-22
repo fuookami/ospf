@@ -26,6 +26,19 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
  */
 interface OspfExecutionBridge {
     /**
+     * Conservative capability declaration for this bridge.
+     *
+     * Existing custom bridges remain source-compatible through the default
+     * non-preemptible declaration. A bridge must explicitly opt into controlled
+     * return or native recovery after implementing the corresponding guarantees.
+     */
+    val capabilities: OspfExecutionCapabilities
+        get() = OspfExecutionCapabilities.nonPreemptible()
+
+    /** Resolve capabilities for a payload when support depends on its model type. */
+    fun capabilitiesFor(payload: SolvePayload): OspfExecutionCapabilities = capabilities
+
+    /**
      * 启动求解任务
      * Start a solving task
      *

@@ -16,12 +16,19 @@ package fuookami.ospf.framework.remote_solver.adapter.http
 import fuookami.ospf.framework.remote_solver.application.RemoteSolverApiFacade
 import fuookami.ospf.framework.remote_solver.application.SchedulerHotReloadRequest
 import fuookami.ospf.framework.remote_solver.application.SchedulerRollbackRequest
+import fuookami.ospf.framework.remote_solver.application.TaskActionCancellation
+import fuookami.ospf.framework.remote_solver.application.TaskActionFingerprint
+import fuookami.ospf.framework.remote_solver.application.TaskActionProvenance
 import fuookami.ospf.framework.remote_solver.application.TaskSubmitRequest
+import fuookami.ospf.framework.remote_solver.application.TaskViewResponse
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCode
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorMapper
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverException
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingDecision
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingRequest
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
+import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
 import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
 import fuookami.ospf.framework.remote_solver.port.MetricsPort
 import fuookami.ospf.framework.remote_solver.port.MetricsScrapePort
@@ -379,9 +386,14 @@ private fun Application.module(
                 timeSensitivity = body.timeSensitivity?.let { TimeSensitivity.valueOf(it) },
                 priority = body.priority ?: 0,
                 payloadRef = ObjectRef.of(path = payloadRef),
+                configRef = body.configRef?.trim()?.takeIf { it.isNotEmpty() }?.let { ObjectRef.of(path = it) },
+                snapshotRef = body.snapshotRef?.trim()?.takeIf { it.isNotEmpty() }?.let { ObjectRef.of(path = it) },
+                taskMeta = body.taskMeta ?: TaskMeta(timeLimit = null),
+                extension = body.extension ?: emptyMap(),
                 budgetScope = body.budgetScope,
                 budgetLimit = body.budgetLimit,
-                deadlineEpochMs = body.deadlineEpochMs
+                deadlineEpochMs = body.deadlineEpochMs,
+                scheduling = body.scheduling
             )
             val submitted = apiFacade.submit(request)
             call.respond(
@@ -433,15 +445,7 @@ private fun Application.module(
                     code = "OK",
                     message = "success",
                     traceId = call.extractTraceId(),
-                    data = TaskViewHttpResponse(
-                        taskId = task.taskId,
-                        tenantId = task.tenantId,
-                        status = task.status.name,
-                        currentNodeId = task.currentNodeId,
-                        latestCheckpointPath = task.latestCheckpointRef?.path?.value,
-                        latestResultPath = task.latestResultRef?.path?.value,
-                        consumedCost = task.consumedCost
-                    )
+                    data = task.toTaskViewHttpResponse()
                 )
             )
         }
@@ -525,10 +529,7 @@ private fun Application.module(
                     code = "OK",
                     message = "success",
                     traceId = call.extractTraceId(),
-                    data = TaskActionHttpResponse(
-                        taskId = task.taskId,
-                        status = task.status.name
-                    )
+                    data = task.toTaskActionHttpResponse()
                 )
             )
         }
@@ -612,10 +613,7 @@ private fun Application.module(
                     code = "OK",
                     message = "success",
                     traceId = call.extractTraceId(),
-                    data = TaskActionHttpResponse(
-                        taskId = task.taskId,
-                        status = task.status.name
-                    )
+                    data = task.toTaskActionHttpResponse()
                 )
             )
         }
@@ -1145,9 +1143,14 @@ private data class SubmitTaskHttpRequest(
     val timeSensitivity: String? = null,
     val priority: Int? = null,
     val payloadRef: String? = null,
+    val configRef: String? = null,
+    val snapshotRef: String? = null,
+    val taskMeta: TaskMeta? = null,
+    val extension: Map<String, String>? = null,
     val budgetScope: String? = null,
     val budgetLimit: Double? = null,
-    val deadlineEpochMs: Long? = null
+    val deadlineEpochMs: Long? = null,
+    val scheduling: SchedulingRequest? = null
 )
 
 /**
@@ -1300,7 +1303,24 @@ private data class TaskViewHttpResponse(
     val currentNodeId: String? = null,
     val latestCheckpointPath: String? = null,
     val latestResultPath: String? = null,
-    val consumedCost: Double
+    val consumedCost: Double,
+    val requestId: String? = null,
+    val complexity: String? = null,
+    val timeSensitivity: String? = null,
+    val priority: Int? = null,
+    val deadlineEpochMs: Long? = null,
+    val budgetScope: String? = null,
+    val budgetLimit: Double? = null,
+    val scheduling: SchedulingDecision? = null,
+    val schemaVersion: String = "2.0",
+    val sliceId: String? = null,
+    val runId: String? = null,
+    val attemptId: String? = null,
+    val modelFingerprint: TaskActionFingerprint? = null,
+    val configurationFingerprint: TaskActionFingerprint? = null,
+    val solverFingerprint: TaskActionFingerprint? = null,
+    val provenance: TaskActionProvenance? = null,
+    val cancellationChain: List<TaskActionCancellation> = emptyList()
 )
 
 /**
@@ -1319,8 +1339,92 @@ private data class TaskViewHttpResponse(
 @Serializable
 private data class TaskActionHttpResponse(
     val taskId: String,
-    val status: String
+    val accepted: Boolean,
+    val tenantId: String,
+    val status: String,
+    val currentNodeId: String? = null,
+    val latestCheckpointPath: String? = null,
+    val latestResultPath: String? = null,
+    val consumedCost: Double = 0.0,
+    val requestId: String? = null,
+    val complexity: String? = null,
+    val timeSensitivity: String? = null,
+    val priority: Int? = null,
+    val deadlineEpochMs: Long? = null,
+    val budgetScope: String? = null,
+    val budgetLimit: Double? = null,
+    val scheduling: SchedulingDecision? = null,
+    val schemaVersion: String = "2.0",
+    /** Child slice is intentionally nullable for a resume action. */
+    val sliceId: String? = null,
+    /** Identity of the source checkpoint accepted by resume. */
+    val runId: String? = null,
+    val attemptId: String? = null,
+    val modelFingerprint: TaskActionFingerprint? = null,
+    val configurationFingerprint: TaskActionFingerprint? = null,
+    val solverFingerprint: TaskActionFingerprint? = null,
+    val provenance: TaskActionProvenance? = null,
+    val cancellationChain: List<TaskActionCancellation> = emptyList(),
+    val message: String? = null
 )
+
+private fun TaskViewResponse.toTaskViewHttpResponse(): TaskViewHttpResponse =
+    TaskViewHttpResponse(
+        taskId = taskId,
+        tenantId = tenantId,
+        status = status.name,
+        currentNodeId = currentNodeId,
+        latestCheckpointPath = latestCheckpointRef?.path?.value,
+        latestResultPath = latestResultRef?.path?.value,
+        consumedCost = consumedCost,
+        requestId = requestId,
+        complexity = complexity?.name,
+        timeSensitivity = timeSensitivity?.name,
+        priority = priority,
+        deadlineEpochMs = deadlineEpochMs,
+        budgetScope = budgetScope,
+        budgetLimit = budgetLimit,
+        scheduling = scheduling,
+        schemaVersion = schemaVersion,
+        sliceId = sliceId,
+        runId = runId,
+        attemptId = attemptId,
+        modelFingerprint = modelFingerprint,
+        configurationFingerprint = configurationFingerprint,
+        solverFingerprint = solverFingerprint,
+        provenance = provenance,
+        cancellationChain = cancellationChain
+    )
+
+private fun TaskViewResponse.toTaskActionHttpResponse(): TaskActionHttpResponse =
+    TaskActionHttpResponse(
+        taskId = taskId,
+        accepted = true,
+        tenantId = tenantId,
+        status = status.name,
+        currentNodeId = currentNodeId,
+        latestCheckpointPath = latestCheckpointRef?.path?.value,
+        latestResultPath = latestResultRef?.path?.value,
+        consumedCost = consumedCost,
+        requestId = requestId,
+        complexity = complexity?.name,
+        timeSensitivity = timeSensitivity?.name,
+        priority = priority,
+        deadlineEpochMs = deadlineEpochMs,
+        budgetScope = budgetScope,
+        budgetLimit = budgetLimit,
+        scheduling = scheduling,
+        schemaVersion = schemaVersion,
+        sliceId = sliceId,
+        runId = runId,
+        attemptId = attemptId,
+        modelFingerprint = modelFingerprint,
+        configurationFingerprint = configurationFingerprint,
+        solverFingerprint = solverFingerprint,
+        provenance = provenance,
+        cancellationChain = cancellationChain,
+        message = "accepted"
+    )
 
 /**
  * 调度器配置审计 HTTP 响应体

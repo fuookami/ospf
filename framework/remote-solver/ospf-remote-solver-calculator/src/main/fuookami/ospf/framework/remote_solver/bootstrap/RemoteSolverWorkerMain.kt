@@ -44,6 +44,7 @@ import fuookami.ospf.framework.remote_solver.protocol.port.ClockPort
  * --tenant-id    租户 ID / Tenant identifier
  * --config-json  内联 SolverConfig JSON / Inline SolverConfig JSON
  * --total-runtime-ms 总运行时间（毫秒） / Total runtime in milliseconds
+ * --elapsed-before-ms 当前任务此前已消耗时间（毫秒） / Elapsed task time before this slice
  * --checkpoint-in    输入检查点路径 / Input checkpoint path
  * --state-dir    状态目录 / State directory
  */
@@ -68,7 +69,8 @@ object RemoteSolverWorkerMain {
         Files.createDirectories(stateDir)
 
         if (options["model-format"] == "ospf-cp-snapshot-json") {
-            runCpSnapshot(options, taskId, sliceId, quantumMs, stateDir)
+            val elapsedBeforeMs = options["elapsed-before-ms"]?.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+            runCpSnapshot(options, taskId, sliceId, quantumMs, elapsedBeforeMs, stateDir)
             return
         }
 
@@ -80,6 +82,7 @@ object RemoteSolverWorkerMain {
         taskId: String,
         sliceId: String,
         quantumMs: Long,
+        elapsedBeforeMs: Long,
         stateDir: Path
     ) {
         val modelPath = options["model"]?.trim().takeUnless { it.isNullOrEmpty() }
@@ -121,7 +124,9 @@ object RemoteSolverWorkerMain {
                     taskId = taskId,
                     sliceId = sliceId,
                     quantumMs = quantumMs,
-                    checkpoint = checkpoint
+                    checkpoint = checkpoint,
+                    totalTimeLimitMs = config?.timeLimitMs ?: taskMeta.timeLimitMs,
+                    elapsedBeforeMs = elapsedBeforeMs
                 )
             }
             val resultBytes = result.resultRef?.let { ref -> runBlocking { storage.get(ref) } }

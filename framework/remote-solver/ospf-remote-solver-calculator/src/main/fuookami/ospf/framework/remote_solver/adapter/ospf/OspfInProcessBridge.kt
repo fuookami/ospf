@@ -10,6 +10,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
 import fuookami.ospf.framework.remote_solver.protocol.domain.PortableCheckpointCodec
 import fuookami.ospf.framework.remote_solver.protocol.domain.PortableCheckpointEnvelope
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteProblemStatus
+import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteProofStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolutionPresence
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteTerminationReason
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceResult
@@ -50,8 +51,11 @@ class OspfInProcessBridge @JvmOverloads constructor(
 ) : OspfExecutionBridge {
     private data class Context(
         val payload: SolvePayload,
+        val taskId: String,
         val tenantId: String,
         val cancellation: SolveHandle,
+        var elapsedMs: Long = 0L,
+        var elapsedRecorded: Boolean = false,
         var checkpoint: PortableCheckpointEnvelope? = null,
         var result: SolveResult? = null,
         var checkpointRef: ObjectRef? = null,
@@ -60,6 +64,17 @@ class OspfInProcessBridge @JvmOverloads constructor(
 
     private val cpExecutor = OspfCpSnapshotExecutor(objectStoragePort)
     private val contexts = ConcurrentHashMap<String, Context>()
+    private val taskElapsedMs = ConcurrentHashMap<String, Long>()
+
+    override val capabilities: OspfExecutionCapabilities =
+        OspfExecutionCapabilities.controlledReturn()
+
+    override fun capabilitiesFor(payload: SolvePayload): OspfExecutionCapabilities =
+        if (isConstraintProgramming(payload)) {
+            capabilities
+        } else {
+            OspfExecutionCapabilities.nonPreemptible()
+        }
 
     override suspend fun start(
         payload: SolvePayload,
@@ -68,6 +83,7 @@ class OspfInProcessBridge @JvmOverloads constructor(
         nodeId: String,
         tenantId: String
     ): ExecutionHandle {
+        taskElapsedMs.putIfAbsent(taskId, 0L)
         val handle = ExecutionHandle(
             handleId = idGenerator.newId("handle"),
             taskId = taskId,
@@ -77,8 +93,10 @@ class OspfInProcessBridge @JvmOverloads constructor(
         )
         contexts[handle.handleId.value] = Context(
             payload = payload,
+            taskId = taskId,
             tenantId = tenantId,
-            cancellation = SolveHandle.create()
+            cancellation = SolveHandle.create(),
+            elapsedMs = taskElapsedMs[taskId] ?: 0L
         )
         return handle
     }
@@ -91,6 +109,7 @@ class OspfInProcessBridge @JvmOverloads constructor(
         nodeId: String,
         tenantId: String
     ): ExecutionHandle {
+        taskElapsedMs.putIfAbsent(taskId, 0L)
         val decoded = runCatching {
             objectStoragePort.get(checkpoint)
                 ?.decodeToString()
@@ -98,6 +117,7 @@ class OspfInProcessBridge @JvmOverloads constructor(
         }.getOrNull()
         val handle = start(payload, taskId, sliceId, nodeId, tenantId)
         contexts[handle.handleId.value]?.apply {
+            elapsedMs = taskElapsedMs[taskId] ?: 0L
             this.checkpoint = decoded
             this.checkpointRef = checkpoint
             if (decoded == null) {
@@ -132,18 +152,29 @@ class OspfInProcessBridge @JvmOverloads constructor(
                 sliceId = handle.sliceId.value,
                 quantumMs = quantumMs,
                 cancellationToken = context.cancellation.token,
-                checkpoint = context.checkpoint
+                checkpoint = context.checkpoint,
+                totalTimeLimitMs = taskTimeLimitMs(context.payload),
+                elapsedBeforeMs = context.elapsedMs
             ).also { context.result = it }
+            if (!context.elapsedRecorded) {
+                context.elapsedMs = safeAdd(context.elapsedMs, result.elapsed.inWholeMilliseconds)
+                taskElapsedMs[context.taskId] = context.elapsedMs
+                context.elapsedRecorded = true
+            }
             return result.toSliceResult(handle)
         }
         return SliceResult(
-            sliceId = handle.sliceId.value,
-            completed = true,
+            sliceId = handle.sliceId,
+            completed = false,
             feasible = false,
             objectiveValue = null,
             gap = null,
-            elapsedMs = 0L,
-            message = unsupportedMessage
+            elapsed = kotlin.time.Duration.ZERO,
+            message = unsupportedMessage,
+            problemStatus = RemoteProblemStatus.UNKNOWN,
+            terminationReason = RemoteTerminationReason.BACKEND_FAILURE,
+            solutionPresence = RemoteSolutionPresence.NONE,
+            proofStatus = RemoteProofStatus.NONE
         )
     }
 
@@ -183,8 +214,12 @@ class OspfInProcessBridge @JvmOverloads constructor(
             optimal = false,
             objectiveValue = null,
             gap = null,
-            elapsedMs = 0L,
-            message = unsupportedMessage
+            elapsed = kotlin.time.Duration.ZERO,
+            message = unsupportedMessage,
+            problemStatus = RemoteProblemStatus.UNKNOWN,
+            terminationReason = RemoteTerminationReason.BACKEND_FAILURE,
+            solutionPresence = RemoteSolutionPresence.NONE,
+            proofStatus = RemoteProofStatus.NONE
         )
     }
 
@@ -192,7 +227,20 @@ class OspfInProcessBridge @JvmOverloads constructor(
         val context = contexts[handle.handleId.value] ?: return false
         context.cancellation.cancel(CancellationSource.Remote, "remote task stopped")
         contexts.remove(handle.handleId.value, context)
+        if (contexts.values.none { it.taskId == context.taskId }) {
+            taskElapsedMs.remove(context.taskId)
+        }
         return true
+    }
+
+    private fun taskTimeLimitMs(payload: SolvePayload): Long? =
+        (payload.config?.timeLimitMs ?: payload.taskMeta.timeLimitMs)?.coerceAtLeast(0L)
+
+    private fun safeAdd(left: Long, right: Long): Long {
+        if (right <= 0L) {
+            return left
+        }
+        return if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
     }
 
     private fun isConstraintProgramming(payload: SolvePayload): Boolean {
@@ -215,6 +263,7 @@ class OspfInProcessBridge @JvmOverloads constructor(
             terminationReason = terminationReason,
             solutionPresence = solutionPresence,
             proofStatus = proofStatus,
+            checkpointRef = checkpointRef,
             resultRef = resultRef,
             provenance = provenance,
             fingerprints = fingerprints,
@@ -223,7 +272,11 @@ class OspfInProcessBridge @JvmOverloads constructor(
             diagnostics = diagnostics,
             runId = runId,
             attemptId = attemptId,
-            artifactDigest = artifactDigest
+            artifactDigest = artifactDigest,
+            incumbentRef = incumbentRef,
+            modelFingerprint = modelFingerprint ?: fingerprints["model"],
+            scheduling = scheduling,
+            outcome = outcome
         )
     }
 

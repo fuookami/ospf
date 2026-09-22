@@ -21,6 +21,7 @@
 package fuookami.ospf.framework.remote_solver.port
 
 import fuookami.ospf.framework.remote_solver.domain.BudgetSnapshot
+import fuookami.ospf.framework.remote_solver.domain.BudgetReservation
 
 /**
  * 预算端口接口
@@ -74,6 +75,16 @@ interface BudgetPort {
     suspend fun reserve(scope: String, amount: Double): Boolean
 
     /**
+     * Reserve a dispatch-scoped amount under a caller-provided idempotency key.
+     *
+     * Implementations that support atomic settlement override this method and
+     * persist the reservation identity.  The default keeps source compatibility
+     * for simple adapters that only implement the original scope API.
+     */
+    suspend fun reserve(reservation: BudgetReservation): Boolean =
+        reserve(reservation.scope, reservation.amount)
+
+    /**
      * 提交预算消耗
      *
      * Commits budget consumption.
@@ -103,4 +114,29 @@ interface BudgetPort {
      *         true if refund succeeded, false otherwise
      */
     suspend fun refund(scope: String, amount: Double): Boolean
+
+    /**
+     * Atomically reconcile one reservation with the actual cost.
+     *
+     * A successful call consumes [actual] and releases any unused portion of
+     * the reservation in one operation.  Repeating the same reservation and
+     * actual amount is idempotent; a mismatched replay must fail.  Implementations
+     * must leave both the budget and reservation ledger unchanged on failure.
+     */
+    suspend fun settle(reservation: BudgetReservation, actual: Double): Boolean
+
+    /** Convenience overload for callers migrating from scope-only accounting. */
+    suspend fun settle(
+        scope: String,
+        reservationAmount: Double,
+        actual: Double,
+        reservationId: String = "legacy:$scope:$reservationAmount"
+    ): Boolean = settle(
+        BudgetReservation(
+            reservationId = reservationId,
+            scope = scope,
+            amount = reservationAmount
+        ),
+        actual
+    )
 }

@@ -21,6 +21,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TaskId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TenantId
 import fuookami.ospf.framework.remote_solver.port.TaskStatePort
+import fuookami.ospf.framework.remote_solver.port.TaskInsertResult
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -170,11 +171,39 @@ class InMemoryTaskStatePort : TaskStatePort {
             }
             if (previous != null && previous.tenantId != task.tenantId) {
                 taskIdByTenantAndRequestId.remove(
-                    tenantRequestIdKey(previous.tenantId.value, task.requestId.value),
+                    tenantRequestIdKey(previous.tenantId.value, previous.requestId.value),
                     task.taskId.value
                 )
             }
             taskIdByTenantAndRequestId[tenantRequestIdKey(task.tenantId.value, task.requestId.value)] = task.taskId.value
+        }
+    }
+
+    /**
+     * Inserts a task exactly once under both task id and tenant/request id.
+     * The lock covers the row and all indexes so a concurrent submission can
+     * never publish a second task for the same idempotency key.
+     */
+    override suspend fun insertIfAbsent(task: TaskState): TaskInsertResult {
+        synchronized(tasks) {
+            val existingByTaskId = tasks[task.taskId.value]
+            if (existingByTaskId != null) {
+                return TaskInsertResult(existingByTaskId, inserted = false)
+            }
+            val key = tenantRequestIdKey(task.tenantId.value, task.requestId.value)
+            val existingTaskId = taskIdByTenantAndRequestId[key]
+            if (existingTaskId != null) {
+                val existing = tasks[existingTaskId]
+                if (existing != null) {
+                    return TaskInsertResult(existing, inserted = false)
+                }
+                // A stale index should not make a valid new task disappear.
+                taskIdByTenantAndRequestId.remove(key, existingTaskId)
+            }
+            tasks[task.taskId.value] = task
+            taskIdByRequestId.putIfAbsent(task.requestId.value, task.taskId.value)
+            taskIdByTenantAndRequestId[key] = task.taskId.value
+            return TaskInsertResult(task, inserted = true)
         }
     }
 

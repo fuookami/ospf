@@ -310,6 +310,7 @@ data class SolverConfig(
  * @property config 内联配置 / Inline config
  * @property snapshotRef 快照引用 / Snapshot reference
  * @property taskMeta 任务元数据 / Task metadata
+ * @property scheduling V1.2 调度请求 / V1.2 scheduling request
  * @property extension 扩展字段 / Extension fields
  */
 @Serializable
@@ -319,7 +320,8 @@ data class SolvePayload(
     val config: SolverConfig? = null,
     val snapshotRef: ObjectRef? = null,
     val taskMeta: TaskMeta = TaskMeta(timeLimit = null),
-    val extension: Map<String, String> = emptyMap()
+    val extension: Map<String, String> = emptyMap(),
+    val scheduling: SchedulingRequest? = null
 ) {
     /**
      * 引用模式便捷构造器。

@@ -12,6 +12,7 @@
 package fuookami.ospf.framework.remote_solver.adapter.ktorm
 
 import fuookami.ospf.framework.remote_solver.domain.BudgetSnapshot
+import fuookami.ospf.framework.remote_solver.domain.BudgetReservation
 import fuookami.ospf.framework.remote_solver.port.BudgetPort
 import org.ktorm.database.Database
 import org.ktorm.dsl.and
@@ -29,6 +30,9 @@ import org.ktorm.dsl.where
 import org.ktorm.schema.double
 import org.ktorm.schema.varchar
 import java.util.concurrent.atomic.AtomicBoolean
+import java.sql.Connection
+import java.sql.ResultSet
+import java.sql.SQLException
 
 /**
  * Ktorm 预算端口
@@ -58,6 +62,7 @@ class KtormBudgetPort(
     tableName: String = "remote_solver_budget"
 ) : BudgetPort {
     private val resolvedTableName = normalizeTableName(tableName)
+    private val resolvedReservationTableName = normalizeTableName("${resolvedTableName}_reservation")
     private val table = BudgetTable(resolvedTableName)
     private val initialized = AtomicBoolean(false)
     private val database = Database.connect(
@@ -91,11 +96,26 @@ class KtormBudgetPort(
         if (updated > 0) {
             return
         }
-        database.insert(table) {
-            set(it.scope, scope)
-            set(it.limitAmount, limit)
-            set(it.reservedAmount, 0.0)
-            set(it.consumedAmount, 0.0)
+        try {
+            database.insert(table) {
+                set(it.scope, scope)
+                set(it.limitAmount, limit)
+                set(it.reservedAmount, 0.0)
+                set(it.consumedAmount, 0.0)
+            }
+        } catch (error: Exception) {
+            if (!isUniqueViolation(error)) {
+                throw error
+            }
+            // Another connection inserted the scope after the update missed
+            // it.  Retry as an update so first-time configuration is idempotent.
+            val concurrentUpdate = database.update(table) {
+                set(it.limitAmount, limit)
+                where { it.scope eq scope }
+            }
+            if (concurrentUpdate == 0) {
+                throw error
+            }
         }
     }
 
@@ -156,7 +176,7 @@ class KtormBudgetPort(
      * @return Whether reservation succeeded
      */
     override suspend fun reserve(scope: String, amount: Double): Boolean {
-        if (amount < 0.0) {
+        if (!amount.isFinite() || amount < 0.0) {
             return false
         }
         ensureSchema()
@@ -169,6 +189,73 @@ class KtormBudgetPort(
             }
         }
         return updated > 0
+    }
+
+    /**
+     * Creates an identified reservation and its ledger row atomically.  A
+     * repeated request with the same id and values is an idempotent success;
+     * reusing an id for another scope or amount is rejected.
+     */
+    override suspend fun reserve(reservation: BudgetReservation): Boolean {
+        ensureSchema()
+        return withConnection { connection ->
+            connection.autoCommit = false
+            try {
+                val existing = findReservation(connection, reservation.reservationId)
+                if (existing != null) {
+                    connection.rollback()
+                    return@withConnection existing.reservation == reservation
+                }
+                val updated = connection.prepareStatement(
+                    """
+                    UPDATE $resolvedTableName
+                    SET reserved_amount = reserved_amount + ?
+                    WHERE scope = ?
+                      AND limit_amount - reserved_amount - consumed_amount >= ?
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setDouble(1, reservation.amount)
+                    statement.setString(2, reservation.scope)
+                    statement.setDouble(3, reservation.amount)
+                    statement.executeUpdate()
+                }
+                if (updated == 0) {
+                    connection.rollback()
+                    return@withConnection false
+                }
+                try {
+                    connection.prepareStatement(
+                        """
+                        INSERT INTO $resolvedReservationTableName
+                            (reservation_id, scope, reserved_amount, settled_actual)
+                        VALUES (?, ?, ?, NULL)
+                        """.trimIndent()
+                    ).use { statement ->
+                        statement.setString(1, reservation.reservationId)
+                        statement.setString(2, reservation.scope)
+                        statement.setDouble(3, reservation.amount)
+                        statement.executeUpdate()
+                    }
+                } catch (error: SQLException) {
+                    if (!isUniqueViolation(error)) {
+                        throw error
+                    }
+                    // The competing transaction owns this id.  Roll back
+                    // this transaction's budget increment before checking
+                    // the committed ledger row for idempotent equality.
+                    connection.rollback()
+                    return@withConnection findReservation(connection, reservation.reservationId)
+                        ?.reservation == reservation
+                }
+                connection.commit()
+                true
+            } catch (error: Exception) {
+                runCatching { connection.rollback() }
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
     }
 
     /**
@@ -190,7 +277,7 @@ class KtormBudgetPort(
      * @return Whether commit succeeded
      */
     override suspend fun commit(scope: String, amount: Double): Boolean {
-        if (amount < 0.0) {
+        if (!amount.isFinite() || amount < 0.0) {
             return false
         }
         ensureSchema()
@@ -233,17 +320,140 @@ class KtormBudgetPort(
      * @return Whether refund succeeded
      */
     override suspend fun refund(scope: String, amount: Double): Boolean {
-        if (amount < 0.0) {
+        if (!amount.isFinite() || amount < 0.0) {
             return false
         }
         ensureSchema()
-        val current = snapshot(scope) ?: return false
-        val nextConsumed = (current.consumed - amount).coerceAtLeast(0.0)
-        val updated = database.update(table) {
-            set(it.consumedAmount, nextConsumed)
-            where { it.scope eq scope }
+        return withConnection { connection ->
+            connection.prepareStatement(
+                """
+                UPDATE $resolvedTableName
+                SET consumed_amount = CASE
+                    WHEN consumed_amount >= ? THEN consumed_amount - ?
+                    ELSE 0.0
+                END
+                WHERE scope = ?
+                """.trimIndent()
+            ).use { statement ->
+                statement.setDouble(1, amount)
+                statement.setDouble(2, amount)
+                statement.setString(3, scope)
+                statement.executeUpdate() > 0
+            }
         }
-        return updated > 0
+    }
+
+    /**
+     * Reconciles the identified reservation with actual cost as one database
+     * transaction.  The conditional budget update releases the full reserved
+     * amount and charges actual in a single row update; the ledger transition
+     * is committed together with it.
+     */
+    override suspend fun settle(reservation: BudgetReservation, actual: Double): Boolean {
+        if (!actual.isFinite() || actual < 0.0) {
+            return false
+        }
+        ensureSchema()
+        return withConnection { connection ->
+            connection.autoCommit = false
+            try {
+                val existing = findReservation(connection, reservation.reservationId)
+                if (existing == null || existing.reservation != reservation) {
+                    connection.rollback()
+                    return@withConnection false
+                }
+                existing.settledActual?.let { settledActual ->
+                    connection.rollback()
+                    return@withConnection settledActual == actual
+                }
+                val budgetUpdated = connection.prepareStatement(
+                    """
+                    UPDATE $resolvedTableName
+                    SET reserved_amount = reserved_amount - ?,
+                        consumed_amount = consumed_amount + ?
+                    WHERE scope = ?
+                      AND reserved_amount >= ?
+                      AND limit_amount - (reserved_amount - ?) - (consumed_amount + ?) >= 0
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setDouble(1, reservation.amount)
+                    statement.setDouble(2, actual)
+                    statement.setString(3, reservation.scope)
+                    statement.setDouble(4, reservation.amount)
+                    statement.setDouble(5, reservation.amount)
+                    statement.setDouble(6, actual)
+                    statement.executeUpdate()
+                }
+                if (budgetUpdated == 0) {
+                    connection.rollback()
+                    val latest = findReservation(connection, reservation.reservationId)
+                    return@withConnection latest?.settledActual?.let { it == actual } ?: false
+                }
+                val ledgerUpdated = connection.prepareStatement(
+                    """
+                    UPDATE $resolvedReservationTableName
+                    SET settled_actual = ?
+                    WHERE reservation_id = ? AND settled_actual IS NULL
+                    """.trimIndent()
+                ).use { statement ->
+                    statement.setDouble(1, actual)
+                    statement.setString(2, reservation.reservationId)
+                    statement.executeUpdate()
+                }
+                if (ledgerUpdated == 0) {
+                    connection.rollback()
+                    val latest = findReservation(connection, reservation.reservationId)
+                    return@withConnection latest?.settledActual?.let { it == actual } ?: false
+                }
+                connection.commit()
+                true
+            } catch (error: Exception) {
+                runCatching { connection.rollback() }
+                throw error
+            } finally {
+                connection.autoCommit = true
+            }
+        }
+    }
+
+    private data class ReservationRecord(
+        val reservation: BudgetReservation,
+        val settledActual: Double?
+    )
+
+    private fun findReservation(connection: Connection, reservationId: String): ReservationRecord? =
+        connection.prepareStatement(
+            """
+            SELECT reservation_id, scope, reserved_amount, settled_actual
+            FROM $resolvedReservationTableName
+            WHERE reservation_id = ?
+            """.trimIndent()
+        ).use { statement ->
+            statement.setString(1, reservationId)
+            statement.executeQuery().use { resultSet ->
+                if (!resultSet.next()) {
+                    null
+                } else {
+                    ReservationRecord(
+                        reservation = BudgetReservation(
+                            reservationId = resultSet.getString("reservation_id"),
+                            scope = resultSet.getString("scope"),
+                            amount = resultSet.getDouble("reserved_amount")
+                        ),
+                        settledActual = nullableDouble(resultSet, "settled_actual")
+                    )
+                }
+            }
+        }
+
+    private fun nullableDouble(resultSet: ResultSet, column: String): Double? {
+        val value = resultSet.getDouble(column)
+        return if (resultSet.wasNull()) null else value
+    }
+
+    private fun isUniqueViolation(error: Throwable): Boolean = when (error) {
+        is SQLException -> error.sqlState == "23505" || error.cause?.let(::isUniqueViolation) == true
+        else -> error.cause?.let(::isUniqueViolation) == true
     }
 
     /**
@@ -301,6 +511,22 @@ class KtormBudgetPort(
                         )
                         """.trimIndent()
                     )
+                    statement.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS $resolvedReservationTableName (
+                            reservation_id VARCHAR(256) PRIMARY KEY,
+                            scope VARCHAR(256) NOT NULL,
+                            reserved_amount DOUBLE PRECISION NOT NULL,
+                            settled_actual DOUBLE PRECISION NULL
+                        )
+                        """.trimIndent()
+                    )
+                    statement.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_${resolvedReservationTableName}_scope
+                        ON $resolvedReservationTableName (scope)
+                        """.trimIndent()
+                    )
                 }
             }
             initialized.set(true)
@@ -324,4 +550,7 @@ class KtormBudgetPort(
         val reservedAmount = double("reserved_amount")
         val consumedAmount = double("consumed_amount")
     }
+
+    private fun <T> withConnection(block: (Connection) -> T): T =
+        database.useConnection { connection -> block(connection) }
 }

@@ -9,6 +9,7 @@ import fuookami.ospf.framework.remote_solver.domain.NodeCapabilityProfile
 import fuookami.ospf.framework.remote_solver.domain.NodeState
 import fuookami.ospf.framework.remote_solver.protocol.domain.NodeId
 import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
+import fuookami.ospf.framework.remote_solver.protocol.domain.CheckpointMetadata
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolverTypeName
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
@@ -143,6 +144,80 @@ class RemoteSolverHttpServerTest {
                 assertTrue(stored != null)
                 assertEquals(TaskStatus.QUEUED, stored.status)
             }
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun resumeResponseShouldPreserveSourceCheckpointIdentity() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+        val server = RemoteSolverHttpServer(
+            apiFacade = runtime.apiFacade,
+            host = "127.0.0.1",
+            port = 0
+        )
+        server.start()
+        try {
+            val client = HttpClient.newBuilder().build()
+            val baseUrl = "http://127.0.0.1:${server.port()}"
+            val submitResponse = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("$baseUrl/api/v1/tasks"))
+                    .header("Content-Type", "application/json")
+                    .POST(
+                        HttpRequest.BodyPublishers.ofString(
+                            """{"payloadRef":"models/http-resume-identity","complexity":"SIMPLE","timeSensitivity":"NON_REALTIME"}"""
+                        )
+                    )
+                    .build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            assertEquals(200, submitResponse.statusCode())
+            val taskId = extractField(submitResponse.body(), "taskId")
+            assertTrue(taskId.isNotBlank())
+
+            runSuspend {
+                runtime.checkpointPort.save(
+                    CheckpointMetadata(
+                        taskId = taskId,
+                        sliceId = "source-attempt-7",
+                        ref = ObjectRef.of("checkpoints/http-resume-identity"),
+                        createdAtEpochMs = System.currentTimeMillis()
+                    ).copy(
+                        modelFingerprint = "model-source",
+                        configurationFingerprint = "configuration-source",
+                        solverFingerprint = "solver-source"
+                    )
+                )
+            }
+
+            val stopResponse = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("$baseUrl/api/v1/tasks/$taskId/stop"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("""{"reason":"http-stop"}"""))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            assertEquals(200, stopResponse.statusCode())
+            assertTrue(stopResponse.body().contains("\"status\":\"${TaskStatus.STOPPED}\""))
+
+            val resumeResponse = client.send(
+                HttpRequest.newBuilder()
+                    .uri(URI.create("$baseUrl/api/v1/tasks/$taskId/resume"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{}"))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString()
+            )
+            assertEquals(200, resumeResponse.statusCode())
+            assertTrue(resumeResponse.body().contains("\"accepted\":true"), resumeResponse.body())
+            assertTrue(resumeResponse.body().contains("\"runId\":\"$taskId\""))
+            assertTrue(resumeResponse.body().contains("\"attemptId\":\"source-attempt-7\""))
+            assertTrue(resumeResponse.body().contains("\"value\":\"model-source\""))
+            assertTrue(resumeResponse.body().contains("\"value\":\"configuration-source\""))
+            assertTrue(resumeResponse.body().contains("\"value\":\"solver-source\""))
         } finally {
             server.stop(0)
         }

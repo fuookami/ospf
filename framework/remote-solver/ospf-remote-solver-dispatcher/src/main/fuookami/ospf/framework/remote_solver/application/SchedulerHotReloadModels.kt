@@ -60,7 +60,21 @@ data class SchedulerRuntimeConfig(
     val complexUrgencyWeight: Double,
     val complexWaitingAgeWeight: Double,
     val complexProgressNeedWeight: Double,
-    val complexCostSensitivityWeight: Double
+    val complexCostSensitivityWeight: Double,
+    val schedulerStarvationAgeMs: Long = 30_000L,
+    val schedulerMigrationHysteresisRatio: Double = 0.15,
+    val schedulerMinSlicesBeforeMigration: Int = 1,
+    val schedulerMigrationCostWeight: Double = 0.25,
+    val schedulerCostWeight: Double = 0.6,
+    val schedulerDeadlineRiskWeight: Double = 0.3,
+    val schedulerQueueDelayWeight: Double = 0.1,
+    val schedulerRoundRobinScoreTolerance: Double = 0.05,
+    val schedulerWeightedRoundRobinEnabled: Boolean = true,
+    val schedulerProgressWeight: Double = 0.25,
+    val schedulerProgressFastGapThreshold: Double = 0.75,
+    val schedulerProgressCheapGapThreshold: Double = 0.20,
+    val schedulerProgressMinImprovement: Double = 0.01,
+    val schedulerProgressNoImprovementSlices: Int = 1
 ) {
     /**
      * 将运行时配置转换为变更集
@@ -84,7 +98,21 @@ data class SchedulerRuntimeConfig(
             "scheduler.complex-urgency-weight" to complexUrgencyWeight.toString(),
             "scheduler.complex-waiting-age-weight" to complexWaitingAgeWeight.toString(),
             "scheduler.complex-progress-need-weight" to complexProgressNeedWeight.toString(),
-            "scheduler.complex-cost-sensitivity-weight" to complexCostSensitivityWeight.toString()
+            "scheduler.complex-cost-sensitivity-weight" to complexCostSensitivityWeight.toString(),
+            "scheduler.starvation-age-ms" to schedulerStarvationAgeMs.toString(),
+            "scheduler.migration-hysteresis-ratio" to schedulerMigrationHysteresisRatio.toString(),
+            "scheduler.min-slices-before-migration" to schedulerMinSlicesBeforeMigration.toString(),
+            "scheduler.migration-cost-weight" to schedulerMigrationCostWeight.toString(),
+            "scheduler.cost-weight" to schedulerCostWeight.toString(),
+            "scheduler.deadline-risk-weight" to schedulerDeadlineRiskWeight.toString(),
+            "scheduler.queue-delay-weight" to schedulerQueueDelayWeight.toString(),
+            "scheduler.round-robin-score-tolerance" to schedulerRoundRobinScoreTolerance.toString(),
+            "scheduler.weighted-round-robin.enabled" to schedulerWeightedRoundRobinEnabled.toString(),
+            "scheduler.progress-weight" to schedulerProgressWeight.toString(),
+            "scheduler.progress.fast-gap-threshold" to schedulerProgressFastGapThreshold.toString(),
+            "scheduler.progress.cheap-gap-threshold" to schedulerProgressCheapGapThreshold.toString(),
+            "scheduler.progress.min-improvement" to schedulerProgressMinImprovement.toString(),
+            "scheduler.progress.no-improvement-slices" to schedulerProgressNoImprovementSlices.toString()
         )
 
     companion object {
@@ -112,7 +140,21 @@ data class SchedulerRuntimeConfig(
                 complexUrgencyWeight = base.complexUrgencyWeight,
                 complexWaitingAgeWeight = base.complexWaitingAgeWeight,
                 complexProgressNeedWeight = base.complexProgressNeedWeight,
-                complexCostSensitivityWeight = base.complexCostSensitivityWeight
+                complexCostSensitivityWeight = base.complexCostSensitivityWeight,
+                schedulerStarvationAgeMs = base.schedulerStarvationAgeMs,
+                schedulerMigrationHysteresisRatio = base.schedulerMigrationHysteresisRatio,
+                schedulerMinSlicesBeforeMigration = base.schedulerMinSlicesBeforeMigration,
+                schedulerMigrationCostWeight = base.schedulerMigrationCostWeight,
+                schedulerCostWeight = base.schedulerCostWeight,
+                schedulerDeadlineRiskWeight = base.schedulerDeadlineRiskWeight,
+                schedulerQueueDelayWeight = base.schedulerQueueDelayWeight,
+                schedulerRoundRobinScoreTolerance = base.schedulerRoundRobinScoreTolerance,
+                schedulerWeightedRoundRobinEnabled = base.schedulerWeightedRoundRobinEnabled,
+                schedulerProgressWeight = base.schedulerProgressWeight,
+                schedulerProgressFastGapThreshold = base.schedulerProgressFastGapThreshold,
+                schedulerProgressCheapGapThreshold = base.schedulerProgressCheapGapThreshold,
+                schedulerProgressMinImprovement = base.schedulerProgressMinImprovement,
+                schedulerProgressNoImprovementSlices = base.schedulerProgressNoImprovementSlices
             )
     }
 }

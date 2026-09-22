@@ -73,6 +73,32 @@ data class BudgetSnapshot(
 }
 
 /**
+ * A stable, dispatch-scoped budget reservation.
+ *
+ * The reservation id is supplied by the caller and must be stable across
+ * retries.  Budget adapters use it as the idempotency key for settlement;
+ * they must not generate a replacement id internally.
+ */
+data class BudgetReservation(
+    val reservationId: String,
+    val scope: String,
+    val amount: Double
+) {
+    init {
+        require(reservationId.isNotBlank()) { "reservationId must not be blank" }
+        require(scope.isNotBlank()) { "scope must not be blank" }
+        require(amount.isFinite() && amount >= 0.0) { "amount must be finite and non-negative" }
+    }
+
+    /** Compatibility constructor for callers that do not yet provide a key. */
+    constructor(scope: String, amount: Double) : this(
+        reservationId = "legacy:$scope:$amount",
+        scope = scope,
+        amount = amount
+    )
+}
+
+/**
  * Cost Record
  * 成本记录
  *

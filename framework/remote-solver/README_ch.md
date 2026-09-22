@@ -445,7 +445,7 @@ InMemory 适配器设计用于本地开发和测试，无需外部依赖。请�
 
 ### 前置条件
 
-1. Java 11+ 运行时
+1. Java 25+ 运行时
 2. 数据库（推荐 PostgreSQL）用于生产适配器
 3. Kafka 集群用于事件驱动模式
 4. 对象存储（S3/MinIO 或 LocalFS）用于模型/快照持久化
@@ -578,7 +578,7 @@ curl -s "http://127.0.0.1:18080/api/v1/tasks/$TASK_ID"
 
 ### 前置条件
 
-1. Java 11+ 运行时
+1. Java 25+ 运行时
 2. 求解引擎（Gurobi、SCIP 或其他 OSPF 兼容求解器）
 3. 与调度器和对象存储的网络连通
 
@@ -602,6 +602,7 @@ Worker 参数：
 额外参数：
 - `--state-dir <dir>` - 本地状态目录（默认：`target/remote-solver-worker-state`）
 - `--total-runtime-ms <ms>` - 非 CP 兼容进度模式的运行时间（默认：`12000`）
+- `--elapsed-before-ms <ms>` - CP 切片开始前任务已消耗的时间（默认：`0`）
 
 传入 `--model-format ospf-cp-snapshot-json` 时，worker 会读取 snapshot，在独立进程中调用
 `OspfCpSnapshotExecutor` 和配置的 SCIP runtime，并写出带版本的 `SerializedSolution` JSON 结果及
@@ -1061,6 +1062,7 @@ Windows:
 本仓库 worker 额外支持参数：
 1. `--state-dir <dir>`（默认 `target/remote-solver-worker-state`）
 2. `--total-runtime-ms <long>`（默认 `12000`）
+3. `--elapsed-before-ms <long>`（默认 `0`，仅 CP snapshot）
 
 标准输出需返回 key-value：
 

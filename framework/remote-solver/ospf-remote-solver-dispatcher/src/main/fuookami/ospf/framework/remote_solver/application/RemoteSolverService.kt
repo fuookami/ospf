@@ -16,6 +16,8 @@
 package fuookami.ospf.framework.remote_solver.application
 
 import fuookami.ospf.framework.remote_solver.domain.BudgetSnapshot
+import fuookami.ospf.framework.remote_solver.domain.BudgetReservation
+import fuookami.ospf.framework.remote_solver.domain.LockLease
 import fuookami.ospf.framework.remote_solver.domain.CostRecord
 import fuookami.ospf.framework.remote_solver.domain.CostSummary
 import fuookami.ospf.framework.remote_solver.domain.EventEnvelopeHeaders
@@ -50,6 +52,8 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteResultValidat
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceId
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingDecision
+import fuookami.ospf.framework.remote_solver.protocol.domain.SliceOutcome
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolveResult
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
@@ -79,7 +83,17 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
@@ -159,14 +173,66 @@ class RemoteSolverService(
         private val TERMINAL_STATUSES = setOf(TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED)
     }
 
+    /** Raised when a late worker result no longer owns the dispatch fence. */
+    private class StaleExecutionException : Exception()
+
+    /** Mutable state shared by the lease, admission, and dispatch helpers. */
+    private class DispatchAttempt(
+        val leaseRef: AtomicReference<LockLease>,
+        val leaseLost: AtomicReference<Boolean>,
+        val leaseRenewalJob: Job
+    ) {
+        var reservedSliceId: SliceId? = null
+        var slotAcquired: Boolean = false
+        var occupiedNodeId: NodeId? = null
+        var ownershipTransferred: Boolean = false
+    }
+
+    private data class DispatchSelection(
+        val task: TaskState,
+        val availableNodes: List<NodeState>,
+        val selectedNode: NodeState,
+        val selectionDecision: NodeSelectionDecision
+    )
+
+    private sealed class DispatchNodeChoice {
+        data class Selected(val selection: DispatchSelection) : DispatchNodeChoice()
+        data class Finished(val task: TaskState) : DispatchNodeChoice()
+        object Skip : DispatchNodeChoice()
+    }
+
+    private data class DispatchBudgetPlan(
+        val selectedNode: NodeState,
+        val selectionDecision: NodeSelectionDecision,
+        val quantumDecision: QuantumDecision,
+        val quantumMs: Long
+    )
+
+    private sealed class DispatchBudgetChoice {
+        data class Proceed(val plan: DispatchBudgetPlan) : DispatchBudgetChoice()
+        data class Finished(val task: TaskState) : DispatchBudgetChoice()
+        object Skip : DispatchBudgetChoice()
+    }
+
     private val runningHandleByTaskId = ConcurrentHashMap<String, ExecutionHandle>()
+    /** Current dispatch generation for each task (the slice id is the fence). */
+    private val runningSliceByTaskId = ConcurrentHashMap<String, String>()
     private val latestGapByTaskId = ConcurrentHashMap<String, Double>()
+    private val progressSignalByTaskId = ConcurrentHashMap<String, ProgressSignal>()
+    private val lastDeadlineUrgencyByTaskId = ConcurrentHashMap<String, Double>()
+    /** Last dispatched task per fairness cohort; used to rotate equal-priority work. */
+    private val taskRoundRobinCursorByClass = ConcurrentHashMap<String, String>()
+    /** Last dispatch time used by the starvation guard across priority cohorts. */
+    private val lastDispatchAtByTaskId = ConcurrentHashMap<String, Long>()
+    /** Dispatch-scoped budget reservations held until actual slice reconciliation. */
+    private val budgetReservationBySliceId = ConcurrentHashMap<String, BudgetReservation>()
     private val dispatcherId = idGenerator.newId("dispatcher")
     private val runtimeSchedulerConfigRef = AtomicReference(SchedulerRuntimeConfig.from(config))
     private val schedulerConfigVersionRef = AtomicReference(config.schedulerConfigVersion.ifBlank { "v0" })
     private val schedulerHotReloadSeq = AtomicInteger(0)
     private val schedulerSnapshots = ConcurrentHashMap<String, SchedulerRuntimeConfig>()
     private val schedulerHotReloadAudits = CopyOnWriteArrayList<SchedulerHotReloadAuditRecord>()
+    private val schedulerConfigMutationMutex = Mutex()
 
     init {
         schedulerSnapshots[schedulerConfigVersionRef.get()] = runtimeSchedulerConfigRef.get()
@@ -180,7 +246,10 @@ class RemoteSolverService(
                             schedulerSnapshots[record.version] = snapshot
                         }
                     }
-                    val latest = persisted.maxByOrNull { it.effectiveAtEpochMs }
+                    // Audit ports return records in successful append order.
+                    // Effective timestamps are caller supplied and may move
+                    // backwards, so they cannot identify the latest version.
+                    val latest = persisted.lastOrNull()
                     if (latest != null) {
                         schedulerSnapshots[latest.version]?.let { snapshot ->
                             runtimeSchedulerConfigRef.set(snapshot)
@@ -190,6 +259,7 @@ class RemoteSolverService(
                 }
             }
         }
+        schedulerEngine.updateWeights(SchedulerWeights.from(runtimeSchedulerConfigRef.get()))
     }
 
     fun schedulerConfigVersion(): String = schedulerConfigVersionRef.get()
@@ -226,31 +296,32 @@ class RemoteSolverService(
         requestedVersion: String? = null
     ): SchedulerHotReloadAuditRecord {
         ensureHotReloadEnabled()
-        val normalizedOperator = operator.trim().ifEmpty { "unknown" }
-        val previousVersion = schedulerConfigVersionRef.get()
-        val previous = runtimeSchedulerConfigRef.get()
-        val next = applySchedulerChangeSet(previous, changeSet)
-        val newVersion = requestedVersion?.trim()?.takeIf { it.isNotEmpty() }
-            ?: "hot-${effectiveAtEpochMs}-${schedulerHotReloadSeq.incrementAndGet()}"
-        require(newVersion != previousVersion) {
-            "requestedVersion must be different from current version '$previousVersion'"
-        }
+        return schedulerConfigMutationMutex.withLock {
+            val normalizedOperator = operator.trim().ifEmpty { "unknown" }
+            val previousVersion = schedulerConfigVersionRef.get()
+            val previous = runtimeSchedulerConfigRef.get()
+            val next = applySchedulerChangeSet(previous, changeSet)
+            val newVersion = requestedVersion?.trim()?.takeIf { it.isNotEmpty() }
+                ?: nextSchedulerVersion("hot", effectiveAtEpochMs)
+            requireSchedulerVersionAvailable(newVersion, previousVersion)
+            val audit = SchedulerHotReloadAuditRecord(
+                version = newVersion,
+                previousVersion = previousVersion,
+                operator = normalizedOperator,
+                effectiveAtEpochMs = effectiveAtEpochMs,
+                changeSet = changeSet.toMap(),
+                rollbackFromVersion = null
+            )
 
-        runtimeSchedulerConfigRef.set(next)
-        schedulerConfigVersionRef.set(newVersion)
-        schedulerSnapshots[newVersion] = next
-        val audit = SchedulerHotReloadAuditRecord(
-            version = newVersion,
-            previousVersion = previousVersion,
-            operator = normalizedOperator,
-            effectiveAtEpochMs = effectiveAtEpochMs,
-            changeSet = changeSet.toMap(),
-            rollbackFromVersion = null
-        )
-        schedulerHotReloadAudits.add(audit)
-        schedulerConfigAuditPort?.saveSnapshot(newVersion, next)
-        schedulerConfigAuditPort?.append(audit)
-        return audit
+            // Persist the complete record before publishing it to workers.
+            // A failed audit write therefore leaves the old runtime active.
+            schedulerConfigAuditPort?.let {
+                it.saveSnapshot(newVersion, next)
+                it.append(audit)
+            }
+            publishSchedulerConfig(previousVersion, previous, newVersion, next, audit)
+            audit
+        }
     }
 
     suspend fun rollbackSchedulerHotReload(
@@ -260,34 +331,79 @@ class RemoteSolverService(
         requestedVersion: String? = null
     ): SchedulerHotReloadAuditRecord {
         ensureHotReloadEnabled()
-        val normalizedTargetVersion = targetVersion.trim()
-        require(normalizedTargetVersion.isNotEmpty()) { "targetVersion must not be blank" }
-        val snapshot = schedulerSnapshots[normalizedTargetVersion]
-            ?: throw RemoteSolverException(
-                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
-                message = "Unknown scheduler config version '$normalizedTargetVersion'"
+        return schedulerConfigMutationMutex.withLock {
+            val normalizedTargetVersion = targetVersion.trim()
+            require(normalizedTargetVersion.isNotEmpty()) { "targetVersion must not be blank" }
+            val snapshot = schedulerSnapshots[normalizedTargetVersion]
+                ?: throw RemoteSolverException(
+                    code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                    message = "Unknown scheduler config version '$normalizedTargetVersion'"
+                )
+            val previousVersion = schedulerConfigVersionRef.get()
+            val previous = runtimeSchedulerConfigRef.get()
+            val newVersion = requestedVersion?.trim()?.takeIf { it.isNotEmpty() }
+                ?: nextSchedulerVersion("rollback-$normalizedTargetVersion", effectiveAtEpochMs)
+            requireSchedulerVersionAvailable(newVersion, previousVersion)
+            val audit = SchedulerHotReloadAuditRecord(
+                version = newVersion,
+                previousVersion = previousVersion,
+                operator = operator.trim().ifEmpty { "unknown" },
+                effectiveAtEpochMs = effectiveAtEpochMs,
+                changeSet = snapshot.toChangeSet(),
+                rollbackFromVersion = normalizedTargetVersion
             )
-        val previousVersion = schedulerConfigVersionRef.get()
-        val newVersion = requestedVersion?.trim()?.takeIf { it.isNotEmpty() }
-            ?: "rollback-${normalizedTargetVersion}-${schedulerHotReloadSeq.incrementAndGet()}"
+            schedulerConfigAuditPort?.let {
+                it.saveSnapshot(newVersion, snapshot)
+                it.append(audit)
+            }
+            publishSchedulerConfig(previousVersion, previous, newVersion, snapshot, audit)
+            audit
+        }
+    }
+
+    private fun nextSchedulerVersion(prefix: String, effectiveAtEpochMs: Long): String {
+        var candidate: String
+        do {
+            candidate = "$prefix-$effectiveAtEpochMs-${schedulerHotReloadSeq.incrementAndGet()}"
+        } while (schedulerSnapshots.containsKey(candidate) || schedulerHotReloadAudits.any { it.version == candidate })
+        return candidate
+    }
+
+    private fun requireSchedulerVersionAvailable(newVersion: String, previousVersion: String) {
+        require(newVersion.matches(Regex("[A-Za-z0-9_.-]+"))) {
+            "scheduler version contains illegal characters"
+        }
         require(newVersion != previousVersion) {
             "requestedVersion must be different from current version '$previousVersion'"
         }
-        runtimeSchedulerConfigRef.set(snapshot)
-        schedulerConfigVersionRef.set(newVersion)
-        schedulerSnapshots[newVersion] = snapshot
-        val audit = SchedulerHotReloadAuditRecord(
-            version = newVersion,
-            previousVersion = previousVersion,
-            operator = operator.trim().ifEmpty { "unknown" },
-            effectiveAtEpochMs = effectiveAtEpochMs,
-            changeSet = snapshot.toChangeSet(),
-            rollbackFromVersion = normalizedTargetVersion
-        )
+        require(!schedulerSnapshots.containsKey(newVersion) && schedulerHotReloadAudits.none { it.version == newVersion }) {
+            "scheduler version '$newVersion' already exists"
+        }
+    }
+
+    private fun publishSchedulerConfig(
+        previousVersion: String,
+        previous: SchedulerRuntimeConfig,
+        newVersion: String,
+        next: SchedulerRuntimeConfig,
+        audit: SchedulerHotReloadAuditRecord
+    ) {
+        check(runtimeSchedulerConfigRef.compareAndSet(previous, next)) {
+            "scheduler runtime changed while publishing version '$newVersion'"
+        }
+        if (!schedulerConfigVersionRef.compareAndSet(previousVersion, newVersion)) {
+            runtimeSchedulerConfigRef.compareAndSet(next, previous)
+            error("scheduler version changed while publishing version '$newVersion'")
+        }
+        try {
+            schedulerEngine.updateWeights(SchedulerWeights.from(next))
+        } catch (error: Throwable) {
+            schedulerConfigVersionRef.compareAndSet(newVersion, previousVersion)
+            runtimeSchedulerConfigRef.compareAndSet(next, previous)
+            throw error
+        }
+        schedulerSnapshots[newVersion] = next
         schedulerHotReloadAudits.add(audit)
-        schedulerConfigAuditPort?.saveSnapshot(newVersion, snapshot)
-        schedulerConfigAuditPort?.append(audit)
-        return audit
     }
 
     suspend fun registerNode(profile: NodeCapabilityProfile) {
@@ -318,21 +434,17 @@ class RemoteSolverService(
         val stableRequestId = requestId ?: RequestId.of(idGenerator.newId("req"))
         val resolvedTenantId = resolveTenantId(tenantId, payload)
 
-        // Use tenant-scoped idempotency check
-        val existingTask = taskStatePort.getTaskByRequestId(resolvedTenantId, stableRequestId)
-        if (existingTask != null) {
-            return existingTask
-        }
-
-        val resolvedComplexity = complexity ?: inferComplexity(payload)
-        val resolvedTimeSensitivity = timeSensitivity ?: TimeSensitivity.NON_REALTIME
+        val scheduling = payload.scheduling
+        val resolvedComplexity = scheduling?.complexity ?: complexity ?: inferComplexity(payload)
+        val resolvedTimeSensitivity = scheduling?.timeSensitivity ?: timeSensitivity ?: TimeSensitivity.NON_REALTIME
         val (normalizedTimeSensitivity, downgradedRealtimeComplexTask) =
             normalizeSubmission(resolvedComplexity, resolvedTimeSensitivity)
+        val resolvedPriority = scheduling?.priority ?: priority
+        val resolvedDeadline = scheduling?.deadline ?: deadline
+        val resolvedBudgetLimit = scheduling?.budgetLimit ?: budgetLimit
+        val resolvedBudgetScope = scheduling?.budgetScope ?: budgetScope
         val taskId = TaskId.of(idGenerator.newId("task"))
-        val scope = normalizeBudgetScope(budgetScope, resolvedTenantId, taskId)
-        if (budgetLimit != null) {
-            budgetPort.configureBudget(scope.value, budgetLimit.toDouble())
-        }
+        val scope = normalizeBudgetScope(resolvedBudgetScope, resolvedTenantId, taskId)
         val task = TaskState(
             taskId = taskId,
             requestId = stableRequestId,
@@ -340,15 +452,25 @@ class RemoteSolverService(
             status = TaskStatus.QUEUED,
             complexity = resolvedComplexity,
             timeSensitivity = normalizedTimeSensitivity,
-            priority = priority,
-            deadline = deadline,
+            priority = resolvedPriority,
+            deadline = resolvedDeadline,
             payload = payload,
             createdAt = now,
             updatedAt = now,
             budgetScope = scope,
-            budgetLimit = budgetLimit
+            budgetLimit = resolvedBudgetLimit,
+            latestSnapshotRef = scheduling?.checkpointRef
         )
-        taskStatePort.upsertTask(task)
+        // The identity check and insert must be one persistence operation.  A
+        // get-then-upsert sequence allows two dispatchers to publish duplicate
+        // submission events and overwrite the winner's task state.
+        val insertResult = taskStatePort.insertIfAbsent(task)
+        if (!insertResult.inserted) {
+            return insertResult.task
+        }
+        if (resolvedBudgetLimit != null) {
+            budgetPort.configureBudget(scope.value, resolvedBudgetLimit.toDouble())
+        }
         publishEvent(
             topic = EventTopics.SOLVING_REQUEST,
             key = task.taskId,
@@ -480,6 +602,14 @@ class RemoteSolverService(
             }
 
             val now = clock.now()
+            val activeSlices = taskStatePort.getSlices(task.taskId)
+                .filter { it.status in setOf(SliceStatus.PLANNED, SliceStatus.RUNNING, SliceStatus.CHECKPOINTING) }
+            val runningGeneration = runningSliceByTaskId[task.taskId.value]
+            val slotNodeId = task.assignedNodeId
+            val ownsExecutionSlot = slotNodeId != null && (
+                task.status in setOf(TaskStatus.DISPATCHING, TaskStatus.RUNNING) ||
+                    activeSlices.any { it.sliceId.value == runningGeneration }
+                )
             publishEvent(
                 topic = EventTopics.SOLVING_CONTROL,
                 key = task.taskId,
@@ -513,15 +643,21 @@ class RemoteSolverService(
                 runningHandleByTaskId.remove(task.taskId.value)
             }
 
-            val activeSlices = taskStatePort.getSlices(task.taskId)
-                .filter { it.status in setOf(SliceStatus.PLANNED, SliceStatus.RUNNING, SliceStatus.CHECKPOINTING) }
+            runningSliceByTaskId.remove(task.taskId.value)
             activeSlices.forEach { slice ->
-                taskStatePort.updateSlice(
-                    slice.copy(
-                        status = SliceStatus.FAILED,
-                        finishedAt = now,
-                        error = reason
-                    )
+                val stoppedSlice = slice.copy(
+                    status = SliceStatus.FAILED,
+                    finishedAt = now,
+                    error = reason
+                )
+                taskStatePort.updateSlice(stoppedSlice)
+                publishSliceLifecycle(
+                    slice = stoppedSlice,
+                    action = "slice-stop",
+                    taskStatus = TaskStatus.STOPPED,
+                    tenantId = task.tenantId,
+                    reason = reason,
+                    idempotencySuffix = "stop"
                 )
             }
 
@@ -535,11 +671,13 @@ class RemoteSolverService(
                     objectiveValueInt64 = task.latestResult?.objectiveValueInt64,
                     gap = task.latestResult?.gap,
                     elapsed = (task.latestResult?.elapsedMs ?: 0L).toDuration(DurationUnit.MILLISECONDS),
-                    checkpointRef = task.latestSnapshotRef,
+                    checkpointRef = task.effectiveCheckpointRef(),
                     resultRef = null,
                     message = reason,
                     extension = (task.latestResult?.extension ?: emptyMap()) + ("reasonCode" to "CANCELLED"),
-                    schemaVersion = task.latestResult?.schemaVersion ?: "1.0",
+                    schemaVersion = task.latestResult?.schemaVersion
+                        ?.takeIf { it.substringBefore('.').toIntOrNull() == 2 }
+                        ?: "2.0",
                     problemStatus = if (task.latestResult?.feasible == true) {
                         RemoteProblemStatus.FEASIBLE
                     } else {
@@ -559,14 +697,24 @@ class RemoteSolverService(
                     diagnostics = task.latestResult?.diagnostics ?: emptyMap(),
                     runId = task.latestResult?.runId,
                     attemptId = task.latestResult?.attemptId,
-                    artifactDigest = null
+                    artifactDigest = null,
+                    incumbentRef = task.latestResult?.incumbentRef,
+                    modelFingerprint = task.latestResult?.modelFingerprint,
+                    scheduling = task.latestResult?.scheduling?.copy(
+                        outcome = SliceOutcome.CANCELLED,
+                        reason = reason
+                    ),
+                    outcome = SliceOutcome.CANCELLED,
+                    cancellationChain = task.latestResult?.cancellationChain ?: emptyList()
                 ),
                 updatedAt = now
             )
             taskStatePort.upsertTask(stopped)
             clearLearningState(task.taskId.value)
-            task.assignedNodeId?.let { nodeId ->
-                nodeStatePort.releaseUnit(nodeId.value)
+            if (ownsExecutionSlot) {
+                slotNodeId?.let { nodeId ->
+                    nodeStatePort.releaseUnit(nodeId.value)
+                }
             }
             metricsPort.increment("task.stopped")
             publishEvent(
@@ -614,16 +762,16 @@ class RemoteSolverService(
             val now = clock.now()
             when (task.status) {
                 TaskStatus.STOPPED -> {
-                    val resumedStatus = if (task.latestSnapshotRef != null || task.complexity == TaskComplexity.COMPLEX) {
+                    val resumedStatus = if (task.effectiveCheckpointRef() != null || task.effectiveComplexity() == TaskComplexity.COMPLEX) {
                         TaskStatus.SUSPENDED
                     } else {
                         TaskStatus.QUEUED
                     }
-                    val resumed = task.copy(
+                    val resumed = preserveResumeSourceIdentity(task.copy(
                         status = resumedStatus,
                         assignedNodeId = null,
                         updatedAt = now
-                    )
+                    ))
                     taskStatePort.upsertTask(resumed)
                     publishEvent(
                         topic = EventTopics.SOLVING_CONTROL,
@@ -644,7 +792,7 @@ class RemoteSolverService(
 
                 TaskStatus.SUSPENDED,
                 TaskStatus.QUEUED,
-                TaskStatus.ACCEPTED -> task
+                TaskStatus.ACCEPTED -> preserveResumeSourceIdentity(task)
 
                 else -> throw RemoteSolverException(
                     code = RemoteSolverErrorCode.INVALID_TASK_STATE_TRANSITION,
@@ -656,6 +804,61 @@ class RemoteSolverService(
                 )
             }
         }
+
+    /**
+     * Preserve the identity accepted by a resume action. The checkpoint's
+     * source slice is the action attempt; a future child slice is created only
+     * by the later dispatch path and must never be fabricated here.
+     */
+    private suspend fun preserveResumeSourceIdentity(task: TaskState): TaskState {
+        val checkpoint = checkpointPort.latest(task.taskId) ?: return task
+        val previous = task.latestResult
+        val fingerprints = (previous?.fingerprints ?: emptyMap()).toMutableMap()
+        checkpoint.modelFingerprint?.let { fingerprints.putIfAbsent("model", it) }
+        checkpoint.configurationFingerprint?.let { fingerprints.putIfAbsent("configuration", it) }
+        checkpoint.solverFingerprint?.let { fingerprints.putIfAbsent("solver", it) }
+        val resumedResult = previous?.copy(
+            checkpointRef = checkpoint.ref,
+            schemaVersion = previous.schemaVersion
+                .takeIf { it.substringBefore('.').toIntOrNull() == 2 }
+                ?: "2.0",
+            runId = task.taskId.value,
+            attemptId = checkpoint.sliceId.value,
+            modelFingerprint = checkpoint.modelFingerprint ?: previous.modelFingerprint,
+            fingerprints = fingerprints,
+            provenance = previous.provenance.ifEmpty { checkpoint.provenance },
+            cancellationChain = previous.cancellationChain.ifEmpty { checkpoint.cancellationChain }
+        ) ?: SolveResult(
+            feasible = false,
+            optimal = false,
+            objectiveValue = null,
+            gap = null,
+            elapsed = 0L.toDuration(DurationUnit.MILLISECONDS),
+            checkpointRef = checkpoint.ref,
+            message = "Resume accepted from source checkpoint",
+            schemaVersion = "2.0",
+            provenance = checkpoint.provenance,
+            fingerprintSchemas = mapOf(
+                "model" to "1.0",
+                "configuration" to "1.0",
+                "solver" to "1.0"
+            ).filterKeys { fingerprints.containsKey(it) },
+            runId = task.taskId.value,
+            attemptId = checkpoint.sliceId.value,
+            modelFingerprint = checkpoint.modelFingerprint,
+            fingerprints = fingerprints,
+            outcome = SliceOutcome.RESUMABLE,
+            cancellationChain = checkpoint.cancellationChain
+        )
+        val enriched = task.copy(
+            latestResult = resumedResult,
+            latestSnapshotRef = checkpoint.ref
+        )
+        if (enriched != task) {
+            taskStatePort.upsertTask(enriched)
+        }
+        return enriched
+    }
 
     suspend fun heartbeat(nodeId: String) = heartbeat(NodeId.of(nodeId))
 
@@ -726,138 +929,267 @@ class RemoteSolverService(
             owner = dispatcherId,
             ttlMs = config.dispatchLockTtlMs
         ) ?: return null
+        val leaseRef = AtomicReference(lease)
+        val leaseLost = AtomicReference(false)
+        val leaseRenewalJob = startLeaseRenewal(task, leaseRef, leaseLost)
+        val attempt = DispatchAttempt(leaseRef, leaseLost, leaseRenewalJob)
+        return try {
+            scheduleWithLease(task, attempt)
+        } finally {
+            cleanupDispatchAttempt(task, attempt)
+        }
+    }
 
-        try {
-            val latestTask = taskStatePort.getTask(task.taskId) ?: return null
-            if (latestTask.status !in setOf(TaskStatus.QUEUED, TaskStatus.SUSPENDED, TaskStatus.ACCEPTED, TaskStatus.WAITING_FOR_BUDGET)) {
-                return null
-            }
-            val hardTimeoutReason = hardTimeoutReason(latestTask)
-            if (hardTimeoutReason != null) {
-                metricsPort.increment("task.failed", tags = mapOf("reason" to "hard_timeout"))
-                return markFailed(latestTask, hardTimeoutReason, RemoteSolverErrorCode.TASK_FAILED_HARD_TIMEOUT)
-            }
-
-            // Gather available nodes first
-            val availableNodes = nodeStatePort.listNodes(onlineOnly = true)
-                .asSequence()
-                .filter { it.availableUnits > 0 }
-                .filter { isNodeCompatible(latestTask, it) }
-                .toList()
-
-            // Budget check with degradation logic
-            var selectedNode: NodeState? = null
-            if (!checkBudget(latestTask)) {
-                // Try budget degradation before failing
-                val degradationResult = tryBudgetDegradation(latestTask, availableNodes)
-                when (degradationResult) {
-                    is BudgetDegradationResult.CanProceedWithNode -> {
-                        selectedNode = degradationResult.node
-                    }
-                    BudgetDegradationResult.WaitForBudget -> {
-                        // Mark as waiting for budget instead of failing
-                        if (latestTask.status != TaskStatus.WAITING_FOR_BUDGET) {
-                            val now = clock.now()
-                            val waitingTask = latestTask.copy(
-                                status = TaskStatus.WAITING_FOR_BUDGET,
-                                updatedAt = now
-                            )
-                            taskStatePort.upsertTask(waitingTask)
-                            publishEvent(
-                                topic = EventTopics.SOLVING_CONTROL,
-                                key = waitingTask.taskId,
-                                payload = SolvingControlPayload(
-                                    taskId = waitingTask.taskId.value,
-                                    action = "budget_wait",
-                                    status = "waiting",
-                                    reason = "Budget exhausted, waiting for release"
-                                ).toByteArray(),
-                                tenantId = waitingTask.tenantId,
-                                idempotencyKey = "task:${waitingTask.taskId}:budget_wait"
-                            )
-                            metricsPort.increment("task.budget_wait")
-                        }
-                        return null
-                    }
-                    BudgetDegradationResult.FailAfterDegradation -> {
-                        val failed = markFailed(
-                            latestTask,
-                            "Budget exceeded after degradation",
-                            RemoteSolverErrorCode.TASK_FAILED_BUDGET_EXCEEDED
-                        )
-                        metricsPort.increment("task.failed", tags = mapOf("reason" to "budget"))
-                        return failed
+    private suspend fun startLeaseRenewal(
+        task: TaskState,
+        leaseRef: AtomicReference<LockLease>,
+        leaseLost: AtomicReference<Boolean>
+    ): Job = CoroutineScope(currentCoroutineContext()).launch {
+        val intervalMs = max(1L, config.dispatchLockTtlMs / 3L)
+        while (isActive) {
+            delay(intervalMs)
+            val renewed = distributedLockPort.renew(leaseRef.get(), config.dispatchLockTtlMs)
+            if (renewed == null) {
+                leaseLost.set(true)
+                // A lost dispatch lease fences this generation. Ask the worker
+                // to stop promptly; execution will then reject stale results.
+                val handle = runningHandleByTaskId[task.taskId.value]
+                if (handle != null) {
+                    try {
+                        solverExecutionPort.stop(handle)
+                    } catch (_: Exception) {
                     }
                 }
+                break
             }
+            leaseRef.set(renewed)
+        }
+    }
 
-            // Normal node selection if budget is OK or degradation found a node
-            if (selectedNode == null) {
-                if (availableNodes.isEmpty()) {
-                    return null
+    private suspend fun scheduleWithLease(task: TaskState, attempt: DispatchAttempt): TaskState? {
+        if (attempt.leaseLost.get()) {
+            return null
+        }
+        val latestTask = taskStatePort.getTask(task.taskId) ?: return null
+        if (latestTask.status !in setOf(
+                TaskStatus.QUEUED,
+                TaskStatus.SUSPENDED,
+                TaskStatus.ACCEPTED,
+                TaskStatus.WAITING_FOR_BUDGET
+            )) {
+            return null
+        }
+        val hardTimeoutReason = hardTimeoutReason(latestTask)
+        if (hardTimeoutReason != null) {
+            metricsPort.increment("task.failed", tags = mapOf("reason" to "hard_timeout"))
+            return markFailed(latestTask, hardTimeoutReason, RemoteSolverErrorCode.TASK_FAILED_HARD_TIMEOUT)
+        }
+
+        return when (val choice = chooseDispatchNode(latestTask, attempt)) {
+            is DispatchNodeChoice.Selected -> dispatchSelectedTask(choice.selection, attempt)
+            is DispatchNodeChoice.Finished -> choice.task
+            DispatchNodeChoice.Skip -> null
+        }
+    }
+
+    private suspend fun chooseDispatchNode(
+        task: TaskState,
+        attempt: DispatchAttempt
+    ): DispatchNodeChoice {
+        if (attempt.leaseLost.get()) {
+            return DispatchNodeChoice.Skip
+        }
+        // Admission is evaluated before budget and scoring. Keeping the
+        // reasons local distinguishes missing capability from a full node.
+        val onlineNodes = nodeStatePort.listNodes(onlineOnly = true)
+        val admission = classifyAdmission(task, onlineNodes)
+        metricsPort.increment(
+            "scheduler.admission",
+            tags = mapOf(
+                "class" to admission.taskClass.name,
+                "reason" to admission.reason.name
+            )
+        )
+        val availableNodes = onlineNodes
+            .asSequence()
+            .filter { it.availableUnits > 0 }
+            .filter { isNodeExecutionCapable(task, it) }
+            .toList()
+        if (availableNodes.isEmpty() || attempt.leaseLost.get()) {
+            return DispatchNodeChoice.Skip
+        }
+
+        val budgetEligibleNodes = if (task.effectiveBudgetLimit() == null) {
+            availableNodes
+        } else {
+            availableNodes.filter {
+                !wouldExceedBudget(task, it, computeQuantumMs(task, it))
+            }
+        }
+        var selectedNode: NodeState? = null
+        var selectionDecision: NodeSelectionDecision? = null
+        if (!checkBudget(task) || budgetEligibleNodes.isEmpty()) {
+            when (val degradationResult = tryBudgetDegradation(task, availableNodes)) {
+                is BudgetDegradationResult.CanProceedWithNode -> {
+                    selectedNode = degradationResult.node
+                    selectionDecision = budgetSelectionDecision(task, degradationResult.node, availableNodes)
                 }
-                selectedNode = schedulerEngine.chooseNode(latestTask, availableNodes) ?: return null
+                BudgetDegradationResult.WaitForBudget -> {
+                    markSelectionBudgetWait(task)
+                    return DispatchNodeChoice.Skip
+                }
+                BudgetDegradationResult.FailAfterDegradation -> {
+                    val failed = markFailed(
+                        task,
+                        "Budget exceeded after degradation",
+                        RemoteSolverErrorCode.TASK_FAILED_BUDGET_EXCEEDED
+                    )
+                    metricsPort.increment("task.failed", tags = mapOf("reason" to "budget"))
+                    return DispatchNodeChoice.Finished(failed)
+                }
             }
-            // 预算恢复后先回到队列，再进入 accept/confirm 流程。
-            // Requeue a budget-waiting task before entering the accept/confirm flow.
-            val dispatchableTask = requeueWaitingForBudget(latestTask) ?: return null
-            if (!nodeStatePort.occupyUnit(selectedNode.nodeId)) {
-                return null
+        }
+
+        if (selectedNode == null) {
+            if (budgetEligibleNodes.isEmpty()) {
+                return DispatchNodeChoice.Skip
             }
+            val schedulerConfig = runtimeSchedulerConfigRef.get()
+            selectionDecision = schedulerEngine.explainNodeSelection(
+                task = task,
+                candidates = budgetEligibleNodes,
+                preferredNodeId = task.assignedNodeId,
+                migrationHysteresisRatio = schedulerConfig.schedulerMigrationHysteresisRatio,
+                minSlicesBeforeMigration = schedulerConfig.schedulerMinSlicesBeforeMigration,
+                migrationCostWeight = schedulerConfig.schedulerMigrationCostWeight,
+                slicesExecuted = taskStatePort.getSlices(task.taskId).size,
+                progressSignal = taskProgressSignal(task)
+            )
+            selectedNode = selectionDecision?.selectedNode
+        }
+        val node = selectedNode ?: return DispatchNodeChoice.Skip
+        return DispatchNodeChoice.Selected(
+            DispatchSelection(
+                task = task,
+                availableNodes = availableNodes,
+                selectedNode = node,
+                selectionDecision = selectionDecision ?: budgetSelectionDecision(task, node, availableNodes)
+            )
+        )
+    }
 
-            val acceptedTask = acceptForDispatch(dispatchableTask)
-            if (acceptedTask == null) {
-                nodeStatePort.releaseUnit(selectedNode.nodeId)
-                return null
-            }
+    private suspend fun markSelectionBudgetWait(task: TaskState) {
+        if (task.status == TaskStatus.WAITING_FOR_BUDGET) {
+            return
+        }
+        val waitingTask = task.copy(
+            status = TaskStatus.WAITING_FOR_BUDGET,
+            updatedAt = clock.now()
+        )
+        taskStatePort.upsertTask(waitingTask)
+        publishEvent(
+            topic = EventTopics.SOLVING_CONTROL,
+            key = waitingTask.taskId,
+            payload = SolvingControlPayload(
+                taskId = waitingTask.taskId.value,
+                action = "budget_wait",
+                status = "waiting",
+                reason = "Budget exhausted, waiting for release"
+            ).toByteArray(),
+            tenantId = waitingTask.tenantId,
+            idempotencyKey = "task:${waitingTask.taskId}:budget_wait"
+        )
+        metricsPort.increment("task.budget_wait")
+    }
 
-            val now = clock.now()
-            val dispatchId = DispatchId.of(idGenerator.newId("dispatch"))
-            val sliceId = SliceId.of(idGenerator.newId("slice"))
-            val quantumMs = computeQuantumMs(acceptedTask, selectedNode)
-            if (wouldExceedBudget(acceptedTask, selectedNode, quantumMs)) {
-                nodeStatePort.releaseUnit(selectedNode.nodeId)
+    private suspend fun dispatchSelectedTask(
+        selection: DispatchSelection,
+        attempt: DispatchAttempt
+    ): TaskState? {
+        val dispatchableTask = requeueWaitingForBudget(selection.task) ?: return null
+        val selectedNode = selection.selectedNode
+        if (!nodeStatePort.occupyUnit(selectedNode.nodeId)) {
+            return null
+        }
+        attempt.slotAcquired = true
+        attempt.occupiedNodeId = selectedNode.nodeId
+        val acceptedTask = acceptForDispatch(dispatchableTask)
+        if (acceptedTask == null) {
+            nodeStatePort.releaseUnit(selectedNode.nodeId)
+            attempt.slotAcquired = false
+            return null
+        }
+        return prepareDispatch(
+            acceptedTask = acceptedTask,
+            initialSelection = selection,
+            initialNode = selectedNode,
+            attempt = attempt
+        )
+    }
 
-                // Try budget degradation before failing
-                val degradationResult = tryBudgetDegradation(acceptedTask, availableNodes)
-                when (degradationResult) {
-                    is BudgetDegradationResult.CanProceedWithNode -> {
-                        // Switch to cheaper node
-                        val cheaperNode = degradationResult.node
-                        if (!nodeStatePort.occupyUnit(cheaperNode.nodeId)) {
-                            return null
-                        }
-                        selectedNode = cheaperNode
-                        // Continue with cheaper node - recompute quantum
-                        val cheaperQuantumMs = computeQuantumMs(acceptedTask, cheaperNode)
-                        if (wouldExceedBudget(acceptedTask, cheaperNode, cheaperQuantumMs)) {
-                            // Even cheaper node exceeds budget - wait
-                            nodeStatePort.releaseUnit(cheaperNode.nodeId)
-                            if (acceptedTask.status != TaskStatus.WAITING_FOR_BUDGET) {
-                                val waitingTask = acceptedTask.copy(
-                                    status = TaskStatus.WAITING_FOR_BUDGET,
-                                    updatedAt = now
-                                )
-                                taskStatePort.upsertTask(waitingTask)
-                                publishEvent(
-                                    topic = EventTopics.SOLVING_CONTROL,
-                                    key = waitingTask.taskId,
-                                    payload = SolvingControlPayload(
-                                        taskId = waitingTask.taskId.value,
-                                        action = "budget_wait",
-                                        status = "waiting",
-                                        reason = "Budget exhausted after degradation"
-                                    ).toByteArray(),
-                                    tenantId = waitingTask.tenantId,
-                                    idempotencyKey = "task:${waitingTask.taskId}:budget_wait"
-                                )
-                                metricsPort.increment("task.budget_wait")
-                            }
-                            return null
-                        }
-                        // Proceed with cheaper node - fall through to dispatch logic
+    private suspend fun prepareDispatch(
+        acceptedTask: TaskState,
+        initialSelection: DispatchSelection,
+        initialNode: NodeState,
+        attempt: DispatchAttempt
+    ): TaskState? {
+        val now = clock.now()
+        val dispatchId = DispatchId.of(idGenerator.newId("dispatch"))
+        val sliceId = SliceId.of(idGenerator.newId("slice"))
+        attempt.reservedSliceId = sliceId
+        return when (val budgetChoice = prepareDispatchBudget(
+            acceptedTask = acceptedTask,
+            initialSelection = initialSelection,
+            initialNode = initialNode,
+            now = now,
+            attempt = attempt
+        )) {
+            is DispatchBudgetChoice.Finished -> budgetChoice.task
+            DispatchBudgetChoice.Skip -> null
+            is DispatchBudgetChoice.Proceed -> persistAndExecuteDispatch(
+                acceptedTask = acceptedTask,
+                dispatchId = dispatchId,
+                sliceId = sliceId,
+                plan = budgetChoice.plan,
+                attempt = attempt,
+                now = now
+            )
+        }
+    }
+
+    private suspend fun prepareDispatchBudget(
+        acceptedTask: TaskState,
+        initialSelection: DispatchSelection,
+        initialNode: NodeState,
+        now: kotlin.time.Instant,
+        attempt: DispatchAttempt
+    ): DispatchBudgetChoice {
+        var selectedNode = initialNode
+        var selectionDecision = initialSelection.selectionDecision
+        var quantumDecision = computeQuantumDecision(acceptedTask, selectedNode)
+        var quantumMs = effectiveQuantumMs(acceptedTask, selectedNode, quantumDecision)
+        if (wouldExceedBudget(acceptedTask, selectedNode, quantumMs)) {
+            nodeStatePort.releaseUnit(selectedNode.nodeId)
+            attempt.slotAcquired = false
+            when (val degradationResult = tryBudgetDegradation(acceptedTask, initialSelection.availableNodes)) {
+                is BudgetDegradationResult.CanProceedWithNode -> {
+                    val cheaperNode = degradationResult.node
+                    if (!nodeStatePort.occupyUnit(cheaperNode.nodeId)) {
+                        return DispatchBudgetChoice.Skip
                     }
-                    BudgetDegradationResult.WaitForBudget -> {
+                    attempt.slotAcquired = true
+                    attempt.occupiedNodeId = cheaperNode.nodeId
+                    selectedNode = cheaperNode
+                    selectionDecision = budgetSelectionDecision(
+                        acceptedTask,
+                        cheaperNode,
+                        initialSelection.availableNodes
+                    )
+                    quantumDecision = computeQuantumDecision(acceptedTask, cheaperNode)
+                    quantumMs = effectiveQuantumMs(acceptedTask, cheaperNode, quantumDecision)
+                    if (wouldExceedBudget(acceptedTask, cheaperNode, quantumMs)) {
+                        nodeStatePort.releaseUnit(cheaperNode.nodeId)
+                        attempt.slotAcquired = false
                         if (acceptedTask.status != TaskStatus.WAITING_FOR_BUDGET) {
                             val waitingTask = acceptedTask.copy(
                                 status = TaskStatus.WAITING_FOR_BUDGET,
@@ -871,82 +1203,206 @@ class RemoteSolverService(
                                     taskId = waitingTask.taskId.value,
                                     action = "budget_wait",
                                     status = "waiting",
-                                    reason = "Budget exhausted, waiting for release"
+                                    reason = "Budget exhausted after degradation"
                                 ).toByteArray(),
                                 tenantId = waitingTask.tenantId,
                                 idempotencyKey = "task:${waitingTask.taskId}:budget_wait"
                             )
                             metricsPort.increment("task.budget_wait")
                         }
-                        return null
-                    }
-                    BudgetDegradationResult.FailAfterDegradation -> {
-                        val failed = markFailed(
-                            acceptedTask,
-                            "Budget exceeded after degradation",
-                            RemoteSolverErrorCode.TASK_FAILED_BUDGET_EXCEEDED
-                        )
-                        metricsPort.increment("task.failed", tags = mapOf("reason" to "budget"))
-                        return failed
+                        return DispatchBudgetChoice.Skip
                     }
                 }
+                BudgetDegradationResult.WaitForBudget -> {
+                    if (acceptedTask.status != TaskStatus.WAITING_FOR_BUDGET) {
+                        val waitingTask = acceptedTask.copy(
+                            status = TaskStatus.WAITING_FOR_BUDGET,
+                            updatedAt = now
+                        )
+                        taskStatePort.upsertTask(waitingTask)
+                        publishEvent(
+                            topic = EventTopics.SOLVING_CONTROL,
+                            key = waitingTask.taskId,
+                            payload = SolvingControlPayload(
+                                taskId = waitingTask.taskId.value,
+                                action = "budget_wait",
+                                status = "waiting",
+                                reason = "Budget exhausted, waiting for release"
+                            ).toByteArray(),
+                            tenantId = waitingTask.tenantId,
+                            idempotencyKey = "task:${waitingTask.taskId}:budget_wait"
+                        )
+                        metricsPort.increment("task.budget_wait")
+                    }
+                    return DispatchBudgetChoice.Skip
+                }
+                BudgetDegradationResult.FailAfterDegradation -> {
+                    val failed = markFailed(
+                        acceptedTask,
+                        "Budget exceeded after degradation",
+                        RemoteSolverErrorCode.TASK_FAILED_BUDGET_EXCEEDED
+                    )
+                    metricsPort.increment("task.failed", tags = mapOf("reason" to "budget"))
+                    return DispatchBudgetChoice.Finished(failed)
+                }
             }
-
-            var currentTask = acceptedTask.copy(
-                status = TaskStatus.DISPATCHING,
-                assignedNodeId = selectedNode.nodeId,
-                updatedAt = now
-            )
-            taskStatePort.upsertTask(currentTask)
-            publishEvent(
-                topic = EventTopics.SOLVING_CONTROL,
-                key = currentTask.taskId,
-                payload = SolvingControlPayload(
-                    taskId = currentTask.taskId.value,
-                    action = "confirm",
-                    status = "dispatching",
-                    dispatchId = dispatchId.value,
-                    nodeId = selectedNode.nodeId.value,
-                    dispatcherId = dispatcherId
-                ).toByteArray(),
-                tenantId = acceptedTask.tenantId,
-                idempotencyKey = "dispatch:$dispatchId:confirm"
-            )
-            publishEvent(
-                topic = EventTopics.TASK_DISPATCH,
-                key = acceptedTask.taskId,
-                payload = TaskDispatchPayload(
-                    dispatchId = dispatchId.value,
-                    taskId = acceptedTask.taskId.value,
-                    sliceId = sliceId.value,
-                    nodeId = selectedNode.nodeId.value,
-                    quantumMs = quantumMs
-                ).toByteArray(),
-                tenantId = acceptedTask.tenantId,
-                idempotencyKey = "dispatch:$dispatchId"
-            )
-
-            var currentSlice = SliceState(
-                sliceId = sliceId,
-                taskId = acceptedTask.taskId,
-                dispatchId = dispatchId,
-                status = SliceStatus.PLANNED,
-                nodeId = selectedNode.nodeId,
-                quantum = quantumMs.toDuration(DurationUnit.MILLISECONDS)
-            )
-            taskStatePort.appendSlice(currentSlice)
-
-            return executeDispatchedSlice(
-                acceptedTask = acceptedTask,
-                initialTask = currentTask,
-                initialSlice = currentSlice,
+        }
+        return DispatchBudgetChoice.Proceed(
+            DispatchBudgetPlan(
                 selectedNode = selectedNode,
-                sliceId = sliceId,
+                selectionDecision = selectionDecision,
+                quantumDecision = quantumDecision,
                 quantumMs = quantumMs
             )
-        } finally {
-            distributedLockPort.release(lease)
+        )
+    }
+
+    private suspend fun persistAndExecuteDispatch(
+        acceptedTask: TaskState,
+        dispatchId: DispatchId,
+        sliceId: SliceId,
+        plan: DispatchBudgetPlan,
+        attempt: DispatchAttempt,
+        now: kotlin.time.Instant
+    ): TaskState? {
+        val selectedNode = plan.selectedNode
+        val budgetReservation = if (acceptedTask.effectiveBudgetLimit() != null) {
+            reserveBudgetForDispatch(
+                task = acceptedTask,
+                dispatchId = dispatchId,
+                sliceId = sliceId,
+                node = selectedNode,
+                quantumMs = plan.quantumMs
+            )
+        } else {
+            null
         }
+        if (acceptedTask.effectiveBudgetLimit() != null && budgetReservation == null) {
+            nodeStatePort.releaseUnit(selectedNode.nodeId)
+            attempt.slotAcquired = false
+            return markWaitingForBudget(
+                task = acceptedTask,
+                reason = "Budget reservation failed; waiting for budget release"
+            )
+        }
+
+        val currentTask = acceptedTask.copy(
+            status = TaskStatus.DISPATCHING,
+            assignedNodeId = selectedNode.nodeId,
+            updatedAt = now
+        )
+        taskStatePort.upsertTask(currentTask)
+        publishEvent(
+            topic = EventTopics.SOLVING_CONTROL,
+            key = currentTask.taskId,
+            payload = SolvingControlPayload(
+                taskId = currentTask.taskId.value,
+                action = "confirm",
+                status = "dispatching",
+                dispatchId = dispatchId.value,
+                nodeId = selectedNode.nodeId.value,
+                dispatcherId = dispatcherId
+            ).toByteArray(),
+            tenantId = acceptedTask.tenantId,
+            idempotencyKey = "dispatch:$dispatchId:confirm"
+        )
+        publishEvent(
+            topic = EventTopics.TASK_DISPATCH,
+            key = acceptedTask.taskId,
+            payload = TaskDispatchPayload(
+                dispatchId = dispatchId.value,
+                taskId = acceptedTask.taskId.value,
+                sliceId = sliceId.value,
+                nodeId = selectedNode.nodeId.value,
+                quantumMs = plan.quantumMs,
+                checkpointInRef = acceptedTask.effectiveCheckpointRef()?.path?.value
+            ).toByteArray(),
+            tenantId = acceptedTask.tenantId,
+            idempotencyKey = "dispatch:$dispatchId"
+        )
+
+        val currentSlice = SliceState(
+            sliceId = sliceId,
+            taskId = acceptedTask.taskId,
+            dispatchId = dispatchId,
+            status = SliceStatus.PLANNED,
+            nodeId = selectedNode.nodeId,
+            quantum = plan.quantumMs.toDuration(DurationUnit.MILLISECONDS)
+        )
+        taskStatePort.appendSlice(currentSlice)
+        if (attempt.leaseLost.get()) {
+            return null
+        }
+        // Install the slice generation before starting the backend. A late
+        // worker from an older generation is then fenced by its slice id.
+        runningSliceByTaskId[acceptedTask.taskId.value] = sliceId.value
+        rememberTaskDispatch(acceptedTask)
+        val decision = plan.selectionDecision
+        val sliceAudit = SliceAuditRecord(
+            admissionClass = TaskAdmissionClass.of(acceptedTask),
+            selectionReason = decision.reason,
+            selectionScore = decision.selectedScore,
+            quantumReason = plan.quantumDecision.reason,
+            migrationDecision = decision.migrationDecision,
+            eligibleNodeIds = decision.candidates.filter { it.eligible }.map { it.nodeId }
+        )
+        attempt.ownershipTransferred = true
+        return executeDispatchedSlice(
+            acceptedTask = acceptedTask,
+            initialTask = currentTask,
+            initialSlice = currentSlice,
+            selectedNode = selectedNode,
+            sliceId = sliceId,
+            quantumMs = plan.quantumMs,
+            sliceAudit = sliceAudit,
+            budgetReservation = budgetReservation,
+            leaseLost = attempt.leaseLost
+        )
+    }
+
+    private suspend fun cleanupDispatchAttempt(task: TaskState, attempt: DispatchAttempt) {
+        attempt.leaseRenewalJob.cancel()
+        try {
+            attempt.leaseRenewalJob.join()
+        } catch (_: CancellationException) {
+        }
+        if (attempt.leaseLost.get() && attempt.ownershipTransferred) {
+            recoverLostDispatch(
+                taskId = task.taskId,
+                sliceId = attempt.reservedSliceId,
+                nodeId = attempt.occupiedNodeId
+            )
+        }
+        attempt.reservedSliceId?.let { sliceId ->
+            budgetReservationBySliceId.remove(sliceId.value)?.let { reservation ->
+                try {
+                    releaseBudgetReservation(reservation)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        if (!attempt.ownershipTransferred && attempt.slotAcquired) {
+            try {
+                attempt.occupiedNodeId?.let { nodeStatePort.releaseUnit(it) }
+            } catch (_: Exception) {
+            }
+            // A failure before execution ownership transfer must not leave a
+            // task stuck in DISPATCHING/ACCEPTED.
+            try {
+                val current = taskStatePort.getTask(task.taskId)
+                if (current != null && current.status in setOf(TaskStatus.ACCEPTED, TaskStatus.DISPATCHING)) {
+                    taskStatePort.upsertTask(
+                        current.copy(
+                            status = TaskStatus.QUEUED,
+                            assignedNodeId = null,
+                            updatedAt = clock.now()
+                        )
+                    )
+                }
+            } catch (_: Exception) {
+            }
+        }
+        distributedLockPort.release(attempt.leaseRef.get())
     }
 
     private suspend fun executeDispatchedSlice(
@@ -955,15 +1411,33 @@ class RemoteSolverService(
         initialSlice: SliceState,
         selectedNode: NodeState,
         sliceId: SliceId,
-        quantumMs: Long
+        quantumMs: Long,
+        sliceAudit: SliceAuditRecord,
+        budgetReservation: BudgetReservation?,
+        leaseLost: AtomicReference<Boolean>
     ): TaskState {
         var currentTask = initialTask
         var currentSlice = initialSlice
+        var pendingBudgetReservation = budgetReservation
+        var activeHandle: ExecutionHandle? = null
+        var handleStopped = false
         return try {
-            val checkpointForResume = acceptedTask.latestSnapshotRef
-            val resumedFromCheckpoint = checkpointForResume != null && selectedNode.profile.supportsWarmStart
+            val checkpointForResume = acceptedTask.effectiveCheckpointRef()
+            val resumeCapabilityFailure = checkpointResumeAdmissionReason(acceptedTask, selectedNode)
+            if (resumeCapabilityFailure != null) {
+                throw RemoteSolverException(
+                    code = when (resumeCapabilityFailure) {
+                        AdmissionReasonCode.CHECKPOINT_UNSUPPORTED,
+                        AdmissionReasonCode.WARM_START_UNSUPPORTED ->
+                            RemoteSolverErrorCode.NO_COMPATIBLE_NODE_AVAILABLE
+                        else -> RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED
+                    },
+                    message = "Checkpoint cannot be resumed on node ${selectedNode.nodeId.value}: $resumeCapabilityFailure"
+                )
+            }
+            val resumedFromCheckpoint = checkpointForResume != null
             val payload = acceptedTask.payload
-            val handle = if (checkpointForResume != null && selectedNode.profile.supportsWarmStart) {
+            val handle = if (checkpointForResume != null) {
                 solverExecutionPort.resume(
                     payload,
                     checkpointForResume,
@@ -975,7 +1449,20 @@ class RemoteSolverService(
             } else {
                 solverExecutionPort.start(payload, acceptedTask.taskId, sliceId, selectedNode.nodeId, acceptedTask.tenantId)
             }
+            activeHandle = handle
+            if (leaseLost.get() || runningSliceByTaskId[acceptedTask.taskId.value] != sliceId.value) {
+                try {
+                    solverExecutionPort.stop(handle)
+                } catch (_: Exception) {
+                }
+                handleStopped = true
+                throw StaleExecutionException()
+            }
             runningHandleByTaskId[acceptedTask.taskId.value] = handle
+
+            if (leaseLost.get() || !isExecutionOwner(acceptedTask.taskId, sliceId, selectedNode.nodeId)) {
+                throw StaleExecutionException()
+            }
 
             currentTask = currentTask.copy(status = TaskStatus.RUNNING, updatedAt = clock.now())
             taskStatePort.upsertTask(currentTask)
@@ -987,22 +1474,66 @@ class RemoteSolverService(
                 action = if (resumedFromCheckpoint) "slice-resume" else "slice-start",
                 taskStatus = currentTask.status,
                 tenantId = acceptedTask.tenantId,
+                audit = sliceAudit,
                 idempotencySuffix = if (resumedFromCheckpoint) "resume" else "start"
             )
 
-            val sliceResult = solverExecutionPort.awaitSliceEnd(handle, quantumMs)
-            RemoteResultValidator.validateSliceResult(
-                result = sliceResult,
-                expectedTaskId = acceptedTask.taskId,
-                expectedSliceId = sliceId
-            )?.let { message ->
-                throw RemoteSolverException(
-                    code = RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED,
-                    message = "远程切片结果协议校验失败：$message / Remote slice result protocol validation failed: $message"
-                )
+            currentCoroutineContext().ensureActive()
+            var sliceResult = solverExecutionPort.awaitSliceEnd(handle, quantumMs)
+            validateSliceResult(sliceResult, acceptedTask.taskId, sliceId)
+            if (leaseLost.get() || !isExecutionOwner(acceptedTask.taskId, sliceId, selectedNode.nodeId)) {
+                throw StaleExecutionException()
             }
-            val sliceTimeoutReason = sliceTimeoutReason(sliceResult, quantumMs)
-            val checkpointRef = if (selectedNode.profile.supportsCheckpoint) {
+            var sliceTimeoutReason = sliceTimeoutReason(sliceResult, quantumMs)
+            var totalElapsedMs = sliceResult.elapsedMs.coerceAtLeast(0L)
+            var performanceResult = sliceResult
+
+            // A simple/non-preemptible task must not be converted into a resumable
+            // checkpoint merely because a worker returned early. Continue on the
+            // same live handle until the worker reaches a terminal result. The
+            // task hard timeout and coroutine cancellation are the only bounds;
+            // runtime estimates must not turn a valid long solve into a failure.
+            // 简单任务/不可抢占任务不能因为 worker 提前返回就伪装成可恢复 checkpoint。
+            // 在同一活动句柄上持续等待，只有任务硬超时或协程取消才会中止。
+            if (requiresRunToCompletion(acceptedTask) && sliceTimeoutReason == null) {
+                while (!isTerminalSliceResult(sliceResult)) {
+                    currentCoroutineContext().ensureActive()
+                    if (leaseLost.get() || !isExecutionOwner(acceptedTask.taskId, sliceId, selectedNode.nodeId)) {
+                        throw StaleExecutionException()
+                    }
+                    if (hardTimeoutReason(acceptedTask) != null) {
+                        break
+                    }
+                    val nextResult = solverExecutionPort.awaitSliceEnd(handle, quantumMs)
+                    validateSliceResult(nextResult, acceptedTask.taskId, sliceId)
+                    if (leaseLost.get() || !isExecutionOwner(acceptedTask.taskId, sliceId, selectedNode.nodeId)) {
+                        throw StaleExecutionException()
+                    }
+                    val nextTimeoutReason = sliceTimeoutReason(nextResult, quantumMs)
+                    if (nextTimeoutReason != null) {
+                        sliceTimeoutReason = nextTimeoutReason
+                        totalElapsedMs = saturatingAdd(totalElapsedMs, nextResult.elapsedMs.coerceAtLeast(0L))
+                        sliceResult = nextResult.copy(
+                            elapsed = totalElapsedMs.toDuration(DurationUnit.MILLISECONDS)
+                        )
+                        break
+                    }
+                    performanceResult = nextResult
+                    totalElapsedMs = saturatingAdd(totalElapsedMs, nextResult.elapsedMs.coerceAtLeast(0L))
+                    sliceResult = nextResult.copy(
+                        elapsed = totalElapsedMs.toDuration(DurationUnit.MILLISECONDS)
+                    )
+                }
+            }
+
+            val terminalResult = isTerminalSliceResult(sliceResult)
+            if (leaseLost.get() || !isExecutionOwner(acceptedTask.taskId, sliceId, selectedNode.nodeId)) {
+                throw StaleExecutionException()
+            }
+            val checkpointRef = if (!requiresRunToCompletion(acceptedTask) &&
+                !terminalResult &&
+                selectedNode.profile.supportsCheckpoint
+            ) {
                 currentSlice = currentSlice.copy(status = SliceStatus.CHECKPOINTING)
                 taskStatePort.updateSlice(currentSlice)
                 publishSliceLifecycle(
@@ -1010,6 +1541,7 @@ class RemoteSolverService(
                     action = "slice-checkpointing",
                     taskStatus = currentTask.status,
                     tenantId = acceptedTask.tenantId,
+                    audit = sliceAudit,
                     idempotencySuffix = "checkpointing"
                 )
                 try {
@@ -1023,6 +1555,19 @@ class RemoteSolverService(
                 }
             } else {
                 null
+            }
+
+            // A normal quantum return is a completed worker lifecycle. Stop the
+            // handle before the node is released and the task is re-queued.
+            // 普通 quantum 返回代表本次 worker 生命周期结束；在释放节点并重新排队前停止句柄。
+            if (!terminalResult) {
+                if (!solverExecutionPort.stop(handle)) {
+                    throw RemoteSolverException(
+                        code = RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED,
+                        message = "Failed to stop solver execution after quantum return"
+                    )
+                }
+                handleStopped = true
             }
 
             if (checkpointRef != null) {
@@ -1051,13 +1596,47 @@ class RemoteSolverService(
                         solverFingerprint = checkpointEnvelope?.solverFingerprint
                             ?: acceptedTask.payload.extension["solverFingerprint"],
                         integritySha256 = checkpointEnvelope?.integritySha256
-                            ?: acceptedTask.payload.extension["checkpointIntegritySha256"]
+                            ?: acceptedTask.payload.extension["checkpointIntegritySha256"],
+                        provenance = checkpointEnvelope?.provenance
+                            ?: sliceResult.provenance,
+                        cancellationChain = checkpointEnvelope?.cancellationChain
+                            ?: sliceResult.cancellationChain
                     )
                 )
             }
 
+            val sliceOutcome = resolveSliceOutcome(
+                result = sliceResult,
+                checkpointRef = checkpointRef,
+                timeoutReason = sliceTimeoutReason
+            )
+            val schedulingDecision = schedulingDecision(
+                task = acceptedTask,
+                slice = initialSlice,
+                node = selectedNode,
+                quantumMs = quantumMs,
+                audit = sliceAudit,
+                checkpointRef = checkpointRef,
+                incumbentRef = sliceResult.incumbentRef,
+                outcome = sliceOutcome,
+                reason = sliceResult.message ?: sliceAudit.selectionReason
+            )
+            sliceResult = sliceResult.copy(
+                scheduling = mergeSchedulingDecision(sliceResult.scheduling, schedulingDecision),
+                outcome = sliceOutcome
+            )
+
             val costRecord = computeCost(acceptedTask, sliceId.value, selectedNode, sliceResult.elapsedMs)
-            budgetPort.commit(acceptedTask.budgetScope.value, costRecord.totalCost)
+            pendingBudgetReservation?.let { reservation ->
+                if (!reconcileBudgetReservation(reservation, costRecord.totalCost)) {
+                    throw RemoteSolverException(
+                        code = RemoteSolverErrorCode.TASK_FAILED_BUDGET_EXCEEDED,
+                        message = "Budget reconciliation failed for slice ${sliceId.value}"
+                    )
+                }
+                pendingBudgetReservation = null
+                budgetReservationBySliceId.remove(sliceId.value, reservation)
+            }
             costLedgerPort.append(costRecord)
             metricsPort.timing("slice.runtime.ms", sliceResult.elapsedMs)
             metricsPort.gauge("slice.cost", costRecord.totalCost, tags = mapOf("nodeId" to selectedNode.nodeId.value))
@@ -1072,10 +1651,10 @@ class RemoteSolverService(
                 taskId = acceptedTask.taskId.value,
                 nodeId = selectedNode.nodeId.value,
                 quantumMs = currentSlice.quantum.inWholeMilliseconds,
-                sliceResult = sliceResult
+                sliceResult = performanceResult
             )
             val consumedCostAfterSlice = Flt64(currentTask.consumedCost.toDouble() + costRecord.totalCost)
-            val latestSnapshotAfterSlice = checkpointRef ?: currentTask.latestSnapshotRef
+            val latestSnapshotAfterSlice = checkpointRef ?: currentTask.effectiveCheckpointRef()
 
             if (sliceTimeoutReason != null) {
                 currentSlice = currentSlice.copy(
@@ -1091,6 +1670,7 @@ class RemoteSolverService(
                     taskStatus = TaskStatus.FAILED,
                     tenantId = acceptedTask.tenantId,
                     reason = sliceTimeoutReason,
+                    audit = sliceAudit,
                     idempotencySuffix = "end-failed"
                 )
                 metricsPort.increment("task.failed", tags = mapOf("reason" to "slice_timeout"))
@@ -1125,6 +1705,7 @@ class RemoteSolverService(
                     taskStatus = TaskStatus.FAILED,
                     tenantId = acceptedTask.tenantId,
                     reason = timeoutAfterSliceReason,
+                    audit = sliceAudit,
                     idempotencySuffix = "end-failed"
                 )
                 metricsPort.increment("task.failed", tags = mapOf("reason" to "hard_timeout"))
@@ -1161,7 +1742,32 @@ class RemoteSolverService(
                         )
                     }
                 }
-                val finalResult = fetchedFinalResult ?: SolveResult(
+                val finalOutcome = when (terminalStatus) {
+                    TaskStatus.COMPLETED -> SliceOutcome.COMPLETED
+                    TaskStatus.STOPPED -> SliceOutcome.CANCELLED
+                    else -> SliceOutcome.FAILED
+                }
+                val finalDecision = schedulingDecision(
+                    task = acceptedTask,
+                    slice = initialSlice,
+                    node = selectedNode,
+                    quantumMs = quantumMs,
+                    audit = sliceAudit,
+                    checkpointRef = checkpointRef,
+                    incumbentRef = sliceResult.incumbentRef,
+                    outcome = finalOutcome,
+                    reason = sliceResult.message ?: sliceAudit.selectionReason
+                )
+                val finalResult = fetchedFinalResult?.copy(
+                    incumbentRef = fetchedFinalResult.incumbentRef
+                        ?: sliceResult.incumbentRef
+                        ?: finalDecision.incumbentRef,
+                    modelFingerprint = fetchedFinalResult.modelFingerprint
+                        ?: sliceResult.modelFingerprint
+                        ?: finalDecision.modelFingerprint,
+                    scheduling = mergeSchedulingDecision(fetchedFinalResult.scheduling, finalDecision),
+                    outcome = finalOutcome
+                ) ?: SolveResult(
                     feasible = sliceResult.feasible,
                     optimal = sliceResult.solutionPresence == RemoteSolutionPresence.OPTIMAL &&
                         sliceResult.proofStatus == RemoteProofStatus.VERIFIED,
@@ -1183,7 +1789,12 @@ class RemoteSolverService(
                     diagnostics = sliceResult.diagnostics,
                     runId = sliceResult.runId,
                     attemptId = sliceResult.attemptId,
-                    artifactDigest = sliceResult.artifactDigest
+                    artifactDigest = sliceResult.artifactDigest,
+                    incumbentRef = sliceResult.incumbentRef ?: finalDecision.incumbentRef,
+                    modelFingerprint = sliceResult.modelFingerprint ?: finalDecision.modelFingerprint,
+                    scheduling = finalDecision,
+                    outcome = finalOutcome,
+                    cancellationChain = sliceResult.cancellationChain
                 )
                 currentSlice = currentSlice.copy(
                     status = if (terminalStatus == TaskStatus.COMPLETED) {
@@ -1197,7 +1808,7 @@ class RemoteSolverService(
                 currentTask.copy(
                     status = terminalStatus,
                     latestResult = finalResult,
-                    latestSnapshotRef = checkpointRef ?: currentTask.latestSnapshotRef,
+                    latestSnapshotRef = checkpointRef ?: currentTask.effectiveCheckpointRef(),
                     consumedCost = consumedCostAfterSlice,
                     updatedAt = clock.now()
                 )
@@ -1205,6 +1816,17 @@ class RemoteSolverService(
                 val incumbent = if (sliceResult.feasible &&
                     sliceResult.solutionPresence != RemoteSolutionPresence.NONE
                 ) {
+                    val incumbentDecision = schedulingDecision(
+                        task = acceptedTask,
+                        slice = initialSlice,
+                        node = selectedNode,
+                        quantumMs = quantumMs,
+                        audit = sliceAudit,
+                        checkpointRef = checkpointRef,
+                        incumbentRef = sliceResult.incumbentRef,
+                        outcome = sliceOutcome,
+                        reason = sliceResult.message ?: sliceAudit.selectionReason
+                    )
                     SolveResult(
                         feasible = true,
                         optimal = false,
@@ -1227,7 +1849,12 @@ class RemoteSolverService(
                         diagnostics = sliceResult.diagnostics,
                         runId = sliceResult.runId,
                         attemptId = sliceResult.attemptId,
-                        artifactDigest = sliceResult.artifactDigest
+                        artifactDigest = sliceResult.artifactDigest,
+                        incumbentRef = sliceResult.incumbentRef,
+                        modelFingerprint = sliceResult.modelFingerprint ?: incumbentDecision.modelFingerprint,
+                        scheduling = incumbentDecision,
+                        outcome = sliceOutcome,
+                        cancellationChain = sliceResult.cancellationChain
                     )
                 } else {
                     currentTask.latestResult
@@ -1240,7 +1867,7 @@ class RemoteSolverService(
                 currentTask.copy(
                     status = TaskStatus.SUSPENDED,
                     latestResult = incumbent,
-                    latestSnapshotRef = checkpointRef ?: currentTask.latestSnapshotRef,
+                    latestSnapshotRef = checkpointRef ?: currentTask.effectiveCheckpointRef(),
                     consumedCost = consumedCostAfterSlice,
                     updatedAt = clock.now()
                 )
@@ -1256,6 +1883,7 @@ class RemoteSolverService(
                     action = "slice-end",
                     taskStatus = updatedTask.status,
                     tenantId = acceptedTask.tenantId,
+                    audit = sliceAudit,
                     idempotencySuffix = "end-completed"
                 )
             } else if (updatedTask.status in setOf(TaskStatus.FAILED, TaskStatus.STOPPED)) {
@@ -1265,6 +1893,7 @@ class RemoteSolverService(
                     taskStatus = updatedTask.status,
                     tenantId = acceptedTask.tenantId,
                     reason = sliceResult.message,
+                    audit = sliceAudit,
                     idempotencySuffix = "end-terminal"
                 )
             } else {
@@ -1273,6 +1902,7 @@ class RemoteSolverService(
                     action = "slice-suspend",
                     taskStatus = updatedTask.status,
                     tenantId = acceptedTask.tenantId,
+                    audit = sliceAudit,
                     idempotencySuffix = "suspend"
                 )
             }
@@ -1290,6 +1920,17 @@ class RemoteSolverService(
                 }
             )
             updatedTask
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: StaleExecutionException) {
+            if (leaseLost.get()) {
+                recoverLostDispatch(
+                    taskId = acceptedTask.taskId,
+                    sliceId = sliceId,
+                    nodeId = selectedNode.nodeId
+                )
+            }
+            taskStatePort.getTask(acceptedTask.taskId) ?: currentTask
         } catch (e: Exception) {
             currentSlice = currentSlice.copy(
                 status = SliceStatus.FAILED,
@@ -1303,6 +1944,7 @@ class RemoteSolverService(
                 taskStatus = TaskStatus.FAILED,
                 tenantId = acceptedTask.tenantId,
                 reason = e.message ?: "Unknown failure",
+                audit = sliceAudit,
                 idempotencySuffix = "end-failed"
             )
             val reasonCode = if (e is RemoteSolverException) {
@@ -1310,14 +1952,57 @@ class RemoteSolverService(
             } else {
                 RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED
             }
-            markFailed(
+            val failedTask = markFailed(
                 currentTask,
                 e.message ?: "Unknown failure",
                 reasonCode
             )
+            failedTask.latestResult?.let { result ->
+                failedTask.copy(
+                    latestResult = result.copy(
+                        scheduling = mergeSchedulingDecision(
+                            result.scheduling,
+                            schedulingDecision(
+                                task = acceptedTask,
+                                slice = initialSlice,
+                                node = selectedNode,
+                                quantumMs = quantumMs,
+                                audit = sliceAudit,
+                                checkpointRef = currentSlice.checkpointRef,
+                                incumbentRef = result.incumbentRef,
+                                outcome = SliceOutcome.FAILED,
+                                reason = e.message ?: "Unknown failure"
+                            )
+                        ),
+                        outcome = SliceOutcome.FAILED
+                    )
+                )
+                    .also { persisted ->
+                        taskStatePort.upsertTask(persisted)
+                    }
+            } ?: failedTask
         } finally {
-            runningHandleByTaskId.remove(acceptedTask.taskId.value)
-            nodeStatePort.releaseUnit(selectedNode.nodeId)
+            pendingBudgetReservation?.let { reservation ->
+                try {
+                    releaseBudgetReservation(reservation)
+                } catch (_: Exception) {
+                }
+                budgetReservationBySliceId.remove(sliceId.value, reservation)
+            }
+            activeHandle?.let { handle ->
+                if (!handleStopped) {
+                    try {
+                        solverExecutionPort.stop(handle)
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            activeHandle?.let { handle ->
+                runningHandleByTaskId.remove(acceptedTask.taskId.value, handle)
+            }
+            if (runningSliceByTaskId.remove(acceptedTask.taskId.value, sliceId.value)) {
+                nodeStatePort.releaseUnit(selectedNode.nodeId)
+            }
         }
     }
 
@@ -1402,12 +2087,86 @@ class RemoteSolverService(
     }
 
     private suspend fun checkBudget(task: TaskState): Boolean {
-        val limit = task.budgetLimit ?: return true
+        val limit = task.effectiveBudgetLimit() ?: return true
         if (task.consumedCost.toDouble() >= limit.toDouble()) {
             return false
         }
-        val snapshot = budgetPort.snapshot(task.budgetScope.value) ?: return true
+        val snapshot = budgetPort.snapshot(task.effectiveBudgetScope().value) ?: return true
         return snapshot.remaining > 0
+    }
+
+    private suspend fun markWaitingForBudget(task: TaskState, reason: String): TaskState {
+        if (task.status == TaskStatus.WAITING_FOR_BUDGET) {
+            return task
+        }
+        val waitingTask = task.copy(
+            status = TaskStatus.WAITING_FOR_BUDGET,
+            assignedNodeId = null,
+            updatedAt = clock.now()
+        )
+        taskStatePort.upsertTask(waitingTask)
+        publishEvent(
+            topic = EventTopics.SOLVING_CONTROL,
+            key = waitingTask.taskId,
+            payload = SolvingControlPayload(
+                taskId = waitingTask.taskId.value,
+                action = "budget_wait",
+                status = "waiting",
+                reason = reason
+            ).toByteArray(),
+            tenantId = waitingTask.tenantId,
+            idempotencyKey = "task:${waitingTask.taskId}:budget_wait"
+        )
+        metricsPort.increment("task.budget_wait")
+        return waitingTask
+    }
+
+    private suspend fun reserveBudgetForDispatch(
+        task: TaskState,
+        dispatchId: DispatchId,
+        sliceId: SliceId,
+        node: NodeState,
+        quantumMs: Long
+    ): BudgetReservation? {
+        val amount = estimateSliceCost(node, quantumMs)
+        if (!amount.isFinite() || amount < 0.0) {
+            return null
+        }
+        val scope = task.effectiveBudgetScope().value
+        // Keep this identity stable for the complete dispatch lifecycle.  The
+        // budget adapter uses it to make retries and settlement idempotent.
+        val reservation = BudgetReservation(
+            reservationId = "dispatch:${dispatchId.value}:slice:${sliceId.value}",
+            scope = scope,
+            amount = amount
+        )
+        if (!budgetPort.reserve(reservation)) {
+            return null
+        }
+        budgetReservationBySliceId[sliceId.value] = reservation
+        return reservation
+    }
+
+    /**
+     * Releases a reservation without changing the net consumed amount.
+     * 在不改变净消费金额的前提下释放预算预留。
+     */
+    private suspend fun releaseBudgetReservation(reservation: BudgetReservation): Boolean {
+        // Settling at zero atomically clears the reservation without charging
+        // the budget.  This is also idempotent for a retrying cleanup path.
+        return budgetPort.settle(reservation, 0.0)
+    }
+
+    private suspend fun reconcileBudgetReservation(
+        reservation: BudgetReservation,
+        actualCost: Double
+    ): Boolean {
+        if (!actualCost.isFinite() || actualCost < 0.0) {
+            return false
+        }
+        // The port performs the below/above-estimate cases in one atomic
+        // transition and records the reservation id for idempotent retries.
+        return budgetPort.settle(reservation, actualCost)
     }
 
     private sealed class BudgetDegradationResult {
@@ -1420,8 +2179,8 @@ class RemoteSolverService(
         task: TaskState,
         compatibleNodes: List<NodeState>
     ): BudgetDegradationResult {
-        val snapshot = budgetPort.snapshot(task.budgetScope.value)
-        val budgetLimit = task.budgetLimit?.toDouble() ?: Double.MAX_VALUE
+        val snapshot = budgetPort.snapshot(task.effectiveBudgetScope().value)
+        val budgetLimit = task.effectiveBudgetLimit()?.toDouble() ?: Double.MAX_VALUE
         val remaining = snapshot?.remaining ?: (budgetLimit - task.consumedCost.toDouble())
 
         // 1. Try cheapest node
@@ -1457,25 +2216,126 @@ class RemoteSolverService(
         val now = clock.nowEpochMs()
         val complexAges = tasks
             .asSequence()
-            .filter { it.complexity == TaskComplexity.COMPLEX }
+            .filter { it.effectiveComplexity() == TaskComplexity.COMPLEX }
             .map { max(0L, now - it.createdAt.toEpochMilliseconds()).toDouble() }
             .toList()
         val maxAge = complexAges.maxOrNull() ?: 1.0
+        val starvationAgeMs = runtimeSchedulerConfigRef.get().schedulerStarvationAgeMs.coerceAtLeast(1L)
 
-        return tasks.sortedWith(
-            compareByDescending<TaskState> {
-                if (it.complexity == TaskComplexity.COMPLEX) {
-                    complexRoundRobinPriority(it, now, maxAge)
-                } else {
-                    simplePriorityScore(it)
-                }
-            }.thenBy { it.createdAt }
+        fun waitingAgeMs(task: TaskState): Long = max(
+            0L,
+            now - (lastDispatchAtByTaskId[task.taskId.value]
+                ?: task.createdAt.toEpochMilliseconds())
         )
+
+        return tasks.sortedWith(Comparator { left, right ->
+            val leftWaitingAge = waitingAgeMs(left)
+            val rightWaitingAge = waitingAgeMs(right)
+            val leftStarved = leftWaitingAge >= starvationAgeMs
+            val rightStarved = rightWaitingAge >= starvationAgeMs
+
+            // A starved task first enters the protected set. Once both tasks
+            // are protected, the oldest waiting task wins across priority
+            // cohorts; otherwise a high-priority stream can keep both tasks
+            // starved while still monopolizing every dispatch.
+            val starvationComparison = when {
+                leftStarved != rightStarved -> if (leftStarved) -1 else 1
+                leftStarved && rightStarved &&
+                    left.effectiveDeadline() == null && right.effectiveDeadline() == null ->
+                    rightWaitingAge.compareTo(leftWaitingAge)
+                else -> 0
+            }
+            if (starvationComparison != 0) {
+                starvationComparison
+            } else {
+                val leftUrgency = if (left.effectiveDeadline() != null) estimateUrgency(left, now) else 0.0
+                val rightUrgency = if (right.effectiveDeadline() != null) estimateUrgency(right, now) else 0.0
+                val urgencyComparison = rightUrgency.compareTo(leftUrgency)
+                if (urgencyComparison != 0) {
+                    urgencyComparison
+                } else {
+                    // Preserve hard priority for tasks outside the starvation
+                    // guard, and rotate equal-priority work within its cohort.
+                    val priorityComparison = right.effectivePriority().compareTo(left.effectivePriority())
+                    if (priorityComparison != 0) {
+                        priorityComparison
+                    } else {
+                        val roundRobinComparison = taskRoundRobinOrder(left, tasks)
+                            .compareTo(taskRoundRobinOrder(right, tasks))
+                        if (roundRobinComparison != 0) {
+                            roundRobinComparison
+                        } else {
+                            val leftScore = if (left.effectiveComplexity() == TaskComplexity.COMPLEX) {
+                                complexRoundRobinPriority(left, now, maxAge)
+                            } else {
+                                simplePriorityScore(left)
+                            }
+                            val rightScore = if (right.effectiveComplexity() == TaskComplexity.COMPLEX) {
+                                complexRoundRobinPriority(right, now, maxAge)
+                            } else {
+                                simplePriorityScore(right)
+                            }
+                            val scoreComparison = rightScore.compareTo(leftScore)
+                            if (scoreComparison != 0) {
+                                scoreComparison
+                            } else {
+                                val createdComparison = left.createdAt.compareTo(right.createdAt)
+                                if (createdComparison != 0) {
+                                    createdComparison
+                                } else {
+                                    left.taskId.value.compareTo(right.taskId.value)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    private fun fairnessCohortKey(task: TaskState): String? {
+        // Deadline work is ordered by urgency and must not be rotated ahead of
+        // a task with a materially tighter deadline.
+        if (task.effectiveDeadline() != null) {
+            return null
+        }
+        return listOf(
+            task.effectiveComplexity().name,
+            task.effectiveTimeSensitivity().name,
+            task.effectivePriority().toString()
+        ).joinToString("|")
+    }
+
+    private fun taskRoundRobinOrder(task: TaskState, tasks: List<TaskState>): Int {
+        val key = fairnessCohortKey(task) ?: return 0
+        val cohort = tasks
+            .filter { fairnessCohortKey(it) == key }
+            .sortedWith(compareBy<TaskState> { it.createdAt }.thenBy { it.taskId.value })
+        if (cohort.size <= 1) {
+            return 0
+        }
+        val taskIndex = cohort.indexOfFirst { it.taskId == task.taskId }
+        if (taskIndex < 0) {
+            return 0
+        }
+        val cursorIndex = taskRoundRobinCursorByClass[key]
+            ?.let { cursorId -> cohort.indexOfFirst { it.taskId.value == cursorId } }
+            ?.takeIf { it >= 0 }
+            ?: -1
+        val start = (cursorIndex + 1 + cohort.size) % cohort.size
+        return (taskIndex - start + cohort.size) % cohort.size
+    }
+
+    private fun rememberTaskDispatch(task: TaskState) {
+        lastDispatchAtByTaskId[task.taskId.value] = clock.nowEpochMs()
+        fairnessCohortKey(task)?.let { key ->
+            taskRoundRobinCursorByClass[key] = task.taskId.value
+        }
     }
 
     private fun simplePriorityScore(task: TaskState): Double {
-        val realtimeBonus = if (task.timeSensitivity == TimeSensitivity.REALTIME) 1.0 else 0.0
-        return task.priority.toDouble() * 10.0 + realtimeBonus
+        val realtimeBonus = if (task.effectiveTimeSensitivity() == TimeSensitivity.REALTIME) 1.0 else 0.0
+        return task.effectivePriority().toDouble() * 10.0 + realtimeBonus
     }
 
     private fun complexRoundRobinPriority(task: TaskState, now: Long, maxAge: Double): Double {
@@ -1484,7 +2344,7 @@ class RemoteSolverService(
         val waitingAge = max(0L, now - task.createdAt.toEpochMilliseconds()).toDouble() / max(1.0, maxAge)
         val progressNeed = estimateProgressNeed(task)
         val costSensitivity = estimateCostSensitivity(task)
-        val priorityBoost = task.priority.toDouble() / 100.0
+        val priorityBoost = task.effectivePriority().toDouble() / 100.0
         return runtime.complexUrgencyWeight * urgency +
             runtime.complexWaitingAgeWeight * waitingAge +
             runtime.complexProgressNeedWeight * progressNeed -
@@ -1493,7 +2353,7 @@ class RemoteSolverService(
     }
 
     private fun estimateUrgency(task: TaskState, now: Long): Double {
-        val deadlineInstant = task.deadline ?: return 0.0
+        val deadlineInstant = task.effectiveDeadline() ?: return 0.0
         val deadlineEpochMs = deadlineInstant.toEpochMilliseconds()
         val createdAtEpochMs = task.createdAt.toEpochMilliseconds()
         if (deadlineEpochMs <= now) {
@@ -1509,7 +2369,7 @@ class RemoteSolverService(
         if (gapBased != null) {
             return gapBased
         }
-        return if (task.latestSnapshotRef == null) {
+        return if (task.effectiveCheckpointRef() == null) {
             1.0
         } else {
             0.5
@@ -1517,7 +2377,7 @@ class RemoteSolverService(
     }
 
     private fun estimateCostSensitivity(task: TaskState): Double {
-        val budgetLimit = task.budgetLimit ?: return 0.0
+        val budgetLimit = task.effectiveBudgetLimit() ?: return 0.0
         val limit = budgetLimit.toDouble()
         if (limit <= 0.0) {
             return 1.0
@@ -1526,16 +2386,20 @@ class RemoteSolverService(
     }
 
     private fun resolveHardTimeoutEpochMs(task: TaskState): Long? =
-        task.payload.taskMeta.timeLimitMs
+        (task.payload.config?.timeLimitMs ?: task.payload.taskMeta.timeLimitMs)
             ?.takeIf { it > 0L }
             ?.let { task.createdAt.plus(it.toDuration(DurationUnit.MILLISECONDS)).toEpochMilliseconds() }
 
     private fun hardTimeoutReason(task: TaskState, nowEpochMs: Long = clock.nowEpochMs()): String? {
-        val timeoutEpochMs = resolveHardTimeoutEpochMs(task) ?: return null
-        if (nowEpochMs <= timeoutEpochMs) {
-            return null
+        val timeoutEpochMs = resolveHardTimeoutEpochMs(task)
+        if (timeoutEpochMs != null && nowEpochMs > timeoutEpochMs) {
+            return "Hard timeout exceeded: now=$nowEpochMs, timeoutAt=$timeoutEpochMs"
         }
-        return "Hard timeout exceeded: now=$nowEpochMs, timeoutAt=$timeoutEpochMs"
+        val deadlineEpochMs = task.effectiveDeadline()?.toEpochMilliseconds()
+        if (deadlineEpochMs != null && nowEpochMs >= deadlineEpochMs) {
+            return "Deadline exceeded: now=$nowEpochMs, deadlineAt=$deadlineEpochMs"
+        }
+        return null
     }
 
     private fun sliceTimeoutReason(sliceResult: SliceResult, quantumMs: Long): String? {
@@ -1546,20 +2410,242 @@ class RemoteSolverService(
         return "Slice timeout exceeded: elapsedMs=${sliceResult.elapsedMs}, allowedMs=$allowedMs"
     }
 
+    private fun validateSliceResult(
+        result: SliceResult,
+        expectedTaskId: TaskId,
+        expectedSliceId: SliceId
+    ) {
+        RemoteResultValidator.validateSliceResult(
+            result = result,
+            expectedTaskId = expectedTaskId,
+            expectedSliceId = expectedSliceId
+        )?.let { message ->
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.SOLVER_EXECUTION_FAILED,
+                message = "远程切片结果协议校验失败：$message / Remote slice result protocol validation failed: $message"
+            )
+        }
+    }
+
+    /**
+     * Checks both the process-local generation fence and persisted ownership.
+     * The persisted check is what protects a restarted dispatcher or a node
+     * recovery from accepting a late result from an old slice.
+     */
+    private suspend fun isExecutionOwner(
+        taskId: TaskId,
+        sliceId: SliceId,
+        nodeId: NodeId
+    ): Boolean {
+        if (runningSliceByTaskId[taskId.value] != sliceId.value) {
+            return false
+        }
+        val task = taskStatePort.getTask(taskId) ?: return false
+        if (task.assignedNodeId != nodeId ||
+            task.status !in setOf(TaskStatus.DISPATCHING, TaskStatus.RUNNING)
+        ) {
+            return false
+        }
+        val slice = taskStatePort.getSlices(taskId).firstOrNull { it.sliceId == sliceId }
+            ?: return false
+        return slice.nodeId == nodeId &&
+            slice.status in setOf(SliceStatus.PLANNED, SliceStatus.RUNNING, SliceStatus.CHECKPOINTING)
+    }
+
+    /**
+     * Return a lease-fenced dispatch to a retryable state without touching a
+     * newer generation.  The generation check is deliberately performed before
+     * every persisted repair so a late worker cannot overwrite a replacement.
+     *
+     * 租约丢失后将当前分发恢复为可重试状态，并且在每次持久化修复前检查代次，
+     * 防止迟到 worker 覆盖新的分发代次。
+     */
+    private suspend fun recoverLostDispatch(
+        taskId: TaskId,
+        sliceId: SliceId?,
+        nodeId: NodeId?
+    ) {
+        val generation = sliceId?.value ?: return
+        if (runningSliceByTaskId[taskId.value] != generation) {
+            return
+        }
+        val task = taskStatePort.getTask(taskId) ?: return
+        if (nodeId == null || task.assignedNodeId != nodeId ||
+            task.status !in setOf(TaskStatus.DISPATCHING, TaskStatus.RUNNING)
+        ) {
+            return
+        }
+        val activeSlice = taskStatePort.getSlices(taskId)
+            .firstOrNull { it.sliceId.value == generation }
+        if (activeSlice != null && activeSlice.status in setOf(
+                SliceStatus.PLANNED,
+                SliceStatus.RUNNING,
+                SliceStatus.CHECKPOINTING
+            )) {
+            val failedSlice = activeSlice.copy(
+                status = SliceStatus.FAILED,
+                finishedAt = clock.now(),
+                error = "Dispatch lease lost"
+            )
+            if (runningSliceByTaskId[taskId.value] != generation) {
+                return
+            }
+            taskStatePort.updateSlice(failedSlice)
+            publishSliceLifecycle(
+                slice = failedSlice,
+                action = "slice-end",
+                taskStatus = TaskStatus.QUEUED,
+                tenantId = task.tenantId,
+                reason = "Dispatch lease lost",
+                idempotencySuffix = "lease-lost"
+            )
+        }
+        val retryStatus = if (task.effectiveCheckpointRef() != null) {
+            TaskStatus.SUSPENDED
+        } else {
+            TaskStatus.QUEUED
+        }
+        if (runningSliceByTaskId[taskId.value] != generation) {
+            return
+        }
+        if (taskStatePort.compareAndSet(
+                taskId = taskId,
+                from = setOf(TaskStatus.DISPATCHING, TaskStatus.RUNNING),
+                to = retryStatus,
+                updatedAt = clock.now()
+            )
+        ) {
+            val current = taskStatePort.getTask(taskId)
+            if (current != null && current.assignedNodeId == nodeId &&
+                current.status == retryStatus && runningSliceByTaskId[taskId.value] == generation
+            ) {
+                taskStatePort.upsertTask(current.copy(assignedNodeId = null, updatedAt = clock.now()))
+            }
+        }
+    }
+
+    private fun taskProgressSignal(task: TaskState): ProgressSignal? {
+        val taskId = task.taskId.value
+        val urgency = if (task.effectiveDeadline() != null) {
+            estimateUrgency(task, clock.nowEpochMs())
+        } else {
+            lastDeadlineUrgencyByTaskId.remove(taskId)
+            0.0
+        }
+        val previousUrgency = if (task.effectiveDeadline() != null) {
+            lastDeadlineUrgencyByTaskId.put(taskId, urgency)
+        } else {
+            null
+        }
+        val deadlineRiskIncreasing = previousUrgency != null &&
+            urgency > previousUrgency + 1e-9
+        val observed = progressSignalByTaskId[taskId]
+        if (observed == null && !deadlineRiskIncreasing) {
+            return null
+        }
+        return (observed ?: ProgressSignal()).copy(
+            currentGap = task.latestResult?.gap?.toDouble()?.coerceIn(0.0, 1.0)
+                ?: observed?.currentGap,
+            deadlineRiskIncreasing = deadlineRiskIncreasing
+        )
+    }
+
+    private fun saturatingAdd(left: Long, right: Long): Long {
+        if (right <= 0L) {
+            return left
+        }
+        return if (Long.MAX_VALUE - left < right) Long.MAX_VALUE else left + right
+    }
+
     private fun computeQuantumMs(task: TaskState, node: NodeState): Long {
+        val decision = computeQuantumDecision(task, node)
+        return effectiveQuantumMs(task, node, decision)
+    }
+
+    private fun effectiveQuantumMs(
+        task: TaskState,
+        node: NodeState,
+        decision: QuantumDecision
+    ): Long {
         val runtime = runtimeSchedulerConfigRef.get()
-        if (task.complexity != TaskComplexity.COMPLEX) {
-            return runtime.simpleTaskQuantumMs
+        var effective = if (!requiresRunToCompletion(task)) {
+            decision.quantumMs.coerceAtLeast(1L)
+        } else {
+            val estimatedRuntimeMs = task.effectiveRuntimeEstimateMs()
+                ?: if (task.effectiveComplexity() == TaskComplexity.SIMPLE) {
+                    runtime.simpleTaskQuantumMs
+                } else {
+                    (runtime.complexSolveEstimateMs.toDouble() /
+                        max(0.1, node.profile.performanceScore.toDouble())).toLong()
+                }
+            val candidate = max(decision.quantumMs, estimatedRuntimeMs.coerceAtLeast(1L))
+            val taskLimitMs = task.payload.config?.timeLimitMs ?: task.payload.taskMeta.timeLimitMs
+            if (taskLimitMs != null && taskLimitMs > 0L) {
+                min(candidate, taskLimitMs).coerceAtLeast(1L)
+            } else {
+                candidate
+            }
+        }
+        val deadlineEpochMs = task.effectiveDeadline()?.toEpochMilliseconds()
+        if (deadlineEpochMs != null) {
+            val now = clock.nowEpochMs()
+            val remaining = if (deadlineEpochMs <= now) {
+                0L
+            } else {
+                deadlineEpochMs - now
+            }
+            if (remaining <= 0L) {
+                return 0L
+            }
+            val twiceQuantum = if (effective >= Long.MAX_VALUE / 2L) {
+                Long.MAX_VALUE
+            } else {
+                effective * 2L
+            }
+            if (remaining < twiceQuantum) {
+                effective = min(
+                    runtime.complexTaskQuantumMaxMs.coerceAtLeast(1L),
+                    remaining
+                ).coerceAtLeast(1L)
+            }
+        }
+        return effective
+    }
+
+    private fun requiresRunToCompletion(task: TaskState): Boolean =
+        task.effectiveComplexity() == TaskComplexity.SIMPLE ||
+            task.payload.scheduling?.preemptionMode ==
+            fuookami.ospf.framework.remote_solver.protocol.domain.PreemptionMode.NON_PREEMPTIBLE
+
+    private fun isTerminalSliceResult(result: SliceResult): Boolean =
+        result.completed || isTerminalTermination(result.terminationReason)
+
+    private fun computeQuantumDecision(task: TaskState, node: NodeState): QuantumDecision {
+        val runtime = runtimeSchedulerConfigRef.get()
+        if (task.effectiveComplexity() != TaskComplexity.COMPLEX) {
+            return QuantumDecision(
+                quantumMs = runtime.simpleTaskQuantumMs.coerceAtLeast(1L),
+                reason = "simple_fixed_quantum",
+                complexity = task.effectiveComplexity(),
+                performanceScore = node.profile.performanceScore.toDouble(),
+                checkpointEstimateMs = 0L
+            )
         }
 
         val performance = max(0.1, node.profile.performanceScore.toDouble())
-        val solveEstimateMs = runtime.complexSolveEstimateMs.toDouble() / performance
+        val solveEstimateMs = (task.effectiveRuntimeEstimateMs()?.toDouble()
+            ?: runtime.complexSolveEstimateMs.toDouble()) / performance
+        val configuredCheckpointEstimateMs = task.effectiveCheckpointEstimateMs()
+            ?: runtime.complexCheckpointEstimateMs
         val checkpointEstimateMs = if (node.profile.supportsCheckpoint) {
-            runtime.complexCheckpointEstimateMs.toDouble()
+            configuredCheckpointEstimateMs.toDouble()
         } else {
             0.0
         }
-        val baselineQuantum = runtime.complexQuantumAlpha * solveEstimateMs -
+        // Checkpoint time is an amortizable per-slice cost: a more expensive
+        // checkpoint warrants a longer quantum, rather than shrinking it.
+        // 检查点成本可通过更长时间片摊销，因此成本越高，量子应越大。
+        val baselineQuantum = runtime.complexQuantumAlpha * solveEstimateMs +
             runtime.complexQuantumBeta * checkpointEstimateMs
         val priceFactor = 1.0 + max(0.0, node.profile.pricePerSecond.toDouble()) * runtime.complexQuantumPricePenalty
         val adjustedQuantum = baselineQuantum / priceFactor
@@ -1573,7 +2659,13 @@ class RemoteSolverService(
             runtime.complexTaskQuantumMaxMs.toDouble(),
             max(runtime.complexTaskQuantumMinMs.toDouble(), candidate)
         )
-        return clamped.toLong()
+        return QuantumDecision(
+            quantumMs = clamped.toLong().coerceAtLeast(1L),
+            reason = "complex_dynamic_clamped",
+            complexity = task.effectiveComplexity(),
+            performanceScore = performance,
+            checkpointEstimateMs = configuredCheckpointEstimateMs
+        )
     }
 
     private fun ensureHotReloadEnabled() {
@@ -1624,6 +2716,81 @@ class RemoteSolverService(
                     updated.copy(complexProgressNeedWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
                 "scheduler.complex-cost-sensitivity-weight" ->
                     updated.copy(complexCostSensitivityWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
+                "scheduler.starvation-age-ms" ->
+                    updated.copy(schedulerStarvationAgeMs = parseLongConfigValue(key, rawValue, minValue = 1L))
+                "scheduler.migration-hysteresis-ratio" ->
+                    updated.copy(
+                        schedulerMigrationHysteresisRatio = parseDoubleConfigValueInRange(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 0.0,
+                            maxValue = 1.0
+                        )
+                    )
+                "scheduler.min-slices-before-migration" ->
+                    updated.copy(
+                        schedulerMinSlicesBeforeMigration = parseIntConfigValue(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 0
+                        )
+                    )
+                "scheduler.migration-cost-weight" ->
+                    updated.copy(schedulerMigrationCostWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
+                "scheduler.cost-weight" ->
+                    updated.copy(schedulerCostWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
+                "scheduler.deadline-risk-weight" ->
+                    updated.copy(schedulerDeadlineRiskWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
+                "scheduler.queue-delay-weight" ->
+                    updated.copy(schedulerQueueDelayWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
+                "scheduler.round-robin-score-tolerance" ->
+                    updated.copy(
+                        schedulerRoundRobinScoreTolerance = parseDoubleConfigValueInRange(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 0.0,
+                            maxValue = 1.0
+                        )
+                    )
+                "scheduler.weighted-round-robin.enabled" ->
+                    updated.copy(schedulerWeightedRoundRobinEnabled = parseBooleanConfigValue(key, rawValue))
+                "scheduler.progress-weight" ->
+                    updated.copy(schedulerProgressWeight = parseDoubleConfigValue(key, rawValue, minValue = 0.0))
+                "scheduler.progress.fast-gap-threshold" ->
+                    updated.copy(
+                        schedulerProgressFastGapThreshold = parseDoubleConfigValueInRange(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 0.0,
+                            maxValue = 1.0
+                        )
+                    )
+                "scheduler.progress.cheap-gap-threshold" ->
+                    updated.copy(
+                        schedulerProgressCheapGapThreshold = parseDoubleConfigValueInRange(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 0.0,
+                            maxValue = 1.0
+                        )
+                    )
+                "scheduler.progress.min-improvement" ->
+                    updated.copy(
+                        schedulerProgressMinImprovement = parseDoubleConfigValueInRange(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 0.0,
+                            maxValue = 1.0
+                        )
+                    )
+                "scheduler.progress.no-improvement-slices" ->
+                    updated.copy(
+                        schedulerProgressNoImprovementSlices = parseIntConfigValue(
+                            key = key,
+                            raw = rawValue,
+                            minValue = 1
+                        )
+                    )
                 else ->
                     throw RemoteSolverException(
                         code = RemoteSolverErrorCode.INVALID_ARGUMENT,
@@ -1635,6 +2802,12 @@ class RemoteSolverService(
             throw RemoteSolverException(
                 code = RemoteSolverErrorCode.INVALID_ARGUMENT,
                 message = "scheduler.complex-task-quantum-max-ms must be >= scheduler.complex-task-quantum-min-ms"
+            )
+        }
+        if (updated.schedulerProgressCheapGapThreshold > updated.schedulerProgressFastGapThreshold) {
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "scheduler.progress.cheap-gap-threshold must be <= scheduler.progress.fast-gap-threshold"
             )
         }
         return updated
@@ -1649,13 +2822,53 @@ class RemoteSolverService(
         return parsed.coerceAtLeast(minValue)
     }
 
+    private fun parseIntConfigValue(key: String, raw: String, minValue: Int): Int {
+        val parsed = raw.trim().toIntOrNull()
+            ?: throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "Invalid int value for '$key': '$raw'"
+            )
+        return parsed.coerceAtLeast(minValue)
+    }
+
     private fun parseDoubleConfigValue(key: String, raw: String, minValue: Double): Double {
         val parsed = raw.trim().toDoubleOrNull()
             ?: throw RemoteSolverException(
                 code = RemoteSolverErrorCode.INVALID_ARGUMENT,
                 message = "Invalid double value for '$key': '$raw'"
             )
+        if (!parsed.isFinite()) {
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "Invalid double value for '$key': '$raw'"
+            )
+        }
         return parsed.coerceAtLeast(minValue)
+    }
+
+    private fun parseDoubleConfigValueInRange(
+        key: String,
+        raw: String,
+        minValue: Double,
+        maxValue: Double
+    ): Double {
+        val parsed = parseDoubleConfigValue(key, raw, minValue)
+        if (parsed > maxValue) {
+            throw RemoteSolverException(
+                code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+                message = "Invalid double value for '$key': '$raw'. Expected <= $maxValue"
+            )
+        }
+        return parsed
+    }
+
+    private fun parseBooleanConfigValue(key: String, raw: String): Boolean = when (raw.trim().lowercase()) {
+        "true", "1", "yes", "y", "on" -> true
+        "false", "0", "no", "n", "off" -> false
+        else -> throw RemoteSolverException(
+            code = RemoteSolverErrorCode.INVALID_ARGUMENT,
+            message = "Invalid boolean value for '$key': '$raw'"
+        )
     }
 
     private suspend fun markFailed(
@@ -1675,11 +2888,13 @@ class RemoteSolverService(
                 objectiveValueInt64 = previousResult?.objectiveValueInt64,
                 gap = previousResult?.gap,
                 elapsed = (previousResult?.elapsedMs ?: 0L).toDuration(DurationUnit.MILLISECONDS),
-                checkpointRef = task.latestSnapshotRef,
+                checkpointRef = task.effectiveCheckpointRef(),
                 resultRef = null,
                 message = reason,
                 extension = mapOf("reasonCode" to normalizedReasonCode),
-                schemaVersion = previousResult?.schemaVersion ?: "1.0",
+                schemaVersion = previousResult?.schemaVersion
+                    ?.takeIf { it.substringBefore('.').toIntOrNull() == 2 }
+                    ?: "2.0",
                 problemStatus = if (preservedFeasible) {
                     RemoteProblemStatus.FEASIBLE
                 } else {
@@ -1703,7 +2918,12 @@ class RemoteSolverService(
                 diagnostics = previousResult?.diagnostics ?: emptyMap(),
                 runId = previousResult?.runId,
                 attemptId = previousResult?.attemptId,
-                artifactDigest = null
+                artifactDigest = null,
+                incumbentRef = previousResult?.incumbentRef,
+                modelFingerprint = previousResult?.modelFingerprint,
+                scheduling = previousResult?.scheduling,
+                outcome = SliceOutcome.FAILED,
+                cancellationChain = previousResult?.cancellationChain ?: emptyList()
             ),
             updatedAt = clock.now()
         )
@@ -1737,6 +2957,7 @@ class RemoteSolverService(
         var recovered = 0
         for (task in impactedTasks) {
             val slices = taskStatePort.getSlices(task.taskId)
+            val failedSlices = mutableListOf<SliceState>()
             for (slice in slices) {
                 if (slice.nodeId?.value != nodeId) {
                     continue
@@ -1744,16 +2965,16 @@ class RemoteSolverService(
                 if (slice.status !in setOf(SliceStatus.PLANNED, SliceStatus.RUNNING, SliceStatus.CHECKPOINTING)) {
                     continue
                 }
-                taskStatePort.updateSlice(
-                    slice.copy(
-                        status = SliceStatus.FAILED,
-                        finishedAt = kotlin.time.Instant.fromEpochMilliseconds(now),
-                        error = "Node heartbeat timeout"
-                    )
+                val failedSlice = slice.copy(
+                    status = SliceStatus.FAILED,
+                    finishedAt = kotlin.time.Instant.fromEpochMilliseconds(now),
+                    error = "Node heartbeat timeout"
                 )
+                taskStatePort.updateSlice(failedSlice)
+                failedSlices += failedSlice
             }
 
-            val nextStatus = if (task.latestSnapshotRef != null) TaskStatus.SUSPENDED else TaskStatus.QUEUED
+            val nextStatus = if (task.effectiveCheckpointRef() != null) TaskStatus.SUSPENDED else TaskStatus.QUEUED
             taskStatePort.upsertTask(
                 task.copy(
                     status = nextStatus,
@@ -1762,21 +2983,16 @@ class RemoteSolverService(
                 )
             )
             metricsPort.increment("task.recovered", tags = mapOf("reason" to "node_timeout"))
-            publishEvent(
-                topic = EventTopics.SLICE_LIFECYCLE,
-                key = task.taskId,
-                payload = SliceLifecyclePayload(
-                    taskId = task.taskId.value,
-                    sliceId = "unknown",
-                    dispatchId = "unknown",
+            failedSlices.forEach { failedSlice ->
+                publishSliceLifecycle(
+                    slice = failedSlice,
                     action = "slice-end",
-                    status = "FAILED",
-                    taskStatus = nextStatus.name,
-                    reason = "node_timeout"
-                ).toByteArray(),
-                tenantId = task.tenantId,
-                idempotencyKey = "task:${task.taskId}:recovered:node_timeout"
-            )
+                    taskStatus = nextStatus,
+                    tenantId = task.tenantId,
+                    reason = "node_timeout",
+                    idempotencySuffix = "recovered:node_timeout"
+                )
+            }
             recovered += 1
         }
         return recovered
@@ -1791,7 +3007,7 @@ class RemoteSolverService(
         val total = usage + node.profile.licenseCostPerSlice.toDouble()
         return CostRecord(
             taskId = task.taskId.value,
-            budgetScope = task.budgetScope.value,
+            budgetScope = task.effectiveBudgetScope().value,
             sliceId = sliceId,
             nodeId = node.nodeId.value,
             runtimeMs = runtimeMs,
@@ -1804,7 +3020,7 @@ class RemoteSolverService(
     }
 
     private fun wouldExceedBudget(task: TaskState, node: NodeState, quantumMs: Long): Boolean {
-        val budgetLimit = task.budgetLimit ?: return false
+        val budgetLimit = task.effectiveBudgetLimit() ?: return false
         val estimatedCost = estimateSliceCost(node, quantumMs)
         return task.consumedCost.toDouble() + estimatedCost > budgetLimit.toDouble()
     }
@@ -1877,8 +3093,22 @@ class RemoteSolverService(
         val normalizedGap = gap?.coerceIn(0.0, 1.0) ?: return 1.0
         val previous = latestGapByTaskId.put(taskId, normalizedGap)
         if (previous == null) {
+            progressSignalByTaskId[taskId] = ProgressSignal(currentGap = normalizedGap)
             return (1.0 + (1.0 - normalizedGap) * 0.2).coerceIn(0.5, 2.0)
         }
+        val rawImprovement = previous - normalizedGap
+        val previousSignal = progressSignalByTaskId[taskId]
+        val noImprovementSlices = if (rawImprovement >= 0.01) {
+            0
+        } else {
+            (previousSignal?.noImprovementSlices ?: 0) + 1
+        }
+        progressSignalByTaskId[taskId] = ProgressSignal(
+            previousGap = previous,
+            currentGap = normalizedGap,
+            improvement = rawImprovement,
+            noImprovementSlices = noImprovementSlices
+        )
         val improvement = (previous - normalizedGap).coerceAtLeast(0.0)
         val regression = (normalizedGap - previous).coerceAtLeast(0.0)
         return (1.0 + improvement * 2.0 - regression).coerceIn(0.5, 2.0)
@@ -1886,6 +3116,9 @@ class RemoteSolverService(
 
     private fun clearLearningState(taskId: String) {
         latestGapByTaskId.remove(taskId)
+        progressSignalByTaskId.remove(taskId)
+        lastDeadlineUrgencyByTaskId.remove(taskId)
+        lastDispatchAtByTaskId.remove(taskId)
     }
 
     private fun TaskState.summaryPayload(): ByteArray =
@@ -1926,12 +3159,107 @@ class RemoteSolverService(
         eventPort.publish(topic = topic, key = key.toString(), payload = payload, headers = headers)
     }
 
+    private fun resolveSliceOutcome(
+        result: SliceResult,
+        checkpointRef: ObjectRef?,
+        timeoutReason: String?
+    ): SliceOutcome = when {
+        timeoutReason != null -> SliceOutcome.FAILED
+        result.terminationReason == RemoteTerminationReason.CANCELLED -> SliceOutcome.CANCELLED
+        result.terminationReason in setOf(
+            RemoteTerminationReason.BACKEND_FAILURE,
+            RemoteTerminationReason.NUMERICAL_FAILURE,
+            RemoteTerminationReason.INTERRUPTED
+        ) -> SliceOutcome.FAILED
+        result.completed || isTerminalTermination(result.terminationReason) -> SliceOutcome.COMPLETED
+        checkpointRef != null -> SliceOutcome.CHECKPOINTED
+        result.feasible && result.solutionPresence != RemoteSolutionPresence.NONE -> SliceOutcome.RESUMABLE
+        else -> SliceOutcome.PREEMPTED
+    }
+
+    private fun schedulingDecision(
+        task: TaskState,
+        slice: SliceState,
+        node: NodeState,
+        quantumMs: Long,
+        audit: SliceAuditRecord,
+        checkpointRef: ObjectRef?,
+        incumbentRef: ObjectRef?,
+        outcome: SliceOutcome,
+        reason: String?
+    ): SchedulingDecision {
+        val request = task.payload.scheduling
+        val metadata = request?.metadata.orEmpty() + mapOf(
+            "admissionClass" to audit.admissionClass.name,
+            "selectionReason" to audit.selectionReason,
+            "quantumReason" to audit.quantumReason,
+            "migrationDecision" to audit.migrationDecision,
+            "eligibleNodeIds" to audit.eligibleNodeIds.joinToString(",")
+        )
+        return SchedulingDecision(
+            dispatchId = slice.dispatchId,
+            taskId = task.taskId,
+            sliceId = slice.sliceId,
+            nodeId = node.nodeId,
+            priority = task.effectivePriority(),
+            deadline = task.effectiveDeadline(),
+            budgetScope = task.effectiveBudgetScope(),
+            budgetLimit = task.effectiveBudgetLimit(),
+            quantum = quantumMs.toDuration(DurationUnit.MILLISECONDS),
+            queueWait = task.effectiveQueueWaitEstimateMs()?.toDuration(DurationUnit.MILLISECONDS),
+            estimate = request?.estimate,
+            modelFingerprint = request?.modelFingerprint ?: task.payload.extension["modelFingerprint"],
+            modelFingerprintSchema = request?.modelFingerprintSchema,
+            checkpointRef = checkpointRef ?: task.effectiveCheckpointRef(),
+            incumbentRef = incumbentRef ?: request?.incumbentRef,
+            qualityTarget = request?.qualityTarget,
+            preemptionMode = request?.preemptionMode,
+            resumeMode = request?.resumeMode,
+            outcome = outcome,
+            reason = reason,
+            metadata = metadata
+        )
+    }
+
+    private fun mergeSchedulingDecision(
+        existing: SchedulingDecision?,
+        effective: SchedulingDecision
+    ): SchedulingDecision {
+        if (existing == null) {
+            return effective
+        }
+        return existing.copy(
+            dispatchId = effective.dispatchId ?: existing.dispatchId,
+            taskId = effective.taskId ?: existing.taskId,
+            sliceId = effective.sliceId ?: existing.sliceId,
+            nodeId = effective.nodeId ?: existing.nodeId,
+            priority = effective.priority ?: existing.priority,
+            deadline = effective.deadline ?: existing.deadline,
+            budgetScope = effective.budgetScope ?: existing.budgetScope,
+            budgetLimit = effective.budgetLimit ?: existing.budgetLimit,
+            quantum = effective.quantum ?: existing.quantum,
+            queueWait = effective.queueWait ?: existing.queueWait,
+            estimate = existing.estimate ?: effective.estimate,
+            modelFingerprint = effective.modelFingerprint ?: existing.modelFingerprint,
+            modelFingerprintSchema = effective.modelFingerprintSchema ?: existing.modelFingerprintSchema,
+            checkpointRef = effective.checkpointRef ?: existing.checkpointRef,
+            incumbentRef = effective.incumbentRef ?: existing.incumbentRef,
+            qualityTarget = existing.qualityTarget ?: effective.qualityTarget,
+            preemptionMode = effective.preemptionMode ?: existing.preemptionMode,
+            resumeMode = effective.resumeMode ?: existing.resumeMode,
+            outcome = effective.outcome ?: existing.outcome,
+            reason = effective.reason ?: existing.reason,
+            metadata = existing.metadata + effective.metadata
+        )
+    }
+
     private suspend fun publishSliceLifecycle(
         slice: SliceState,
         action: String,
         taskStatus: TaskStatus,
         tenantId: Any,
         reason: String? = null,
+        audit: SliceAuditRecord? = null,
         idempotencySuffix: String
     ) {
         val payload = SliceLifecyclePayload(
@@ -1943,7 +3271,13 @@ class RemoteSolverService(
             taskStatus = taskStatus.name,
             nodeId = slice.nodeId?.value,
             quantumMs = slice.quantum.inWholeMilliseconds,
-            reason = reason
+            reason = reason,
+            admissionClass = audit?.admissionClass?.name,
+            selectionReason = audit?.selectionReason,
+            selectionScore = audit?.selectionScore,
+            quantumReason = audit?.quantumReason,
+            migrationDecision = audit?.migrationDecision,
+            eligibleNodeIds = audit?.eligibleNodeIds ?: emptyList()
         )
         publishEvent(
             topic = EventTopics.SLICE_LIFECYCLE,
@@ -2013,11 +3347,121 @@ class RemoteSolverService(
         return BudgetScopeId.of("${tenantId.value}:$rawScope")
     }
 
+    private fun classifyAdmission(task: TaskState, nodes: List<NodeState>): AdmissionDecision {
+        val decisions = nodes.map { node ->
+            val reasons = buildList {
+                if (!node.online) add(AdmissionReasonCode.OFFLINE)
+                if (node.availableUnits <= 0) add(AdmissionReasonCode.NO_AVAILABLE_SLOT)
+                if (!isNodeCompatible(task, node)) {
+                    val modelType = resolvedModelType(task)
+                    val requiredSolverType = task.payload.taskMeta.solverType?.value
+                        ?: task.payload.extension["solverType"]
+                        ?: task.payload.taskMeta.metadata["solverType"]
+                     if (modelType !in node.profile.supportedModelTypes) {
+                        add(AdmissionReasonCode.MODEL_UNSUPPORTED)
+                    }
+                    if (requiredSolverType != null &&
+                        !node.profile.solverType.value.equals(requiredSolverType, ignoreCase = true)
+                    ) {
+                        add(AdmissionReasonCode.SOLVER_UNSUPPORTED)
+                    }
+                }
+                if (requiresCapability(task, "requiresCheckpoint") && !node.profile.supportsCheckpoint) {
+                    add(AdmissionReasonCode.CHECKPOINT_UNSUPPORTED)
+                }
+                if (requiresCapability(task, "requiresWarmStart") && !node.profile.supportsWarmStart) {
+                    add(AdmissionReasonCode.WARM_START_UNSUPPORTED)
+                }
+                if (requiresCapability(task, "requiresInterrupt") && !node.profile.supportsInterrupt) {
+                    add(AdmissionReasonCode.INTERRUPT_UNSUPPORTED)
+                }
+                addAll(task.schedulingModeAdmissionReasons(node))
+                checkpointResumeAdmissionReason(task, node)?.let(::add)
+            }
+            NodeAdmissionDecision(
+                nodeId = node.nodeId.value,
+                eligible = reasons.isEmpty(),
+                reasons = reasons
+            )
+        }
+        val eligible = decisions.any { it.eligible }
+        val reason = when {
+            eligible -> AdmissionReasonCode.ACCEPTED
+            decisions.isEmpty() -> AdmissionReasonCode.NO_COMPATIBLE_NODE
+            decisions.all { AdmissionReasonCode.NO_AVAILABLE_SLOT in it.reasons } ->
+                AdmissionReasonCode.NO_AVAILABLE_SLOT
+            else -> decisions.firstOrNull { it.reasons.isNotEmpty() }?.reasons?.first()
+                ?: AdmissionReasonCode.NO_COMPATIBLE_NODE
+        }
+        return AdmissionDecision(
+            taskId = task.taskId.value,
+            taskClass = TaskAdmissionClass.of(task),
+            admitted = eligible,
+            reason = reason,
+            nodes = decisions
+        )
+    }
+
+    private fun isNodeExecutionCapable(task: TaskState, node: NodeState): Boolean =
+        node.online &&
+            node.availableUnits > 0 &&
+            isNodeCompatible(task, node) &&
+            (!requiresCapability(task, "requiresCheckpoint") || node.profile.supportsCheckpoint) &&
+            (!requiresCapability(task, "requiresWarmStart") || node.profile.supportsWarmStart) &&
+            (!requiresCapability(task, "requiresInterrupt") || node.profile.supportsInterrupt) &&
+            task.schedulingModeAdmissionReasons(node).isEmpty() &&
+            checkpointResumeAdmissionReason(task, node) == null
+
+    private fun requiresCapability(task: TaskState, key: String): Boolean =
+        task.payload.extension[key]?.trim()?.equals("true", ignoreCase = true) == true ||
+            task.payload.taskMeta.metadata[key]?.trim()?.equals("true", ignoreCase = true) == true
+
+    /** Capability required to consume an existing checkpoint, if any. */
+    private fun checkpointResumeAdmissionReason(
+        task: TaskState,
+        node: NodeState
+    ): AdmissionReasonCode? {
+        if (task.effectiveCheckpointRef() == null) {
+            return null
+        }
+        return when (task.payload.scheduling?.resumeMode) {
+            fuookami.ospf.framework.remote_solver.protocol.domain.ResumeMode.NATIVE_CHECKPOINT ->
+                if (node.profile.supportsNativeCheckpoint) null else AdmissionReasonCode.CHECKPOINT_UNSUPPORTED
+
+            fuookami.ospf.framework.remote_solver.protocol.domain.ResumeMode.BASIS ->
+                AdmissionReasonCode.WARM_START_UNSUPPORTED
+
+            else ->
+                if (node.profile.supportsWarmStart) null else AdmissionReasonCode.WARM_START_UNSUPPORTED
+        }
+    }
+
+    private fun budgetSelectionDecision(
+        task: TaskState,
+        selectedNode: NodeState,
+        candidates: List<NodeState>
+    ): NodeSelectionDecision = NodeSelectionDecision(
+        selectedNode = selectedNode,
+        reason = "budget_degraded",
+        candidates = candidates.map { node ->
+            NodeSelectionCandidate(
+                nodeId = node.nodeId.value,
+                eligible = node.nodeId == selectedNode.nodeId || isNodeExecutionCapable(task, node),
+                reasons = if (node.nodeId == selectedNode.nodeId) {
+                    listOf(AdmissionReasonCode.ACCEPTED)
+                } else {
+                    emptyList()
+                }
+            )
+        },
+        migrationDecision = if (task.assignedNodeId == selectedNode.nodeId) "held" else "migrated"
+    )
+
     private fun isNodeCompatible(task: TaskState, node: NodeState): Boolean {
-        val modelType = task.payload.modelData.modelType
-        if (modelType != NormalizedModelType.UNKNOWN &&
-            modelType !in node.profile.supportedModelTypes
-        ) {
+        val modelType = resolvedModelType(task) ?: return false
+        // UNKNOWN is an explicit capability value, never a wildcard. Opaque
+        // references may run only on nodes that advertise UNKNOWN support.
+        if (modelType !in node.profile.supportedModelTypes) {
             return false
         }
         val requiredSolverType = task.payload.taskMeta.solverType?.value
@@ -2025,6 +3469,41 @@ class RemoteSolverService(
             ?: task.payload.taskMeta.metadata["solverType"]
             ?: return true
         return node.profile.solverType.value.equals(requiredSolverType, ignoreCase = true)
+    }
+
+    /**
+     * Resolve the task model type using the same explicit declarations as the
+     * scheduler engine.  An opaque reference remains UNKNOWN; it must never be
+     * treated as a wildcard for a concrete node capability.
+     *
+     * 使用与调度引擎相同的显式声明解析模型类型。不可推断的引用保持 UNKNOWN，
+     * 绝不能把 UNKNOWN 当作具体节点能力的通配符。
+     */
+    private fun resolvedModelType(task: TaskState): NormalizedModelType? {
+        val modelType = task.payload.modelData.modelType
+        if (modelType != NormalizedModelType.UNKNOWN) {
+            return modelType
+        }
+        val declared = task.payload.extension["modelType"]
+            ?: task.payload.taskMeta.metadata["modelType"]
+            ?: task.payload.taskMeta.targetType?.value
+        val parsed = declared?.trim()?.uppercase()?.let {
+            when (it) {
+                "LINEAR", "LP" -> NormalizedModelType.LINEAR
+                "QUADRATIC", "QP" -> NormalizedModelType.QUADRATIC
+                "CP", "CONSTRAINT-PROGRAMMING", "CONSTRAINT_PROGRAMMING" -> NormalizedModelType.CP
+                "UNKNOWN" -> NormalizedModelType.UNKNOWN
+                else -> null
+            }
+        }
+        if (parsed != null) {
+            return parsed
+        }
+        return if (task.payload.modelData.ref != null && task.payload.modelData.format == null) {
+            NormalizedModelType.UNKNOWN
+        } else {
+            null
+        }
     }
 
     private suspend fun resolveAwaitException(task: TaskState, maxRounds: UInt64): RemoteSolverException {
@@ -2092,20 +3571,20 @@ class RemoteSolverService(
     }
 
     private suspend fun isBudgetExhausted(task: TaskState): Boolean {
-        val budgetLimit = task.budgetLimit ?: return false
+        val budgetLimit = task.effectiveBudgetLimit() ?: return false
         if (task.consumedCost.toDouble() >= budgetLimit.toDouble()) {
             return true
         }
-        val snapshot = budgetPort.snapshot(task.budgetScope.value) ?: return false
+        val snapshot = budgetPort.snapshot(task.effectiveBudgetScope().value) ?: return false
         return snapshot.remaining <= 0.0
     }
 
     private suspend fun isBudgetAdmissionBlocked(task: TaskState, compatibleNodes: List<NodeState>): Boolean {
-        val budgetLimit = task.budgetLimit ?: return false
+        val budgetLimit = task.effectiveBudgetLimit() ?: return false
         if (compatibleNodes.isEmpty()) {
             return false
         }
-        val remaining = budgetPort.snapshot(task.budgetScope.value)?.remaining
+        val remaining = budgetPort.snapshot(task.effectiveBudgetScope().value)?.remaining
             ?: (budgetLimit.toDouble() - task.consumedCost.toDouble())
         val minEstimatedSliceCost = compatibleNodes.minOfOrNull { node ->
             estimateSliceCost(node, computeQuantumMs(task, node))

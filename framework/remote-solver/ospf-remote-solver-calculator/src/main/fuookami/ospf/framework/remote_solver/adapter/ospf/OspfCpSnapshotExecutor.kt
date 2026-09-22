@@ -110,6 +110,8 @@ class OspfCpSnapshotExecutor(
      * @param quantumMs 本次切片时间上限（毫秒）/ Slice time limit in milliseconds
      * @param cancellationToken 可选取消令牌 / Optional cancellation token
      * @param checkpoint 可选 portable checkpoint / Optional portable checkpoint
+     * @param totalTimeLimitMs 任务总时间限制（毫秒）/ Total task time limit in milliseconds
+     * @param elapsedBeforeMs 当前任务此前已消耗的时间（毫秒）/ Time already consumed by the task
      * @return 求解结果 / Solve result
      */
     suspend fun execute(
@@ -119,7 +121,9 @@ class OspfCpSnapshotExecutor(
         sliceId: String,
         quantumMs: Long? = null,
         cancellationToken: CancellationToken? = null,
-        checkpoint: PortableCheckpointEnvelope? = null
+        checkpoint: PortableCheckpointEnvelope? = null,
+        totalTimeLimitMs: Long? = null,
+        elapsedBeforeMs: Long = 0L
     ): SolveResult {
         val started = System.nanoTime()
         return try {
@@ -139,7 +143,17 @@ class OspfCpSnapshotExecutor(
                 is Failed -> return failureResult(validation.error.message, taskId, sliceId)
                 is Fatal -> return failureResult(validation.errors.joinToString { it.message }, taskId, sliceId)
             }
-            val output = solve(decoded.model, payload, quantumMs, cancellationToken, restored)
+            val remainingTimeLimitMs = totalTimeLimitMs?.let { total ->
+                (total - elapsedBeforeMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+            }
+            val output = solve(
+                decoded.model,
+                payload,
+                quantumMs,
+                remainingTimeLimitMs,
+                cancellationToken,
+                restored
+            )
             val elapsed = (System.nanoTime() - started).toDuration(DurationUnit.NANOSECONDS)
             writeResultArtifact(
                 tenantId = tenantId,
@@ -990,10 +1004,11 @@ class OspfCpSnapshotExecutor(
         model: ConstraintProgrammingModel,
         payload: SolvePayload,
         quantumMs: Long?,
+        remainingTimeLimitMs: Long?,
         cancellationToken: CancellationToken?,
         checkpoint: ConstraintProgrammingSolution?
     ): ConstraintProgrammingSolverOutput {
-        val config = solveConfiguration(payload, quantumMs)
+        val config = solveConfiguration(payload, quantumMs, remainingTimeLimitMs)
         val solutionLimit = config.solutionLimit
         val solver = ScipConstraintProgrammingSolver()
         val options = ConstraintProgrammingSolveOptions(
@@ -1290,16 +1305,33 @@ class OspfCpSnapshotExecutor(
         )
     }
 
-    private fun solveConfiguration(payload: SolvePayload, quantumMs: Long?): SolverConfig {
+    private fun solveConfiguration(
+        payload: SolvePayload,
+        quantumMs: Long?,
+        remainingTimeLimitMs: Long? = null
+    ): SolverConfig {
         val config = semanticConfiguration(payload)
         val quantumLimit = quantumMs?.coerceAtLeast(1L)?.milliseconds
-        val configuredTimeLimit = config.timeLimit
-        val effectiveTimeLimit = when {
-            configuredTimeLimit == null -> quantumLimit
-            quantumLimit == null -> config.timeLimit
-            else -> minOf(configuredTimeLimit, quantumLimit)
-        }
+        val remainingLimit = remainingTimeLimitMs?.coerceAtLeast(1L)?.milliseconds
+        val effectiveTimeLimit = listOfNotNull(config.timeLimit, quantumLimit, remainingLimit).minOrNull()
         return config.copy(timeLimit = effectiveTimeLimit)
+    }
+
+    /**
+     * Pure slice limit calculation exposed for adapter contract tests. The
+     * payload's semantic total limit is not rewritten; it only derives the
+     * remaining limit for the current invocation.
+     */
+    internal fun effectiveSliceTimeLimitMs(
+        payload: SolvePayload,
+        quantumMs: Long?,
+        totalTimeLimitMs: Long? = payload.config?.timeLimitMs ?: payload.taskMeta.timeLimitMs,
+        elapsedBeforeMs: Long = 0L
+    ): Long? {
+        val remaining = totalTimeLimitMs?.let {
+            (it - elapsedBeforeMs.coerceAtLeast(0L)).coerceAtLeast(0L)
+        }
+        return solveConfiguration(payload, quantumMs, remaining).timeLimitMs
     }
 
     private fun legacyV2Configuration(payload: SolvePayload): SolverConfig {

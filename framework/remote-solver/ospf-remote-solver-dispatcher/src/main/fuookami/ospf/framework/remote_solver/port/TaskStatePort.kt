@@ -29,6 +29,12 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TaskId
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskStatus
 import fuookami.ospf.framework.remote_solver.protocol.domain.TenantId
 
+/** Result of an atomic task insert-if-absent operation. */
+data class TaskInsertResult(
+    val task: TaskState,
+    val inserted: Boolean
+)
+
 /**
  * 任务状态端口接口
  *
@@ -104,6 +110,19 @@ interface TaskStatePort {
      * @param task 任务状态 / Task state
      */
     suspend fun upsertTask(task: TaskState)
+
+    /**
+     * Atomically inserts [task] under both task id and tenant/request identity.
+     *
+     * If either identity already exists, no row is changed and the existing
+     * task is returned with [TaskInsertResult.inserted] set to false.  This is
+     * the only operation a submission path should use before publishing a
+     * first-submit event.
+     */
+    suspend fun insertIfAbsent(task: TaskState): TaskInsertResult
+
+    /** Semantic alias retained for callers using map-style terminology. */
+    suspend fun putIfAbsent(task: TaskState): TaskInsertResult = insertIfAbsent(task)
 
     /**
      * 原子性条件更新任务状态

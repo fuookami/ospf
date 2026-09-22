@@ -12,6 +12,7 @@ $v4 = Join-Path $rootDir "deploy\sql\V4__remote_solver_multi_tenant.sql"
 $v5 = Join-Path $rootDir "deploy\sql\V5__remote_solver_cp2.sql"
 $v6 = Join-Path $rootDir "deploy\sql\V6__remote_solver_cp2_payload_config.sql"
 $v7 = Join-Path $rootDir "deploy\sql\V7__remote_solver_object_ref_etag.sql"
+$v8 = Join-Path $rootDir "deploy\sql\V8__remote_solver_scheduling_payload.sql"
 
 psql $DbUrl -f $v1
 if ($LASTEXITCODE -ne 0) {
@@ -48,4 +49,9 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to apply V7 migration."
 }
 
-Write-Host "Applied migrations: V1, V2, V3, V4, V5, V6, V7"
+psql $DbUrl -f $v8
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to apply V8 migration."
+}
+
+Write-Host "Applied migrations: V1, V2, V3, V4, V5, V6, V7, V8"

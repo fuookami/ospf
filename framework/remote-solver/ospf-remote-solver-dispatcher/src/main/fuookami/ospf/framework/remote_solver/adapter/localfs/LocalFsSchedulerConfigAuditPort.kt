@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
+import java.util.Base64
 import java.util.Properties
 
 /**
@@ -86,6 +87,11 @@ class LocalFsSchedulerConfigAuditPort(
             escape(encodeMap(record.changeSet))
         ).joinToString("\t")
         synchronized(lock) {
+            val duplicate = Files.readAllLines(auditsFile)
+                .asSequence()
+                .mapNotNull(::parseAuditLine)
+                .any { it.version == record.version }
+            check(!duplicate) { "scheduler version '${record.version}' already exists" }
             Files.writeString(
                 auditsFile,
                 "$line${System.lineSeparator()}",
@@ -143,7 +149,8 @@ class LocalFsSchedulerConfigAuditPort(
      *                Scheduler runtime configuration object.
      */
     override suspend fun saveSnapshot(version: String, config: SchedulerRuntimeConfig) {
-        val file = snapshotDir.resolve("${sanitize(version)}.properties")
+        val file = snapshotFile(version)
+        val legacyFile = snapshotDir.resolve("${sanitize(version)}.properties")
         val props = Properties().apply {
             setProperty("simpleTaskQuantumMs", config.simpleTaskQuantumMs.toString())
             setProperty("complexTaskQuantumMs", config.complexTaskQuantumMs.toString())
@@ -158,8 +165,25 @@ class LocalFsSchedulerConfigAuditPort(
             setProperty("complexWaitingAgeWeight", config.complexWaitingAgeWeight.toString())
             setProperty("complexProgressNeedWeight", config.complexProgressNeedWeight.toString())
             setProperty("complexCostSensitivityWeight", config.complexCostSensitivityWeight.toString())
+            setProperty("schedulerStarvationAgeMs", config.schedulerStarvationAgeMs.toString())
+            setProperty("schedulerMigrationHysteresisRatio", config.schedulerMigrationHysteresisRatio.toString())
+            setProperty("schedulerMinSlicesBeforeMigration", config.schedulerMinSlicesBeforeMigration.toString())
+            setProperty("schedulerMigrationCostWeight", config.schedulerMigrationCostWeight.toString())
+            setProperty("schedulerCostWeight", config.schedulerCostWeight.toString())
+            setProperty("schedulerDeadlineRiskWeight", config.schedulerDeadlineRiskWeight.toString())
+            setProperty("schedulerQueueDelayWeight", config.schedulerQueueDelayWeight.toString())
+            setProperty("schedulerRoundRobinScoreTolerance", config.schedulerRoundRobinScoreTolerance.toString())
+            setProperty("schedulerWeightedRoundRobinEnabled", config.schedulerWeightedRoundRobinEnabled.toString())
+            setProperty("schedulerProgressWeight", config.schedulerProgressWeight.toString())
+            setProperty("schedulerProgressFastGapThreshold", config.schedulerProgressFastGapThreshold.toString())
+            setProperty("schedulerProgressCheapGapThreshold", config.schedulerProgressCheapGapThreshold.toString())
+            setProperty("schedulerProgressMinImprovement", config.schedulerProgressMinImprovement.toString())
+            setProperty("schedulerProgressNoImprovementSlices", config.schedulerProgressNoImprovementSlices.toString())
         }
         synchronized(lock) {
+            check(!Files.exists(file) && !Files.exists(legacyFile)) {
+                "scheduler version '$version' already exists"
+            }
             Files.newOutputStream(file).use { output ->
                 props.store(output, "scheduler config snapshot")
             }
@@ -183,7 +207,9 @@ class LocalFsSchedulerConfigAuditPort(
      *         Scheduler runtime configuration object, or null if not exists.
      */
     override suspend fun getSnapshot(version: String): SchedulerRuntimeConfig? {
-        val file = snapshotDir.resolve("${sanitize(version)}.properties")
+        val file = snapshotFile(version).let { encoded ->
+            if (Files.exists(encoded)) encoded else snapshotDir.resolve("${sanitize(version)}.properties")
+        }
         if (!Files.exists(file)) {
             return null
         }
@@ -206,7 +232,21 @@ class LocalFsSchedulerConfigAuditPort(
             complexUrgencyWeight = props.getProperty("complexUrgencyWeight")?.toDoubleOrNull() ?: return null,
             complexWaitingAgeWeight = props.getProperty("complexWaitingAgeWeight")?.toDoubleOrNull() ?: return null,
             complexProgressNeedWeight = props.getProperty("complexProgressNeedWeight")?.toDoubleOrNull() ?: return null,
-            complexCostSensitivityWeight = props.getProperty("complexCostSensitivityWeight")?.toDoubleOrNull() ?: return null
+            complexCostSensitivityWeight = props.getProperty("complexCostSensitivityWeight")?.toDoubleOrNull() ?: return null,
+            schedulerStarvationAgeMs = props.getProperty("schedulerStarvationAgeMs")?.toLongOrNull() ?: 30_000L,
+            schedulerMigrationHysteresisRatio = props.getProperty("schedulerMigrationHysteresisRatio")?.toDoubleOrNull() ?: 0.15,
+            schedulerMinSlicesBeforeMigration = props.getProperty("schedulerMinSlicesBeforeMigration")?.toIntOrNull() ?: 1,
+            schedulerMigrationCostWeight = props.getProperty("schedulerMigrationCostWeight")?.toDoubleOrNull() ?: 0.25,
+            schedulerCostWeight = props.getProperty("schedulerCostWeight")?.toDoubleOrNull() ?: 0.6,
+            schedulerDeadlineRiskWeight = props.getProperty("schedulerDeadlineRiskWeight")?.toDoubleOrNull() ?: 0.3,
+            schedulerQueueDelayWeight = props.getProperty("schedulerQueueDelayWeight")?.toDoubleOrNull() ?: 0.1,
+            schedulerRoundRobinScoreTolerance = props.getProperty("schedulerRoundRobinScoreTolerance")?.toDoubleOrNull() ?: 0.05,
+            schedulerWeightedRoundRobinEnabled = props.getProperty("schedulerWeightedRoundRobinEnabled")?.toBooleanStrictOrNull() ?: true,
+            schedulerProgressWeight = props.getProperty("schedulerProgressWeight")?.toDoubleOrNull() ?: 0.25,
+            schedulerProgressFastGapThreshold = props.getProperty("schedulerProgressFastGapThreshold")?.toDoubleOrNull() ?: 0.75,
+            schedulerProgressCheapGapThreshold = props.getProperty("schedulerProgressCheapGapThreshold")?.toDoubleOrNull() ?: 0.20,
+            schedulerProgressMinImprovement = props.getProperty("schedulerProgressMinImprovement")?.toDoubleOrNull() ?: 0.01,
+            schedulerProgressNoImprovementSlices = props.getProperty("schedulerProgressNoImprovementSlices")?.toIntOrNull() ?: 1
         )
     }
 
@@ -357,6 +397,12 @@ class LocalFsSchedulerConfigAuditPort(
                 else -> '_'
             }
         }.joinToString("")
+
+    private fun snapshotFile(version: String): Path =
+        snapshotDir.resolve(
+            "v2-" + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(version.toByteArray(StandardCharsets.UTF_8)) + ".properties"
+        )
 
     /**
      * 转义特殊字符

@@ -17,6 +17,7 @@ package fuookami.ospf.framework.remote_solver.application
 
 import fuookami.ospf.framework.remote_solver.domain.TaskState
 import fuookami.ospf.framework.remote_solver.protocol.domain.BudgetScopeId
+import fuookami.ospf.framework.remote_solver.protocol.domain.CancellationRecord
 import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.NormalizedModelType
 import fuookami.ospf.framework.remote_solver.protocol.domain.ObjectRef
@@ -24,6 +25,8 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCo
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorMapper
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverException
 import fuookami.ospf.framework.remote_solver.protocol.domain.RequestId
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingDecision
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingRequest
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
@@ -33,6 +36,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
 import fuookami.ospf.framework.remote_solver.protocol.port.ObjectStoragePort
 import fuookami.ospf.framework.remote_solver.port.TaskEventQueryPort
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlin.time.Instant
@@ -82,7 +86,8 @@ data class TaskSubmitRequest(
     val extension: Map<String, String> = emptyMap(),
     val budgetScope: String? = null,
     val budgetLimit: Double? = null,
-    val deadlineEpochMs: Long? = null
+    val deadlineEpochMs: Long? = null,
+    val scheduling: SchedulingRequest? = null
 )
 
 /**
@@ -126,6 +131,33 @@ data class TaskSubmitResponse(
  * @param consumedCost 已消耗成本
  *                     Consumed cost
  */
+@Serializable
+data class TaskActionFingerprint(
+    val schemaVersion: String = "1.0",
+    val algorithm: String = "sha256",
+    val value: String
+)
+
+@Serializable
+data class TaskActionProvenance(
+    val solverId: String = "unknown",
+    val backendName: String = "unknown",
+    val backendVersion: String? = null,
+    val pluginVersion: String? = null,
+    val requestedConfiguration: Map<String, String> = emptyMap(),
+    val effectiveConfiguration: Map<String, String> = emptyMap(),
+    val threadCount: Int? = null,
+    val randomSeed: Long? = null,
+    val deterministic: Boolean? = null,
+    val environmentSummary: Map<String, String> = emptyMap()
+)
+
+@Serializable
+data class TaskActionCancellation(
+    val origin: String,
+    val requestedAtEpochMs: Long
+)
+
 data class TaskViewResponse(
     val taskId: String,
     val tenantId: String,
@@ -133,7 +165,25 @@ data class TaskViewResponse(
     val currentNodeId: String?,
     val latestCheckpointRef: ObjectRef?,
     val latestResultRef: ObjectRef?,
-    val consumedCost: Double
+    val consumedCost: Double,
+    val requestId: String? = null,
+    val complexity: TaskComplexity? = null,
+    val timeSensitivity: TimeSensitivity? = null,
+    val priority: Int? = null,
+    val deadlineEpochMs: Long? = null,
+    val budgetScope: String? = null,
+    val budgetLimit: Double? = null,
+    val scheduling: SchedulingDecision? = null,
+    val schemaVersion: String = "2.0",
+    val sliceId: String? = null,
+    /** Source checkpoint identity accepted by a resume action. */
+    val runId: String? = null,
+    val attemptId: String? = null,
+    val modelFingerprint: TaskActionFingerprint? = null,
+    val configurationFingerprint: TaskActionFingerprint? = null,
+    val solverFingerprint: TaskActionFingerprint? = null,
+    val provenance: TaskActionProvenance? = null,
+    val cancellationChain: List<TaskActionCancellation> = emptyList()
 )
 
 /**
@@ -416,7 +466,9 @@ class RemoteSolverApiFacade(
                         taskMeta = request.taskMeta,
                         extension = request.extension + mapOf("tenantId" to normalizedTenantId),
                         tenantId = normalizedTenantId
-                ),
+                    ).let { payload ->
+                        request.scheduling?.let { payload.copy(scheduling = it) } ?: payload
+                    },
                 complexity = request.complexity,
                 timeSensitivity = request.timeSensitivity,
                 priority = request.priority,
@@ -660,15 +712,105 @@ class RemoteSolverApiFacade(
         )
     }
 
-    private fun mapTaskView(task: TaskState): TaskViewResponse =
-        TaskViewResponse(
+    private suspend fun mapTaskView(task: TaskState): TaskViewResponse {
+        val result = task.latestResult
+        val checkpoint = service.checkpointPort().latest(task.taskId)
+        val checkpointFingerprints = mapOf(
+            "model" to checkpoint?.modelFingerprint,
+            "configuration" to checkpoint?.configurationFingerprint,
+            "solver" to checkpoint?.solverFingerprint
+        )
+        val fingerprints = (result?.fingerprints ?: emptyMap()) + checkpointFingerprints
+            .filterValues { it != null }
+            .mapValues { it.value!! }
+        val fingerprintSchemas = result?.fingerprintSchemas ?: emptyMap()
+        val sourceProvenance = result?.provenance?.takeIf { it.isNotEmpty() }
+            ?: checkpoint?.provenance.orEmpty()
+        val sourceCancellationChain = result?.cancellationChain?.takeIf { it.isNotEmpty() }
+            ?: checkpoint?.cancellationChain.orEmpty()
+        val sourceSchema = result?.schemaVersion
+            ?.takeIf { it.substringBefore('.').toIntOrNull() == 2 }
+            ?: checkpoint?.schemaVersion?.takeIf { it.substringBefore('.').toIntOrNull() == 2 }
+            ?: "2.0"
+        val sourceRunId = result?.runId ?: checkpoint?.taskId?.value
+        val sourceAttemptId = result?.attemptId ?: checkpoint?.sliceId?.value
+        return TaskViewResponse(
             taskId = task.taskId.value,
             tenantId = task.tenantId.value,
             status = task.status,
             currentNodeId = task.assignedNodeId?.value,
-            latestCheckpointRef = task.latestSnapshotRef ?: task.latestResult?.checkpointRef,
+            latestCheckpointRef = task.effectiveCheckpointRef(),
             latestResultRef = task.latestResult?.resultRef,
-            consumedCost = task.consumedCost.toDouble()
+            consumedCost = task.consumedCost.toDouble(),
+            requestId = task.requestId.value,
+            complexity = task.effectiveComplexity(),
+            timeSensitivity = task.effectiveTimeSensitivity(),
+            priority = task.effectivePriority(),
+            deadlineEpochMs = task.effectiveDeadline()?.toEpochMilliseconds(),
+            budgetScope = task.effectiveBudgetScope().value,
+            budgetLimit = task.effectiveBudgetLimit()?.toDouble(),
+            scheduling = result?.scheduling ?: task.payload.scheduling?.toDecision(task),
+            schemaVersion = sourceSchema,
+            sliceId = sourceAttemptId,
+            runId = sourceRunId,
+            attemptId = sourceAttemptId,
+            modelFingerprint = fingerprints["model"]?.let { value ->
+                TaskActionFingerprint(
+                    schemaVersion = fingerprintSchemas["model"] ?: "1.0",
+                    value = value
+                )
+            },
+            configurationFingerprint = fingerprints["configuration"]?.let { value ->
+                TaskActionFingerprint(
+                    schemaVersion = fingerprintSchemas["configuration"] ?: "1.0",
+                    value = value
+                )
+            },
+            solverFingerprint = fingerprints["solver"]?.let { value ->
+                TaskActionFingerprint(
+                    schemaVersion = fingerprintSchemas["solver"] ?: "1.0",
+                    value = value
+                )
+            },
+            provenance = sourceProvenance.takeIf { it.isNotEmpty() }?.let(::toTaskActionProvenance),
+            cancellationChain = sourceCancellationChain.map { it.toTaskActionCancellation() }
+        )
+    }
+
+    private fun toTaskActionProvenance(values: Map<String, String>): TaskActionProvenance =
+        TaskActionProvenance(
+            solverId = values["solverId"] ?: values["solver"] ?: "unknown",
+            backendName = values["backendName"] ?: values["backend"] ?: "unknown",
+            backendVersion = values["backendVersion"],
+            pluginVersion = values["pluginVersion"],
+            threadCount = values["threadCount"]?.toIntOrNull() ?: values["threads"]?.toIntOrNull(),
+            randomSeed = values["randomSeed"]?.toLongOrNull(),
+            deterministic = values["deterministic"]?.toBooleanStrictOrNull(),
+            environmentSummary = values
+        )
+
+    private fun CancellationRecord.toTaskActionCancellation(): TaskActionCancellation =
+        TaskActionCancellation(
+            origin = origin,
+            requestedAtEpochMs = requestedAtEpochMs
+        )
+
+    private fun SchedulingRequest.toDecision(task: TaskState): SchedulingDecision =
+        SchedulingDecision(
+            taskId = task.taskId,
+            priority = priority ?: task.effectivePriority(),
+            deadline = deadline ?: task.effectiveDeadline(),
+            budgetScope = budgetScope ?: task.effectiveBudgetScope(),
+            budgetLimit = budgetLimit ?: task.effectiveBudgetLimit(),
+            estimate = estimate,
+            modelFingerprint = modelFingerprint,
+            modelFingerprintSchema = modelFingerprintSchema,
+            checkpointRef = checkpointRef,
+            incumbentRef = incumbentRef,
+            qualityTarget = qualityTarget,
+            preemptionMode = preemptionMode,
+            resumeMode = resumeMode,
+            metadata = metadata
         )
 
     private fun validate(request: TaskSubmitRequest) {

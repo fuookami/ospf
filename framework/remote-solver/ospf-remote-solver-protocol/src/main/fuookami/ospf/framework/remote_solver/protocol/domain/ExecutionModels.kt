@@ -113,6 +113,7 @@ enum class RemoteProofStatus {
  * @property sliceId 切片 ID / Slice ID
  * @property nodeId 节点 ID / Node ID
  * @property startedAt 启动时间戳 / Started timestamp
+ * @property scheduling 有效调度信息 / Effective scheduling information
  */
 @Serializable
 data class ExecutionHandle(
@@ -122,7 +123,8 @@ data class ExecutionHandle(
     val nodeId: NodeId,
     @SerialName("startedAtEpochMs")
     @Serializable(with = RemoteSolverEpochMillisecondsInstantSerializer::class)
-    val startedAt: Instant
+    val startedAt: Instant,
+    val scheduling: SchedulingDecision? = null
 ) {
     constructor(
         handleId: String,
@@ -168,6 +170,11 @@ data class ExecutionHandle(
  * @property runId 求解运行标识 / Solve run identifier
  * @property attemptId 求解尝试标识 / Solve attempt identifier
  * @property artifactDigest 结果 artifact 摘要 / Result artifact digest
+ * @property checkpointRef 切片检查点引用 / Slice checkpoint reference
+ * @property incumbentRef incumbent 引用 / Incumbent reference
+ * @property modelFingerprint 模型指纹 / Model fingerprint
+ * @property scheduling 有效调度信息 / Effective scheduling information
+ * @property outcome 明确切片结果 / Explicit slice outcome
  */
 @Serializable
 data class SliceResult(
@@ -201,7 +208,13 @@ data class SliceResult(
     val runId: String? = null,
     val attemptId: String? = null,
     val artifactDigest: String? = null,
-    val objectiveValueInt64: Long? = null
+    val objectiveValueInt64: Long? = null,
+    val checkpointRef: ObjectRef? = null,
+    val incumbentRef: ObjectRef? = null,
+    val modelFingerprint: String? = null,
+    val scheduling: SchedulingDecision? = null,
+    val outcome: SliceOutcome? = null,
+    val cancellationChain: List<CancellationRecord> = emptyList()
 ) {
     constructor(
         sliceId: String,
@@ -252,6 +265,10 @@ data class SliceResult(
  * @property runId 求解运行标识 / Solve run identifier
  * @property attemptId 求解尝试标识 / Solve attempt identifier
  * @property artifactDigest 结果 artifact 摘要 / Result artifact digest
+ * @property incumbentRef incumbent 引用 / Incumbent reference
+ * @property modelFingerprint 模型指纹 / Model fingerprint
+ * @property scheduling 有效调度信息 / Effective scheduling information
+ * @property outcome 明确切片结果 / Explicit slice outcome
  */
 @Serializable
 data class SolveResult(
@@ -287,7 +304,12 @@ data class SolveResult(
     val runId: String? = null,
     val attemptId: String? = null,
     val artifactDigest: String? = null,
-    val objectiveValueInt64: Long? = null
+    val objectiveValueInt64: Long? = null,
+    val incumbentRef: ObjectRef? = null,
+    val modelFingerprint: String? = null,
+    val scheduling: SchedulingDecision? = null,
+    val outcome: SliceOutcome? = null,
+    val cancellationChain: List<CancellationRecord> = emptyList()
 ) {
     constructor(
         feasible: Boolean,
@@ -314,3 +336,9 @@ data class SolveResult(
     /** 耗时毫秒兼容别名 / Compatibility alias for elapsed milliseconds */
     val elapsedMs: Long get() = elapsed.inWholeMilliseconds
 }
+/** A cancellation fact retained across resumed attempts. / 跨恢复 attempt 保留的取消事实。 */
+@Serializable
+data class CancellationRecord(
+    val origin: String,
+    val requestedAtEpochMs: Long
+)

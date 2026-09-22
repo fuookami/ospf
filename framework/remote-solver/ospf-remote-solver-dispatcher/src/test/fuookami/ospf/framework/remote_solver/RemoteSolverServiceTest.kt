@@ -30,7 +30,12 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.NodeId
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverErrorCode
 import fuookami.ospf.framework.remote_solver.protocol.domain.RemoteSolverException
 import fuookami.ospf.framework.remote_solver.protocol.domain.RequestId
+import fuookami.ospf.framework.remote_solver.protocol.domain.BudgetScopeId
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingRequest
+import fuookami.ospf.framework.remote_solver.protocol.domain.SchedulingEstimate
+import fuookami.ospf.framework.remote_solver.protocol.domain.SliceOutcome
 import fuookami.ospf.framework.remote_solver.protocol.domain.SliceStatus
+import fuookami.ospf.framework.remote_solver.protocol.domain.ModelData
 import fuookami.ospf.framework.remote_solver.protocol.domain.SolvePayload
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskComplexity
 import fuookami.ospf.framework.remote_solver.protocol.domain.TaskMeta
@@ -39,6 +44,7 @@ import fuookami.ospf.framework.remote_solver.protocol.domain.TimeSensitivity
 import fuookami.ospf.kotlin.math.algebra.number.Flt64
 import fuookami.ospf.kotlin.math.algebra.number.UInt64
 import kotlin.time.Instant
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -47,6 +53,41 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class RemoteSolverServiceTest {
+    @Test
+    fun schedulingRequestOverridesLegacySubmissionArguments() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+        val declaredDeadline = Instant.fromEpochMilliseconds(1_700_000_020_000L)
+
+        runSuspend {
+            val task = runtime.service.submitTask(
+                payload = SolvePayload(
+                    modelData = ModelData.reference(ObjectRef.of(path = "model/scheduling-request")),
+                    scheduling = SchedulingRequest(
+                        complexity = TaskComplexity.COMPLEX,
+                        timeSensitivity = TimeSensitivity.REALTIME,
+                        priority = 17,
+                        deadline = declaredDeadline,
+                        budgetScope = BudgetScopeId.of("line-a"),
+                        budgetLimit = Flt64(4.0),
+                        estimate = SchedulingEstimate(runtime = 1_500.milliseconds)
+                    )
+                ),
+                complexity = TaskComplexity.SIMPLE,
+                timeSensitivity = TimeSensitivity.NON_REALTIME,
+                priority = 1,
+                deadline = Instant.fromEpochMilliseconds(1_700_000_030_000L),
+                budgetLimit = Flt64(40.0)
+            )
+
+            assertEquals(TaskComplexity.COMPLEX, task.complexity)
+            assertEquals(TimeSensitivity.NON_REALTIME, task.timeSensitivity)
+            assertEquals(17, task.priority)
+            assertEquals(declaredDeadline, task.deadline)
+            assertEquals(BudgetScopeId.of("default:line-a"), task.budgetScope)
+            assertEquals(4.0, task.budgetLimit?.toDouble())
+        }
+    }
+
     @Test
     fun submitTaskShouldInferComplexityFromTaskMeta() {
         val runtime = InMemoryRemoteSolverBootstrap.create(
@@ -112,7 +153,10 @@ class RemoteSolverServiceTest {
             }
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/downgrade")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/downgrade"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.REALTIME,
                 priority = 1
@@ -158,7 +202,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/control")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/control"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -184,12 +231,108 @@ class RemoteSolverServiceTest {
     }
 
     @Test
+    fun starvedLowPriorityTaskShouldReceiveSlicesAcrossHighPriorityLoad() {
+        val runtime = InMemoryRemoteSolverBootstrap.create(
+            config = RemoteSolverConfig(
+                schedulerStarvationAgeMs = 1L,
+                maxSchedulingBatch = 64
+            )
+        )
+
+        runSuspend {
+            runtime.service.registerNode(
+                NodeCapabilityProfile(
+                    nodeId = "node-fairness",
+                    solverType = "gurobi",
+                    performanceScore = 1.0,
+                    pricePerSecond = 0.01,
+                    minBillingUnitSeconds = 1L,
+                    supportsInterrupt = true,
+                    supportsCheckpoint = true,
+                    supportsWarmStart = true,
+                    parallelUnits = 1
+                )
+            )
+
+            val lowPriority = runtime.service.submitTask(
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/fair-low"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
+                complexity = TaskComplexity.COMPLEX,
+                timeSensitivity = TimeSensitivity.NON_REALTIME,
+                priority = 1
+            )
+            repeat(8) { index ->
+                runtime.service.submitTask(
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/fair-high-$index"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
+                    complexity = TaskComplexity.COMPLEX,
+                    timeSensitivity = TimeSensitivity.NON_REALTIME,
+                    priority = 100
+                )
+            }
+
+            // Let every task enter the starvation cohort. The low-priority
+            // task is older, so it must win the cross-priority oldest-first
+            // guard at least once even while high-priority work is queued.
+            Thread.sleep(5L)
+            val dispatched = (1..8).mapNotNull { runtime.service.scheduleOnce() }
+
+            assertTrue(dispatched.any { it.taskId == lowPriority.taskId })
+            assertTrue(dispatched.any { it.priority == 100 })
+            assertTrue(runtime.service.getSlices(lowPriority.taskId).isNotEmpty())
+        }
+    }
+
+    @Test
+    fun singleSlotShouldRotateThreeEqualPriorityTasks() {
+        val runtime = InMemoryRemoteSolverBootstrap.create()
+
+        runSuspend {
+            runtime.service.registerNode(
+                NodeCapabilityProfile(
+                    nodeId = "node-three-way-rr",
+                    solverType = "gurobi",
+                    performanceScore = 1.0,
+                    pricePerSecond = 0.01,
+                    minBillingUnitSeconds = 1L,
+                    supportsInterrupt = true,
+                    supportsCheckpoint = true,
+                    supportsWarmStart = true,
+                    parallelUnits = 1
+                )
+            )
+            val tasks = (0..2).map { index ->
+                runtime.service.submitTask(
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/three-way-$index"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
+                    complexity = TaskComplexity.COMPLEX,
+                    timeSensitivity = TimeSensitivity.NON_REALTIME,
+                    priority = 5
+                )
+            }
+
+            val dispatchedTaskIds = (1..3).mapNotNull { runtime.service.scheduleOnce()?.taskId }
+
+            assertEquals(tasks.map { it.taskId }.toSet(), dispatchedTaskIds.toSet())
+        }
+    }
+
+    @Test
     fun queuedTaskCanBeStoppedAndWillNotBeScheduled() {
         val runtime = InMemoryRemoteSolverBootstrap.create()
 
         runSuspend {
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/stop-queued")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/stop-queued"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 3
@@ -229,7 +372,10 @@ class RemoteSolverServiceTest {
 
         runSuspend {
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/resume-simple")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/resume-simple"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -254,7 +400,10 @@ class RemoteSolverServiceTest {
 
         runSuspend {
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/resume-complex")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/resume-complex"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -279,7 +428,10 @@ class RemoteSolverServiceTest {
 
         runSuspend {
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/resume-invalid")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/resume-invalid"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -308,7 +460,10 @@ class RemoteSolverServiceTest {
                 controlEvents.add(record.payload.decodeToString())
             }
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/resume-event")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/resume-event"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
             )
@@ -352,7 +507,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/stop-running")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/stop-running"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 2
@@ -462,7 +620,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/demo")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/demo"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 10,
@@ -519,7 +680,10 @@ class RemoteSolverServiceTest {
                 )
             )
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/lifecycle")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/lifecycle"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -532,7 +696,12 @@ class RemoteSolverServiceTest {
             val finalTask = runtime.service.getTask(task.taskId)
             assertNotNull(finalTask)
             assertEquals(TaskStatus.COMPLETED, finalTask.status)
+            assertEquals(task.taskId, finalTask.latestResult?.scheduling?.taskId)
+            assertEquals(SliceOutcome.COMPLETED, finalTask.latestResult?.outcome)
             assertTrue(lifecyclePayloads.any { it.contains("\"action\":\"slice-start\"") })
+            assertTrue(lifecyclePayloads.any { it.contains("\"admissionClass\":\"COMPLEX_BATCH\"") })
+            assertTrue(lifecyclePayloads.any { it.contains("\"selectionReason\"") })
+            assertTrue(lifecyclePayloads.any { it.contains("\"quantumReason\":\"complex_dynamic_clamped\"") })
             assertTrue(lifecyclePayloads.any { it.contains("\"action\":\"slice-suspend\"") })
             assertTrue(lifecyclePayloads.any { it.contains("\"action\":\"slice-resume\"") })
             assertTrue(
@@ -570,7 +739,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/high-cost")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/high-cost"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1,
@@ -614,7 +786,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/timeout")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/timeout"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 5,
@@ -674,7 +849,10 @@ class RemoteSolverServiceTest {
 
         runSuspend {
             val first = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/idempotent")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/idempotent"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1,
@@ -682,7 +860,10 @@ class RemoteSolverServiceTest {
                 requestId = RequestId.of("req-idempotent-1")
             )
             val second = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/idempotent-retry")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/idempotent-retry"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.REALTIME,
                 priority = 9,
@@ -731,7 +912,10 @@ class RemoteSolverServiceTest {
                 )
             )
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/quantum")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/quantum"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -742,6 +926,57 @@ class RemoteSolverServiceTest {
             assertEquals(1, slices.size)
             assertEquals(4000L, slices.first().quantum.inWholeMilliseconds)
         }
+    }
+
+    @Test
+    fun complexTaskQuantumShouldIncreaseWithCheckpointEstimate() {
+        fun firstQuantum(checkpointEstimateMs: Long): Long {
+            val runtime = InMemoryRemoteSolverBootstrap.create(
+                config = RemoteSolverConfig(
+                    complexTaskQuantumMs = 1000L,
+                    complexTaskQuantumMinMs = 1L,
+                    complexTaskQuantumMaxMs = 10000L,
+                    complexSolveEstimateMs = 1000L,
+                    complexCheckpointEstimateMs = checkpointEstimateMs,
+                    complexQuantumAlpha = 0.5,
+                    complexQuantumBeta = 1.0,
+                    complexQuantumPricePenalty = 0.0
+                )
+            )
+
+            return runSuspend {
+                runtime.service.registerNode(
+                    NodeCapabilityProfile(
+                        nodeId = "node-checkpoint-$checkpointEstimateMs",
+                        solverType = "gurobi",
+                        performanceScore = 1.0,
+                        pricePerSecond = 0.0,
+                        minBillingUnitSeconds = 1L,
+                        supportsInterrupt = true,
+                        supportsCheckpoint = true,
+                        supportsWarmStart = true,
+                        parallelUnits = 1
+                    )
+                )
+                val task = runtime.service.submitTask(
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/checkpoint-quantum"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
+                    complexity = TaskComplexity.COMPLEX,
+                    timeSensitivity = TimeSensitivity.NON_REALTIME
+                )
+
+                val scheduled = runtime.service.scheduleOnce()
+                assertNotNull(scheduled)
+                runtime.service.getSlices(task.taskId).single().quantumMs
+            }
+        }
+
+        val lowCheckpointQuantum = firstQuantum(checkpointEstimateMs = 100L)
+        val highCheckpointQuantum = firstQuantum(checkpointEstimateMs = 1000L)
+
+        assertTrue(highCheckpointQuantum > lowCheckpointQuantum)
     }
 
     @Test
@@ -811,19 +1046,27 @@ class RemoteSolverServiceTest {
             )
 
             val nonUrgentTask = service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/non-urgent")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/non-urgent"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 10
             )
+            val urgentDeadlineEpochMs = System.currentTimeMillis() + 1_000L
             val urgentTask = service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/urgent")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/urgent"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.COMPLEX,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1,
-                deadline = Instant.fromEpochMilliseconds(System.currentTimeMillis() - 1000L)
+                deadline = Instant.fromEpochMilliseconds(urgentDeadlineEpochMs)
             )
 
+            Thread.sleep(5L)
             service.scheduleOnce()
 
             val urgentState = service.getTask(urgentTask.taskId)
@@ -869,7 +1112,10 @@ class RemoteSolverServiceTest {
             val task = runtime.service.submitTask(
                 payload = SolvePayload(
                     modelRef = ObjectRef.of(path = "model/solver-type"),
-                    extension = mapOf("solverType" to "gurobi")
+                    extension = mapOf(
+                        "modelType" to "LINEAR",
+                        "solverType" to "gurobi"
+                    )
                 ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
@@ -908,7 +1154,10 @@ class RemoteSolverServiceTest {
             val task = runtime.service.submitTask(
                 payload = SolvePayload(
                     modelRef = ObjectRef.of(path = "model/solver-type-queued"),
-                    extension = mapOf("solverType" to "gurobi")
+                    extension = mapOf(
+                        "modelType" to "LINEAR",
+                        "solverType" to "gurobi"
+                    )
                 ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME
@@ -945,7 +1194,10 @@ class RemoteSolverServiceTest {
                 )
             )
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/budget-estimate")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/budget-estimate"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 budgetLimit = Flt64(1.0)
@@ -992,6 +1244,7 @@ class RemoteSolverServiceTest {
             val task = runtime.service.submitTask(
                 payload = SolvePayload(
                     modelRef = ObjectRef.of(path = "model/meta-solver-type"),
+                    extension = mapOf("modelType" to "LINEAR"),
                     taskMeta = TaskMeta(solverType = "gurobi")
                 ),
                 complexity = TaskComplexity.SIMPLE,
@@ -1035,7 +1288,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitAndAwait(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/submit-await-complete")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/submit-await-complete"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 maxRounds = UInt64(10)
@@ -1053,6 +1309,7 @@ class RemoteSolverServiceTest {
             val task = runtime.service.submitAndAwait(
                 payload = SolvePayload(
                     modelRef = ObjectRef.of(path = "model/submit-await-queued"),
+                    extension = mapOf("modelType" to "LINEAR"),
                     taskMeta = TaskMeta(solverType = "gurobi")
                 ),
                 complexity = TaskComplexity.SIMPLE,
@@ -1072,6 +1329,7 @@ class RemoteSolverServiceTest {
                 runtime.service.submitAndAwait(
                     payload = SolvePayload(
                         modelRef = ObjectRef.of(path = "model/submit-await-throw"),
+                        extension = mapOf("modelType" to "LINEAR"),
                         taskMeta = TaskMeta(solverType = "gurobi")
                     ),
                     complexity = TaskComplexity.SIMPLE,
@@ -1112,7 +1370,10 @@ class RemoteSolverServiceTest {
         val error = assertFailsWith<RemoteSolverException> {
             runSuspend {
                 runtime.service.submitAndAwait(
-                    payload = SolvePayload(modelRef = ObjectRef.of(path = "model/submit-await-budget-failed")),
+                    payload = SolvePayload(
+                        modelRef = ObjectRef.of(path = "model/submit-await-budget-failed"),
+                        extension = mapOf("modelType" to "LINEAR")
+                    ),
                     complexity = TaskComplexity.SIMPLE,
                     timeSensitivity = TimeSensitivity.NON_REALTIME,
                     budgetLimit = Flt64(1.0),
@@ -1150,7 +1411,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/performance-learning-enabled")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/performance-learning-enabled"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -1194,7 +1458,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/performance-learning-disabled")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/performance-learning-disabled"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1
@@ -1350,7 +1617,10 @@ class RemoteSolverServiceTest {
             // Budget = $10, passes checkBudget but expensive node costs $60 -> wouldExceedBudget
             val now = System.currentTimeMillis()
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/budget-degrade")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/budget-degrade"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.REALTIME,
                 priority = 5,
@@ -1393,7 +1663,10 @@ class RemoteSolverServiceTest {
             // After consumedCost = 50.0, remaining = 50.0 < $60 -> wouldExceedBudget
             // Budget refresh (refund) could help -> should wait
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/budget-wait")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/budget-wait"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 5,
@@ -1443,7 +1716,10 @@ class RemoteSolverServiceTest {
             )
 
             val task = runtime.service.submitTask(
-                payload = SolvePayload(modelRef = ObjectRef.of(path = "model/simple-budget-requeue")),
+                payload = SolvePayload(
+                    modelRef = ObjectRef.of(path = "model/simple-budget-requeue"),
+                    extension = mapOf("modelType" to "LINEAR")
+                ),
                 complexity = TaskComplexity.SIMPLE,
                 timeSensitivity = TimeSensitivity.NON_REALTIME,
                 priority = 1,
