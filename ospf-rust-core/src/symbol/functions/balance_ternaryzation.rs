@@ -155,6 +155,11 @@ where
         &self.epsilon
     }
 
+    /// 获取严格边界 / Get the strict boundary.
+    pub fn strict_boundary(&self) -> &V {
+        &self.strict_boundary
+    }
+
     /// 获取回退 Big-M / Get the fallback Big-M value.
     pub fn fallback_big_m(&self) -> &V {
         &self.fallback_big_m
@@ -564,6 +569,21 @@ where
     /// 获取固定的 Big-M / Get the fixed Big-M.
     pub fn big_m(&self) -> f64 {
         self.big_m
+    }
+
+    /// 获取符号句柄 / Get the symbol handle.
+    pub fn symbol(&self) -> &Arc<BalanceTernaryzationFunction<V>> {
+        &self.symbol
+    }
+
+    /// 获取正号指示辅助列 / Get the positive sign helper column.
+    pub fn positive(&self) -> &crate::variable::VariableId {
+        &self.positive
+    }
+
+    /// 获取负号指示辅助列 / Get the negative sign helper column.
+    pub fn negative(&self) -> &crate::variable::VariableId {
+        &self.negative
     }
 }
 

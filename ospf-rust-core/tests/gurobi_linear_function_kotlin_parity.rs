@@ -13,7 +13,7 @@ use ospf_rust_core::symbol::function::{
     BivariateLinearPiecewiseFunction, IfElseFunction, IfThenFunction, InequalityFunction,
     InequalityKind, MaskingFunction, MaskingRangeFunction, MaxFunction, MaxMinFunction,
     MinFunction, MinMaxFunction, ModFunction, NotFunction, OneOfFunction, OrFunction, Point2,
-    Point3, Triangle3, RoundingFunction, SigmoidFunction, SlackFunction, SlackRangeFunction,
+    Point3, Triangle3, RoundingFunction, LogisticFunction, SlackFunction, SlackRangeFunction,
     UnivariateLinearPiecewiseFunction, XorFunction,
 };
 use ospf_rust_core::variable::{
@@ -1132,7 +1132,7 @@ fn sigmoid_and_masking_range_parity() {
         VariableRange::fixed(0.0),
     );
     let x_index = sigmoid_model.register_variable(x).unwrap();
-    let sigmoid = SigmoidFunction::new(1561, "sigmoid", var_poly(x_index));
+    let sigmoid = LogisticFunction::new(1561, "sigmoid", var_poly(x_index));
     let sigmoid_id = sigmoid.result_variable().id();
     sigmoid_model.add_symbol(Arc::new(sigmoid)).unwrap();
 

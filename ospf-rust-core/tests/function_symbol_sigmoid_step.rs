@@ -1,9 +1,9 @@
-use ospf_rust_core::symbol::function::SigmoidStepFunction;
+use ospf_rust_core::symbol::function::SigmoidFunction;
 use ospf_rust_core::symbol::FunctionSymbol;
 
 fn assert_function_symbol<T: FunctionSymbol<f64>>() {}
 
 #[test]
-fn SigmoidStep_has_a_dedicated_contract_test_file() {
-    assert_function_symbol::<SigmoidStepFunction<f64>>();
+fn SigmoidFunction_has_a_dedicated_contract_test_file() {
+    assert_function_symbol::<SigmoidFunction<f64>>();
 }

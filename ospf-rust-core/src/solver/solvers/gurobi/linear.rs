@@ -544,9 +544,9 @@ pub(super) fn solve_linear_with_native_lowering(
     use crate::model::intermediate::NativeFunctionWriterRegistry;
 
     use super::native::{
-        GurobiAbsWriter, GurobiBinaryzationWriter, GurobiExtremumWriter, GurobiIfInWriter,
-        GurobiImplyWriter, GurobiIndicatorWriter, GurobiLogicalWriter, GurobiNativeContainer,
-        GurobiPwlWriter,
+        GurobiAbsWriter, GurobiBinaryzationWriter, GurobiConditionalValueWriter,
+        GurobiBalanceTernWriter, GurobiExtremumWriter, GurobiIfWriter, GurobiInValuesWriter, GurobiImplyWriter, GurobiIndicatorWriter,
+        GurobiLogicalWriter, GurobiMaskingWriter, GurobiNativeContainer, GurobiPolyMaskWriter, GurobiPwlWriter,
     };
 
     let mut registry: NativeFunctionWriterRegistry<GurobiNativeContainer, f64> =
@@ -562,10 +562,10 @@ pub(super) fn solve_linear_with_native_lowering(
     // Native writer for the relation indicator (condition shape); its big-M redundancy proof happens
     // inside the writer.
     registry.register(Box::new(GurobiIndicatorWriter::new()));
-    // IF-IN（离散值集合判定）的原生 writer；逐候选值的 Big-M 冗余证明在 writer 内完成。
-    // Native writer for IF-IN (discrete set membership); its per-candidate big-M redundancy proof
+    // InValues（离散值集合判定）的原生 writer；逐候选值的 Big-M 冗余证明在 writer 内完成。
+    // Native writer for InValues (discrete set membership); its per-candidate big-M redundancy proof
     // happens inside the writer.
-    registry.register(Box::new(GurobiIfInWriter::new()));
+    registry.register(Box::new(GurobiInValuesWriter::new()));
     // AND/OR（紧凑二值 hull）的原生 writer；hull 不依赖 Big-M，因此无需冗余证明。
     // Native writer for AND/OR (the compact binary hull); the hull does not depend on the big-M, so no
     // redundancy proof is needed.
@@ -581,6 +581,31 @@ pub(super) fn solve_linear_with_native_lowering(
     // relaxed rows proven with its own frozen Big-M) plus three coupling indicator constraints; the coupling
     // equivalence relies on r/p/c being binary, and the writer performs that check.
     registry.register(Box::new(GurobiImplyWriter::new()));
+    // 条件值（`y = 1 ⇒ result = thenPoly`，否则 0）的原生 writer：条件块 2 条指示 + 分支块对两个内部
+    // 二值列各 2 条（合计 6 条）；冗余证明只用符号声明的条件范围与 then 范围，不读 SDK 列界。
+    // Native writer for the conditional value (`y = 1 ⇒ result = thenPoly`, otherwise 0): two condition
+    // indicators plus two branch indicators per internal binary column (six in total); its redundancy proof
+    // uses only the symbol's declared condition and then ranges and never reads SDK column bounds.
+    registry.register(Box::new(GurobiConditionalValueWriter::new()));
+    // 掩码与多项式掩码的原生 writer：等式指示分支 + 掩码/桥接定义；Big-M 松弛经核心等式归约后的义务是
+    // `M >= max|x|`，盒证明读 SDK 列界。
+    // Native writers for masking and the polynomial mask: equality-indicator branches plus the mask/bridge
+    // definition; once reduced through the core equalities the Big-M relaxations' obligation is
+    // `M >= max|x|`, and the box proof reads SDK column bounds.
+    registry.register(Box::new(GurobiMaskingWriter::new()));
+    registry.register(Box::new(GurobiPolyMaskWriter::new()));
+    // IF（分支选择）的原生 writer：2 条条件单边指示 + 2 条分支等式指示；4 条即时松弛行由分支等式归约，
+    // 只剩 `M >= max|c|` 与 `M >= max|e - t|` 两条 SDK 盒义务。
+    // Native writer for IF (branch selection): two one-sided condition indicators plus two branch equality
+    // indicators; the four eager relaxed rows are reduced through the branch equalities, leaving only the two SDK
+    // box obligations `M >= max|c|` and `M >= max|e - t|`.
+    registry.register(Box::new(GurobiIfWriter::new()));
+    // 平衡三值化（符号三分支）的原生 writer：2 条普通行（res − pos + neg = 0、pos + neg ≤ 1，经容器
+    // add_linear_row 恒等替换）+ 4 条 band 指示；4 条即时松弛行由 SDK 盒证明覆盖。
+    // Native writer for balanced ternaryzation: two plain rows (res − pos + neg = 0, pos + neg ≤ 1, written
+    // identically through the container's add_linear_row) plus four band indicators; the four eager relaxed
+    // rows are covered by the SDK box proof.
+    registry.register(Box::new(GurobiBalanceTernWriter::new()));
     solve_linear_with_native_writers(solver, mechanism, per_solve_options, registry)
 }
 

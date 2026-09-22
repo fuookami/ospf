@@ -525,6 +525,23 @@ where
     pub fn big_m(&self) -> f64 {
         self.big_m
     }
+
+    /// 获取掩码列 / Get the mask column.
+    pub fn mask(&self) -> &crate::variable::VariableId {
+        &self.mask
+    }
+
+    /// 获取产生本结构的符号（只读）/ Read-only access to the symbol that produced this structure.
+    ///
+    /// 用途：原生 writer 必须把**同一份**输入多项式与掩码列写成 SDK 的一般约束，而不是在别处重新推导；
+    /// 本访问器只转发不可变引用，不复制公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** input polynomial and mask column as SDK general
+    /// constraints instead of re-deriving them; this only forwards an immutable reference, copies no formula
+    /// and exposes no mutable state.
+    pub fn symbol(&self) -> &Arc<MaskingFunction<V>> {
+        &self.symbol
+    }
 }
 
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for MaskingStructure<V>
@@ -1868,6 +1885,18 @@ where
     pub fn big_m(&self) -> f64 {
         self.big_m
     }
+
+    /// 获取产生本结构的符号（只读）/ Read-only access to the symbol that produced this structure.
+    ///
+    /// 用途：原生 writer 必须把**同一份**输入多项式、掩码多项式与桥接列写成 SDK 的一般约束，而不是在别处
+    /// 重新推导；本访问器只转发不可变引用，不复制公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** input polynomial, mask polynomial and bridge column as
+    /// SDK general constraints instead of re-deriving them; this only forwards an immutable reference, copies no
+    /// formula and exposes no mutable state.
+    pub fn symbol(&self) -> &Arc<MaskingWithPolyMaskFunction<V>> {
+        &self.symbol
+    }
 }
 
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V>
@@ -1989,5 +2018,129 @@ where
 
     fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+#[cfg(test)]
+mod native_equivalence_tests {
+    use super::*;
+    use crate::model::LinearConstraint;
+
+    /// 掩码原生写入的两条等式指示必须在**输入盒内**与即时四条 Big-M 行逐点等价，且在掩码列离开二元域
+    /// （或输入越出盒）时**必须分歧**。
+    ///
+    /// 即时四条行是 `(y − x) + M·m ≤ M`、`(y − x) − M·m ≥ −M`、`y − M·m ≤ 0`、`y + M·m ≥ 0`，核心语义是
+    /// `m = 1 ⇒ y = x`、`m = 0 ⇒ y = 0`。两条等式指示本身**不限制 `y` 的大小**，即时行却把松弛后的
+    /// `|y| ≤ M`、`|y − x| ≤ M` 留在模型里；由于核心等式把另一侧钉住，这两条松弛在盒内归约为 `|x| ≤ M`，
+    /// 于是等价只在 `M ≥ max|x|` 时成立——这正是 writer 必须读 SDK 输入盒做证明、并把 `grb::INFINITY`
+    /// 当作无界处理的原因。本测试同时给出两个反例方向：`m = 0.5`（指示不激活）与 `x` 越出 `M`。
+    ///
+    /// The masking native write's two equality indicators must be pointwise equivalent to the four eager Big-M
+    /// rows **inside the input box**, and **must diverge** once the mask column leaves the binary domain (or the
+    /// input exceeds the box).
+    ///
+    /// The four eager rows are `(y − x) + M·m ≤ M`, `(y − x) − M·m ≥ −M`, `y − M·m ≤ 0`, `y + M·m ≥ 0` with the
+    /// core semantics `m = 1 ⇒ y = x` and `m = 0 ⇒ y = 0`. The two equality indicators do **not** bound `y`,
+    /// while the eager rows keep the relaxed `|y| ≤ M` / `|y − x| ≤ M` in the model; because the core equalities
+    /// pin the other side, those relaxations reduce to `|x| ≤ M` inside the box, so the equivalence only holds
+    /// while `M ≥ max|x|` — exactly why the writer must read the SDK input box for its proof and treat
+    /// `grb::INFINITY` as unbounded. The test also gives both counterexample directions: `m = 0.5` (an inactive
+    /// indicator) and an `x` beyond `M`.
+    #[test]
+    fn masking_native_equality_indicators_match_the_eager_rows_only_inside_the_input_box() {
+        // 列号口径：输入 0、结果 1、掩码 2；M = 8，输入盒取 [-2, 2]。
+        // Column numbering: input 0, result 1, mask 2; M = 8 and the input box is [-2, 2].
+        const INPUT_COLUMN: usize = 0;
+        const RESULT_COLUMN: usize = 1;
+        const MASK_COLUMN: usize = 2;
+        const BIG_M: f64 = 8.0;
+
+        let mask_item = BinaryVariableItem::auto("mask_native_equivalence");
+        let function: MaskingFunction<f64> = MaskingFunction::with_big_m(
+            9_700,
+            "masking_native_equivalence",
+            Linear::new(vec![LinearMonomial::new(1.0, INPUT_COLUMN)], 0.0),
+            mask_item.clone(),
+            BIG_M,
+        );
+        let symbol_to_index = HashMap::from([
+            (
+                function.result_variable().id().unique_id() as usize,
+                RESULT_COLUMN,
+            ),
+            (mask_item.id().unique_id() as usize, MASK_COLUMN),
+        ]);
+        let eager = function
+            .build_mechanism_constraints(&symbol_to_index, BIG_M)
+            .expect("the four eager masking rows should be generated");
+        assert_eq!(eager.len(), 4, "masking emits exactly four eager rows");
+
+        let satisfies = |lhs: f64, relation: ConstraintRelation, rhs: f64| match relation {
+            ConstraintRelation::LessEqual => lhs <= rhs + 1e-12,
+            ConstraintRelation::GreaterEqual => lhs + 1e-12 >= rhs,
+            ConstraintRelation::Equal => (lhs - rhs).abs() <= 1e-12,
+        };
+        let eager_feasible = |input: f64, result: f64, mask: f64| {
+            let values = HashMap::from([
+                (INPUT_COLUMN, input),
+                (RESULT_COLUMN, result),
+                (MASK_COLUMN, mask),
+            ]);
+            eager.iter().all(|row: &LinearConstraint<f64>| {
+                let mut lhs = *row.inequality.polynomial.constant_term();
+                for monomial in row.inequality.polynomial.monomials() {
+                    lhs += *monomial.coefficient()
+                        * values.get(&monomial.var_index()).copied().unwrap_or(0.0);
+                }
+                satisfies(lhs, row.inequality.relation, row.inequality.rhs)
+            })
+        };
+        // 原生侧：`m = 1 ⇒ y = x`、`m = 0 ⇒ y = 0`（指示列离开 {0, 1} 时两条都不激活）。
+        // Native side: `m = 1 ⇒ y = x` and `m = 0 ⇒ y = 0` (neither is active once the column leaves {0, 1}).
+        let native_feasible = |input: f64, result: f64, mask: f64| {
+            if (mask - 1.0).abs() <= 1e-12 {
+                (result - input).abs() <= 1e-12
+            } else if mask.abs() <= 1e-12 {
+                result.abs() <= 1e-12
+            } else {
+                true
+            }
+        };
+
+        for mask in [0.0f64, 1.0] {
+            for input in [-2.0f64, -0.5, 1.5, 2.0] {
+                for result in [-2.0f64, 0.0, 1.5, 3.0, 8.0, 9.0] {
+                    assert_eq!(
+                        eager_feasible(input, result, mask),
+                        native_feasible(input, result, mask),
+                        "mismatch inside the box at (x, y, m) = ({input}, {result}, {mask})"
+                    );
+                }
+            }
+        }
+
+        // 反例一：掩码列非二元时两条指示都不激活，即时行却仍在限制 `y`。
+        // Counterexample one: with a non-binary mask column neither indicator is active while the eager rows
+        // still bound `y`.
+        assert!(
+            !eager_feasible(0.0, 9.0, 0.5),
+            "eager must bound y through `y − M·m ≤ 0` at m = 0.5"
+        );
+        assert!(
+            native_feasible(0.0, 9.0, 0.5),
+            "the native indicators are inactive at m = 0.5, which is why the writer verifies binaryness"
+        );
+
+        // 反例二：输入越出 `M ≥ max|x|` 时，即时行的松弛不再被蕴含。
+        // Counterexample two: once the input exceeds `M ≥ max|x|` the eager rows' relaxations are no longer
+        // implied.
+        assert!(
+            !eager_feasible(9.0, 9.0, 1.0),
+            "eager must reject |x| > M through `y − M·m ≤ 0`"
+        );
+        assert!(
+            native_feasible(9.0, 9.0, 1.0),
+            "the native equality indicator alone accepts it, which is what the SDK box proof must rule out"
+        );
     }
 }

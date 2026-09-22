@@ -56,12 +56,17 @@ interval 以及未经验证的 global-constraint 分解不会被声明为 native
 | `gurobi_abs` | `functions-abs-1` | 输入是「系数为 1 的单个单项式、常数项为 0」且参数列与结果列不同的 `AbsStructure` | `add_genconstr_abs` |
 | `gurobi_max` | `functions-max-1` | 候选全部是「系数为 1 的单个单项式」且共享同一常数项、操作数列与结果列不同的 `MaxStructure` | `add_genconstr_max` |
 | `gurobi_min` | `functions-min-1` | 准入规则与 `gurobi_max` 相同的 `MinStructure` | `add_genconstr_min` |
-| `gurobi_pwl` | `functions-pwl-1` | 输入是「系数为 1 的单个单项式、常数项为 0」且点表至少 2 个有限、x 严格递增的 `SinStructure` / `CosStructure` / `SigmoidStructure` | `add_genconstr_pwl` |
+| `gurobi_pwl` | `functions-pwl-1` | 输入是「系数为 1 的单个单项式、常数项为 0」且点表至少 2 个有限、x 严格递增的 `SinStructure` / `CosStructure` / `LogisticStructure` | `add_genconstr_pwl` |
 | `gurobi_indicator` | `functions-indicator-1` | 非严格与严格 kind 的 `InequalityStructure`（`Equal`/`NotEqual` 被拒绝：取假侧是析取，两条指示器表达不了） | `add_genconstr_indicator` |
-| `gurobi_if_in` | `functions-if-in-1` | 值集合非空、输入是「系数 1 的单个单项式、常数项 0」且条件盒有限的 `IfInStructure` | `add_genconstr_indicator`（每候选值 4 条）+ `add_genconstr_or`（聚合） |
+| `gurobi_in_values` | `functions-in-values-1` | 值集合非空、输入是「系数 1 的单个单项式、常数项 0」且条件盒有限的 `InValuesStructure` | `add_genconstr_indicator`（每候选值 4 条）+ `add_genconstr_or`（聚合） |
 | `gurobi_and` / `gurobi_or` | `functions-and-1` / `functions-or-1` | 模型层仅在**每个操作数都是直接二值变量**时才暴露结构的 `AndStructure` / `OrStructure` | `add_genconstr_and` / `add_genconstr_or` |
 | `gurobi_binaryzation` | `functions-binaryzation-1` | 输入是「系数 1 的单个单项式、常数项 0」且输入盒有限的 `BinaryzationStructure`（Threshold 与 BigM 两种变体都支持；因即时形态与关系指示不同而独立成 writer） | `add_genconstr_indicator`（核心行）+ Big-M 冗余证明 |
 | `gurobi_imply` | `functions-imply-1` | 自带两个内部子指示器（前提 / 结论）的 `ImplyStructure`。由于即时的耦合行 `r ≥ c` 是**无条件**行，用 3 条指示约束重建只在**二元域**上等价，因此 writer 会读 SDK 的 `grb::VarType` 校验结果列与两个子指示器列都是二元 | `add_genconstr_indicator`（每个子指示器 2 条 + 耦合 3 条）+ 每个子指示器的 Big-M 冗余证明 |
+| `gurobi_conditional_value` | `functions-conditional-value-1` | `ConditionalThenStructure`（条件值符号：条件成立时 result = thenPoly，否则为 0）。折叠条件（分支已恒定）整体回退——Gurobi 没有「把列固定为常数」的一般约束 | 六条等式指示：条件关系（盒证明用符号自带显式有限 `ConditionBounds`）+ 对两个内部列各写的分支等式 |
+| `gurobi_masking` | `functions-masking-1` | `MaskingStructure`（二值掩码）：掩码列必须二元、辅助列独占，且冻结 M 须满足 `M ≥ |x|`（对 SDK 输入盒验证；±1e100 显式处理） | 两条等式指示：`m=1 ⇒ y == x`、`m=0 ⇒ y == 0`（即时 `y ∓ M·m` 行由包含证明蕴含） |
+| `gurobi_poly_mask` | `functions-poly-mask-1` | `MaskingWithPolyMaskStructure`：同上，掩码定义另写一条普通线性等式行 | 两条等式指示 + 一条线性等式 |
+| `gurobi_if` | `functions-if-1` | `IfStructure`（分支选择：b=1 ⇒ result=t、b=0 ⇒ result=e）。即时条件行经分支等式归约，剩余两条义务（`M ≥ max|c|`、`M ≥ max|e−t|`）在 SDK 盒上证明 | 四条指示：条件两行（`b=0 ⇒ c=0`）+ 分支等式两条 |
+| `gurobi_balance_ternary` | `functions-balance-ternary-1` | `BalanceTernaryzationStructure`（符号三分支：res=1/0/−1）。两条普通行（`res − pos + neg = 0`、`pos + neg ≤ 1`）经容器 `add_linear_row` 恒等替换；4 条 band 松弛在 SDK 盒上证明 | 两条普通行 + 4 条 band 指示（`pos=1 ⇒ input ≥ ε+sb`、`pos=0 ⇒ input ≤ ε`、`neg=1 ⇒ input ≤ −ε−sb`、`neg=0 ⇒ input ≥ −ε`） |
 
 所有 writer 写入前都施加同一组门控：
 

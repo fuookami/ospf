@@ -23,7 +23,7 @@ use ospf_rust_core::solver::solvers::SCIPSolver;
 use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{
     ConditionBounds, ConditionRelation, ConditionalIfFunction, ConditionalImplyFunction,
-    ConditionalIndicatorFunction, ConditionalThenFunction, IfInFunction,
+    ConditionalIndicatorFunction, ConditionalThenFunction, InValuesFunction,
 };
 use ospf_rust_core::variable::{ContinuousVariableItem, IntegerVariableItem, VariableId, VariableRange};
 
@@ -352,7 +352,7 @@ fn if_in_nonmember_endpoint_model() -> (LinearTriadModel, usize) {
             "fix_if_in_endpoint",
         )
         .unwrap();
-    let if_in = IfInFunction::new(
+    let if_in = InValuesFunction::new(
         9_531,
         "if_in_endpoint",
         Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
@@ -383,7 +383,7 @@ fn if_in_large_nonmember_endpoint_model() -> (LinearTriadModel, usize) {
             "fix_if_in_large_endpoint",
         )
         .unwrap();
-    let if_in = IfInFunction::new(
+    let if_in = InValuesFunction::new(
         9_533,
         "if_in_large_endpoint",
         Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
@@ -414,7 +414,7 @@ fn if_in_large_lower_nonmember_endpoint_model() -> (LinearTriadModel, usize) {
             "fix_if_in_large_lower_endpoint",
         )
         .unwrap();
-    let if_in = IfInFunction::new(
+    let if_in = InValuesFunction::new(
         9_535,
         "if_in_large_lower_endpoint",
         Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),

@@ -43,7 +43,7 @@ use super::{
     AbsBranchBigM, AbsFunction, BinaryzationFunction, BinaryzationMethod,
     BivariateLinearPiecewiseFunction, CosFunction, InequalityFunction, InequalityKind,
     MaskingFunction, MaxFunction, ModFunction, Point2, RoundingFunction, RoundingKind,
-    SigmoidFunction, SigmoidPrecision, SinFunction, SlackFunction, SlackRangeFunction, Triangle3,
+    LogisticFunction, SigmoidPrecision, SinFunction, SlackFunction, SlackRangeFunction, Triangle3,
     UnivariateLinearPiecewiseFunction,
 };
 
@@ -4609,18 +4609,18 @@ where
 
 /// 二次输入的 Sigmoid 函数符号 / Quadratic-input sigmoid function symbol
 #[derive(Debug, Clone)]
-pub struct QuadraticSigmoidFunction<V = f64>
+pub struct QuadraticLogisticFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
     id: IntermediateSymbolId,
     input: Quadratic<V>,
     bridge: QuadraticLinearFunction<V>,
-    inner: SigmoidFunction<V>,
+    inner: LogisticFunction<V>,
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> QuadraticSigmoidFunction<V>
+impl<V> QuadraticLogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
@@ -4638,7 +4638,7 @@ where
             )],
             from_f64(0.0).expect("convert 0.0"),
         );
-        let inner = SigmoidFunction::new(id, name, bridge_input);
+        let inner = LogisticFunction::new(id, name, bridge_input);
         Self {
             id: IntermediateSymbolId::new(id, name),
             input,
@@ -4667,7 +4667,7 @@ where
             )],
             from_f64(0.0).expect("convert 0.0"),
         );
-        let inner = SigmoidFunction::with_precision(id, name, bridge_input, precision);
+        let inner = LogisticFunction::with_precision(id, name, bridge_input, precision);
         Self {
             id: IntermediateSymbolId::new(id, name),
             input,
@@ -4689,7 +4689,7 @@ where
     }
 }
 
-impl<V> Display for QuadraticSigmoidFunction<V>
+impl<V> Display for QuadraticLogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -4698,7 +4698,7 @@ where
     }
 }
 
-impl<V> DynSymbol for QuadraticSigmoidFunction<V>
+impl<V> DynSymbol for QuadraticLogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -4719,7 +4719,7 @@ where
     }
 }
 
-impl<V> Symbol for QuadraticSigmoidFunction<V>
+impl<V> Symbol for QuadraticLogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -4730,7 +4730,7 @@ where
     }
 }
 
-impl<V> IntermediateSymbol<V> for QuadraticSigmoidFunction<V>
+impl<V> IntermediateSymbol<V> for QuadraticLogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -4820,7 +4820,7 @@ where
     }
 }
 
-impl<V> FunctionSymbol<V> for QuadraticSigmoidFunction<V>
+impl<V> FunctionSymbol<V> for QuadraticLogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -4842,11 +4842,11 @@ where
 
     fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
         let input = to_f64(&evaluate_quadratic(&self.input, token_table, zero_if_none)?)?;
-        from_f64(SigmoidFunction::<V>::sigmoid(input))
+        from_f64(LogisticFunction::<V>::sigmoid(input))
     }
 }
 
-impl<V> LinearIntermediateSymbol<V> for QuadraticSigmoidFunction<V>
+impl<V> LinearIntermediateSymbol<V> for QuadraticLogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -4905,7 +4905,7 @@ impl_quadratic_function_symbol!(
     QuadraticUnivariateLinearPiecewiseFunction,
     QuadraticBivariateLinearPiecewiseFunction,
     QuadraticPositivePartFunction,
-    QuadraticSigmoidFunction,
+    QuadraticLogisticFunction,
 );
 
 #[cfg(test)]
@@ -5576,7 +5576,7 @@ mod tests {
         tokens.add_token(tx);
 
         let quad = Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, 0)], 0.0);
-        let qsigmoid = QuadraticSigmoidFunction::new(20121, "qsigmoid", quad);
+        let qsigmoid = QuadraticLogisticFunction::new(20121, "qsigmoid", quad);
         assert_eq!(qsigmoid.calculate_value(&tokens, false), Some(0.5));
     }
 }

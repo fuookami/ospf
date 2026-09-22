@@ -645,6 +645,23 @@ where
     pub fn big_m(&self) -> f64 {
         self.big_m
     }
+
+    /// 获取条件指示列 / Get the condition indicator column.
+    pub fn indicator(&self) -> &crate::variable::VariableId {
+        &self.indicator
+    }
+
+    /// 获取产生本结构的符号（只读）/ Read-only access to the symbol that produced this structure.
+    ///
+    /// 用途：原生 writer 必须把**同一份**条件多项式与两个分支多项式写成 SDK 的一般约束，而不是在别处重新
+    /// 推导；本访问器只转发不可变引用，不复制公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** condition polynomial and both branch polynomials as SDK
+    /// general constraints instead of re-deriving them; this only forwards an immutable reference, copies no
+    /// formula and exposes no mutable state.
+    pub fn symbol(&self) -> &Arc<IfFunction<V>> {
+        &self.symbol
+    }
 }
 
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for IfStructure<V>
@@ -1043,5 +1060,118 @@ mod tests {
 
         assert!((bin_lower.inequality.rhs - 0.0).abs() <= 1e-9);
         assert!((*indicator_term.coefficient() + DEFAULT_BIG_M).abs() <= 1e-9);
+    }
+
+    /// IF 原生写入的 4 条指示必须在**二元域 + 盒内**与即时 6 行逐点等价，且在指示列离开二元域时**必须分歧**
+    /// The IF native write's four indicators must be pointwise equivalent to the six eager rows **on the binary
+    /// domain inside the box**, and **must diverge** once the indicator column leaves the binary domain.
+    ///
+    /// 4 条指示是 `b = 1 ⇒ c ≥ 0`、`b = 1 ⇒ c ≤ 0`、`b = 1 ⇒ res = t`、`b = 0 ⇒ res = e`。即时 6 行的 4 条松弛
+    /// （`b = 0` 时的 `|c| ≤ M`、`|res − t| ≤ M`，`b = 1` 时的 `|res − e| ≤ M`）不是自己成立，而是靠**分支
+    /// 等式归约**：`b = 0` 时核心行给出 `res = e`，于是第 3/4 行的松弛变成 `|e − t| ≤ M`；`b = 1` 时核心行给出
+    /// `res = t`，于是第 5/6 行的松弛变成 `|t − e| ≤ M`；第 1/2 行的松弛是 `|c| ≤ M`。因此等价只在
+    /// `M ≥ max|c|` 且 `M ≥ max|e − t|` 时成立（writer 的 SDK 盒证明），且必须显式校验 `b` 是二元列。
+    ///
+    /// The four indicators are `b = 1 ⇒ c ≥ 0`, `b = 1 ⇒ c ≤ 0`, `b = 1 ⇒ res = t` and `b = 0 ⇒ res = e`. The
+    /// six eager rows' four relaxations (`|c| ≤ M` and `|res − t| ≤ M` at `b = 0`, `|res − e| ≤ M` at `b = 1`) do
+    /// not hold by themselves but through the **branch-equality reduction**: at `b = 0` the core rows give
+    /// `res = e` so rows 3/4 relax to `|e − t| ≤ M`, and at `b = 1` they give `res = t` so rows 5/6 relax to
+    /// `|t − e| ≤ M`, while rows 1/2 relax to `|c| ≤ M`. The equivalence therefore holds only while
+    /// `M ≥ max|c|` and `M ≥ max|e − t|` (the writer's SDK box proof), and the writer must explicitly verify that
+    /// `b` is a binary column.
+    #[test]
+    fn if_native_indicators_match_the_eager_rows_in_the_binary_domain() {
+        // 列号口径：公共变量 0、结果列 1、指示列 2；M = 16 覆盖 c = x − 1 ∈ [-3, 1] 与 e − t = −3x ∈ [-6, 6]。
+        // Column numbering: shared variable 0, result column 1, indicator column 2; M = 16 covers
+        // c = x − 1 ∈ [-3, 1] and e − t = −3x ∈ [-6, 6].
+        const VARIABLE_COLUMN: usize = 0;
+        const RESULT_COLUMN: usize = 1;
+        const INDICATOR_COLUMN: usize = 2;
+        const BIG_M: f64 = 16.0;
+
+        let function: IfFunction<f64> = IfFunction::new(
+            9_900,
+            "if_native_equivalence",
+            Linear::new(vec![LinearMonomial::new(1.0, VARIABLE_COLUMN)], -1.0),
+            Linear::new(vec![LinearMonomial::new(2.0, VARIABLE_COLUMN)], 0.0),
+            Linear::new(vec![LinearMonomial::new(-1.0, VARIABLE_COLUMN)], 0.0),
+        );
+        let symbol_to_index = HashMap::from([
+            (
+                function.result_variable().id().unique_id() as usize,
+                RESULT_COLUMN,
+            ),
+            (
+                function.condition_indicator_variable().id().unique_id() as usize,
+                INDICATOR_COLUMN,
+            ),
+        ]);
+        let eager = function
+            .build_mechanism_constraints(&symbol_to_index, BIG_M)
+            .expect("the six eager IF rows should be generated");
+        assert_eq!(eager.len(), 6, "IF emits exactly six eager rows");
+
+        let satisfies = |lhs: f64, relation: ConstraintRelation, rhs: f64| match relation {
+            ConstraintRelation::LessEqual => lhs <= rhs + 1e-12,
+            ConstraintRelation::GreaterEqual => lhs + 1e-12 >= rhs,
+            ConstraintRelation::Equal => (lhs - rhs).abs() <= 1e-12,
+        };
+        let eager_feasible = |x: f64, result: f64, indicator: f64| {
+            let values = HashMap::from([
+                (VARIABLE_COLUMN, x),
+                (RESULT_COLUMN, result),
+                (INDICATOR_COLUMN, indicator),
+            ]);
+            eager.iter().all(|row: &LinearConstraint<f64>| {
+                let mut lhs = *row.inequality.polynomial.constant_term();
+                for monomial in row.inequality.polynomial.monomials() {
+                    lhs += *monomial.coefficient()
+                        * values.get(&monomial.var_index()).copied().unwrap_or(0.0);
+                }
+                satisfies(lhs, row.inequality.relation, row.inequality.rhs)
+            })
+        };
+        // 原生侧：`b = 0 ⇒ c = 0 且 res = e`，`b = 1 ⇒ res = t`（指示列离开 {0, 1} 时全部不激活）。
+        // 注意方向：即时行在 `b = 0` 时把 `c` 钉成 0（`c − M·b ≤ 0` 与 `−c − M·b ≤ 0` 退化为 `c ≤ 0`、`c ≥ 0`），
+        // 在 `b = 1` 时只留 `|c| ≤ M` 的松弛；写反方向是本批最容易犯的错（本次机械化测试就抓到了这一点）。
+        // Native side: `b = 0 ⇒ c = 0 and res = e`, `b = 1 ⇒ res = t` (all inactive once the column leaves
+        // {0, 1}). Note the direction: the eager rows pin `c` to 0 at `b = 0` (`c − M·b ≤ 0` and `−c − M·b ≤ 0`
+        // degenerate to `c ≤ 0` and `c ≥ 0`) and leave only the `|c| ≤ M` relaxation at `b = 1`; getting the
+        // direction backwards is this batch's easiest mistake — the mechanical test caught exactly that.
+        let native_feasible = |x: f64, result: f64, indicator: f64| {
+            let condition = x - 1.0;
+            let then_value = 2.0 * x;
+            let else_value = -x;
+            if (indicator - 1.0).abs() <= 1e-12 {
+                (result - then_value).abs() <= 1e-12
+            } else if indicator.abs() <= 1e-12 {
+                condition.abs() <= 1e-12 && (result - else_value).abs() <= 1e-12
+            } else {
+                true
+            }
+        };
+
+        for indicator in [0.0f64, 1.0] {
+            for x in [-1.5f64, 1.0, 1.5] {
+                for result in [-3.0f64, -1.5, 0.0, 2.0, 3.0, 9.0] {
+                    assert_eq!(
+                        eager_feasible(x, result, indicator),
+                        native_feasible(x, result, indicator),
+                        "mismatch at (x, res, b) = ({x}, {result}, {indicator})"
+                    );
+                }
+            }
+        }
+
+        // 非二元指示列：4 条指示全部不激活，即时行却仍在限制 `res`。
+        // A non-binary indicator column: all four indicators are inactive while the eager rows still bound `res`.
+        assert!(
+            !eager_feasible(1.5, 9.0, 0.5),
+            "eager must bound res through its big-M rows at b = 0.5"
+        );
+        assert!(
+            native_feasible(1.5, 9.0, 0.5),
+            "the native indicators are inactive at b = 0.5, which is why the writer verifies binaryness"
+        );
     }
 }

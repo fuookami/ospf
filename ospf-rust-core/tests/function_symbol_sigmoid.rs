@@ -1,9 +1,9 @@
-use ospf_rust_core::symbol::function::SigmoidFunction;
+use ospf_rust_core::symbol::function::LogisticFunction;
 use ospf_rust_core::symbol::FunctionSymbol;
 
 fn assert_function_symbol<T: FunctionSymbol<f64>>() {}
 
 #[test]
-fn Sigmoid_has_a_dedicated_contract_test_file() {
-    assert_function_symbol::<SigmoidFunction<f64>>();
+fn Logistic_has_a_dedicated_contract_test_file() {
+    assert_function_symbol::<LogisticFunction<f64>>();
 }

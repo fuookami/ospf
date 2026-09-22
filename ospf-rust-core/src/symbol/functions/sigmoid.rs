@@ -82,11 +82,11 @@ pub enum SigmoidPrecision {
 
 /// 关系阶跃 Sigmoid 的纯语义入口 / Pure semantic entry for a relation-step sigmoid
 ///
-/// 该入口复用统一条件分类器，不改变 `SigmoidFunction` 现有的连续 PWL 语义。
+/// 该入口复用统一条件分类器，不改变 `LogisticFunction` 现有的连续 PWL 语义。
 /// This entry reuses the shared condition classifier without changing the existing
-/// continuous PWL semantics of `SigmoidFunction`.
+/// continuous PWL semantics of `LogisticFunction`.
 #[derive(Debug, Clone)]
-pub struct SigmoidStepFunction<V>
+pub struct SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -100,7 +100,7 @@ where
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> SigmoidStepFunction<V>
+impl<V> SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
 {
@@ -223,7 +223,7 @@ fn auxiliary_symbol_id(base: u64, salt: u64) -> u64 {
         .wrapping_add(salt.wrapping_mul(0x517c_c1b7_2722_0a95))
 }
 
-impl<V> Display for SigmoidStepFunction<V>
+impl<V> Display for SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -232,7 +232,7 @@ where
     }
 }
 
-impl<V> DynSymbol for SigmoidStepFunction<V>
+impl<V> DynSymbol for SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -253,7 +253,7 @@ where
     }
 }
 
-impl<V> Symbol for SigmoidStepFunction<V>
+impl<V> Symbol for SigmoidFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -264,7 +264,7 @@ where
     }
 }
 
-impl<V> IntermediateSymbol<V> for SigmoidStepFunction<V>
+impl<V> IntermediateSymbol<V> for SigmoidFunction<V>
 where
     V: Clone
         + Debug
@@ -341,7 +341,7 @@ where
     }
 }
 
-impl<V> FunctionSymbol<V> for SigmoidStepFunction<V>
+impl<V> FunctionSymbol<V> for SigmoidFunction<V>
 where
     V: Clone
         + Debug
@@ -365,7 +365,7 @@ where
     }
 }
 
-impl<V> LinearIntermediateSymbol<V> for SigmoidStepFunction<V>
+impl<V> LinearIntermediateSymbol<V> for SigmoidFunction<V>
 where
     V: Clone
         + Debug
@@ -389,15 +389,15 @@ where
 }
 
 /// 关系阶跃入口的语义别名 / Semantic alias for the relation-step entry
-pub type SigmoidRelationFunction<V> = SigmoidStepFunction<V>;
+pub type SigmoidRelationFunction<V> = SigmoidFunction<V>;
 
 /// 条件 Sigmoid 纯入口的语义别名 / Semantic alias for the conditional sigmoid entry
-pub type ConditionalSigmoidFunction<V> = SigmoidStepFunction<V>;
+pub type ConditionalLogisticFunction<V> = SigmoidFunction<V>;
 
 /// 分段线性 Sigmoid 函数符号，支持精确值求值。
 /// Piecewise-linear sigmoid function symbol with exact-value evaluator.
 #[derive(Debug, Clone)]
-pub struct SigmoidFunction<V = f64>
+pub struct LogisticFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -408,7 +408,7 @@ where
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> SigmoidFunction<V>
+impl<V> LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
@@ -418,8 +418,8 @@ where
         relation: ConditionRelation,
         strict_boundary: V,
         bounds: ConditionBounds<V>,
-    ) -> Result<SigmoidStepFunction<V>> {
-        SigmoidStepFunction::from_parts(condition, relation, strict_boundary, bounds)
+    ) -> Result<SigmoidFunction<V>> {
+        SigmoidFunction::from_parts(condition, relation, strict_boundary, bounds)
     }
 
     /// 创建关系阶跃 Sigmoid 的兼容命名入口 / Compatibility-named relation-step constructor
@@ -428,7 +428,7 @@ where
         relation: ConditionRelation,
         strict_boundary: V,
         bounds: ConditionBounds<V>,
-    ) -> Result<SigmoidStepFunction<V>> {
+    ) -> Result<SigmoidFunction<V>> {
         Self::step(condition, relation, strict_boundary, bounds)
     }
 
@@ -586,7 +586,7 @@ where
     }
 }
 
-impl<V> Display for SigmoidFunction<V>
+impl<V> Display for LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -595,7 +595,7 @@ where
     }
 }
 
-impl<V> DynSymbol for SigmoidFunction<V>
+impl<V> DynSymbol for LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -616,7 +616,7 @@ where
     }
 }
 
-impl<V> Symbol for SigmoidFunction<V>
+impl<V> Symbol for LogisticFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -627,7 +627,7 @@ where
     }
 }
 
-impl<V> IntermediateSymbol<V> for SigmoidFunction<V>
+impl<V> IntermediateSymbol<V> for LogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -845,7 +845,7 @@ where
         // all parameters are intrinsic to the symbol, so a structure is always offered. Whether the
         // native interface is actually used is the writer's decision, while fallback semantics stay
         // in the model layer.
-        Some(Arc::new(SigmoidStructure::new(
+        Some(Arc::new(LogisticStructure::new(
             self.id.name.clone(),
             Arc::new(self.clone()),
         )))
@@ -864,21 +864,21 @@ where
 /// weight columns (lambda) are helpers of this structure and must be reported together; otherwise a
 /// native path would wrongly consider them omittable.
 #[derive(Debug)]
-pub struct SigmoidStructure<V = f64>
+pub struct LogisticStructure<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
     /// 函数名称 / Function name
     name: String,
     /// 产生本结构的符号 / Symbol that produced this structure
-    symbol: Arc<SigmoidFunction<V>>,
+    symbol: Arc<LogisticFunction<V>>,
     /// 结果列 / Result column
     result: crate::variable::VariableId,
     /// 辅助列（分段指示列 + 分段权重列）/ Helper columns (segment indicators + segment weights)
     helpers: Vec<crate::variable::VariableId>,
 }
 
-impl<V> SigmoidStructure<V>
+impl<V> LogisticStructure<V>
 where
     V: Clone
         + Debug
@@ -892,7 +892,7 @@ where
         + FromPrimitive,
 {
     /// 创建结构描述 / Create a structure description.
-    pub fn new(name: impl Into<String>, symbol: Arc<SigmoidFunction<V>>) -> Self {
+    pub fn new(name: impl Into<String>, symbol: Arc<LogisticFunction<V>>) -> Self {
         let result = symbol.result_variable().id();
         let mut helpers: Vec<crate::variable::VariableId> = symbol
             .segment_variables()
@@ -970,7 +970,7 @@ where
     }
 }
 
-impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for SigmoidStructure<V>
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for LogisticStructure<V>
 where
     V: Clone
         + Debug
@@ -1024,14 +1024,14 @@ where
     ) -> Result<Vec<LinearConstraint<V>>> {
         // 复用即时展开的同一份生成器，保证两条路径逐行一致。
         // Reuse the eager path's generator so both paths stay row-identical.
-        <SigmoidFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+        <LogisticFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
             &self.symbol,
             symbol_to_index,
         )
     }
 }
 
-impl<V> FunctionSymbol<V> for SigmoidFunction<V>
+impl<V> FunctionSymbol<V> for LogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -1059,7 +1059,7 @@ where
     }
 }
 
-impl<V> LinearIntermediateSymbol<V> for SigmoidFunction<V>
+impl<V> LinearIntermediateSymbol<V> for LogisticFunction<V>
 where
     V: Clone
         + Debug
@@ -1098,7 +1098,7 @@ mod tests {
         tx.set_result(0.0);
         tokens.add_token(tx);
 
-        let sigmoid = SigmoidFunction::new(
+        let sigmoid = LogisticFunction::new(
             20,
             "sigmoid",
             Linear::new(vec![LinearMonomial::new(1.0, 10)], 0.0),
@@ -1108,13 +1108,13 @@ mod tests {
 
     #[test]
     fn sigmoid_sampling_points_full_has_expected_count() {
-        let points = SigmoidFunction::<f64>::sampling_points(SigmoidPrecision::Full, 1e-5);
+        let points = LogisticFunction::<f64>::sampling_points(SigmoidPrecision::Full, 1e-5);
         assert_eq!(points.len(), 11);
     }
 
     #[test]
     fn sigmoid_step_reuses_three_valued_condition_semantics() {
-        let step = SigmoidStepFunction::from_parts(
+        let step = SigmoidFunction::from_parts(
             Linear::constant(0.0),
             ConditionRelation::Greater,
             0.1,
@@ -1134,7 +1134,7 @@ mod tests {
     #[test]
     fn sigmoid_step_rejects_invalid_boundary() {
         assert!(
-            SigmoidStepFunction::from_parts(
+            SigmoidFunction::from_parts(
                 Linear::constant(0.0),
                 ConditionRelation::Greater,
                 0.0,
@@ -1149,7 +1149,7 @@ mod tests {
 
     #[test]
     fn sigmoid_step_registers_shared_conditional_indicator_constraints() {
-        let step = SigmoidStepFunction::named(
+        let step = SigmoidFunction::named(
             "step_registered",
             ConditionalIfFunction::new(
                 Linear::constant(0.0),
@@ -1184,8 +1184,8 @@ mod tests {
             "x",
             VariableRange::bounded(-6.0, 6.0),
         );
-        let points = SigmoidFunction::<f64>::sampling_points(SigmoidPrecision::Half, 2.0);
-        let f: SigmoidFunction<f64> = SigmoidFunction::with_points(
+        let points = LogisticFunction::<f64>::sampling_points(SigmoidPrecision::Half, 2.0);
+        let f: LogisticFunction<f64> = LogisticFunction::with_points(
             7001,
             "sigmoid_deferred",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -1194,7 +1194,7 @@ mod tests {
 
         let mut tokens = vec![Token::from_generic(x, 0)];
         let mut auxiliary = Vec::new();
-        <SigmoidFunction<f64> as IntermediateSymbol<f64>>::register_auxiliary_tokens(
+        <LogisticFunction<f64> as IntermediateSymbol<f64>>::register_auxiliary_tokens(
             &f,
             &mut auxiliary,
         )
@@ -1217,7 +1217,7 @@ mod tests {
         assert!(binding.helpers.len() > f.segment_variables().len());
         assert!(structure.fingerprint().is_some());
 
-        let eager = <SigmoidFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+        let eager = <LogisticFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
             &f,
             &symbol_to_index,
         )

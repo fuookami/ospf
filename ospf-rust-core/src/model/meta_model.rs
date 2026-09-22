@@ -1910,7 +1910,7 @@ mod tests {
         FirstFunction, IfElseFunction, InStepRangeIndicatorFunction, InequalityFunction,
         InequalityKind, MaxFunction, MinFunction, ModFunction, NotFunction, OneOfFunction,
         OrFunction, RoundingFunction, SameAsFunction, SatisfiedAmountFunction, SemiFunction,
-        SigmoidFunction, SinFunction, XorFunction,
+        LogisticFunction, SinFunction, XorFunction,
     };
     use crate::token::Token;
     use crate::variable::{BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange};
@@ -3688,7 +3688,7 @@ mod tests {
     #[test]
     fn sigmoid_constraints_are_tightened_with_segment_binaries() {
         let mut model = MetaModel::<f64>::new("sigmoid_injection");
-        let sigmoid_fn = SigmoidFunction::new(602, "sigmoid_piece", Linear::new(vec![], 0.0));
+        let sigmoid_fn = LogisticFunction::new(602, "sigmoid_piece", Linear::new(vec![], 0.0));
         let sigmoid_id = sigmoid_fn.result_variable().id();
         model.add_symbol(Arc::new(sigmoid_fn)).unwrap();
 
@@ -5139,11 +5139,11 @@ mod tests {
                 VariableRange::bounded(-6.0, 6.0),
             );
             let x_index = model.register_variable(x).unwrap();
-            let sigmoid = SigmoidFunction::with_points(
+            let sigmoid = LogisticFunction::with_points(
                 989,
                 "sigmoid_pipeline",
                 Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
-                SigmoidFunction::<f64>::sampling_points(
+                LogisticFunction::<f64>::sampling_points(
                     crate::symbol::functions::SigmoidPrecision::Half,
                     2.0,
                 ),

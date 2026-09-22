@@ -89,7 +89,7 @@ where
 
 const MIN_BIG_M: f64 = 1.0;
 
-/// IF-IN 即时展开的 band 容差 / Band tolerance of the IF-IN eager expansion
+/// InValues 即时展开的 band 容差 / Band tolerance of the InValues eager expansion
 ///
 /// 候选值的指示列取真（`b_i = 1`）时，即时展开的 `band_ub` / `band_lb` 两条核心行把平移量
 /// `s_i = input - values[i]` 夹在 `[-STEP_EPSILON, +STEP_EPSILON]` 内。原生 writer 必须复用本常量，
@@ -101,7 +101,7 @@ const MIN_BIG_M: f64 = 1.0;
 /// differ only at the 1e-8 scale.
 pub const STEP_EPSILON: f64 = 1e-8;
 
-/// IF-IN 即时展开的严格边界 / Strict boundary of the IF-IN eager expansion
+/// InValues 即时展开的严格边界 / Strict boundary of the InValues eager expansion
 ///
 /// `s_i` 落在 band 之外（即候选值指示列为假）时，即时展开要求它离候选值至少这么远
 /// （`out_ub` / `out_lb` 两条核心行给出 `s_i <= -STRICT_BOUNDARY` 或 `s_i >= STRICT_BOUNDARY`）。
@@ -115,8 +115,8 @@ pub const STEP_EPSILON: f64 = 1e-8;
 /// reuse the same constant or the gap width changes.
 pub const STRICT_BOUNDARY: f64 = STEP_EPSILON + STEP_EPSILON;
 
-/// IF-IN 每个候选值在平移量 `s_i = input - values[i]` 上的核心关系与 Big-M 松弛量
-/// Core relations and Big-M relaxations of one IF-IN candidate value on the shift
+/// InValues 每个候选值在平移量 `s_i = input - values[i]` 上的核心关系与 Big-M 松弛量
+/// Core relations and Big-M relaxations of one InValues candidate value on the shift
 /// `s_i = input - values[i]`
 ///
 /// 「核心关系」是即时展开里**不含 Big-M 项**的那些行（对每个 `(b_i, side_i)` 取值组合而言）；
@@ -130,7 +130,7 @@ pub const STRICT_BOUNDARY: f64 = STEP_EPSILON + STEP_EPSILON;
 /// `band_tolerance`). A native writer writes only the core relations, so it must prove those relaxed
 /// rows hold on the input's actual box, and every ε the proof needs comes from this table.
 #[derive(Debug, Clone, PartialEq)]
-pub struct IfInValueCoreRelations {
+pub struct InValuesValueCoreRelations {
     /// 候选值指示列取真时的核心关系：`s_i <= tol` 与 `s_i >= -tol`
     /// Core relations for `indicator = 1`: `s_i <= tol` and `s_i >= -tol`
     pub when_indicator_true: Vec<(ConstraintRelation, f64)>,
@@ -153,8 +153,8 @@ pub struct IfInValueCoreRelations {
     pub strict_boundary: f64,
 }
 
-/// 返回 IF-IN 即时展开的核心关系与 Big-M 松弛量（所有候选值共用同一张表）
-/// Core relations and Big-M relaxations of the IF-IN eager expansion (one table for every candidate)
+/// 返回 InValues 即时展开的核心关系与 Big-M 松弛量（所有候选值共用同一张表）
+/// Core relations and Big-M relaxations of the InValues eager expansion (one table for every candidate)
 ///
 /// 逐条对应 `build_mechanism_constraints` 里每个候选值的四行：`band_ub` / `band_lb` 在 `b_i = 1`
 /// 时给出 band 核心关系、在 `b_i = 0` 时只剩 `s_i <= tol + M` 与 `s_i >= -tol - M`；`out_lb` 只在
@@ -168,8 +168,8 @@ pub struct IfInValueCoreRelations {
 /// `(b_i, side_i) = (0, 1)` while `out_ub` gives `s_i <= -STRICT_BOUNDARY` only at
 /// `(b_i, side_i) = (0, 0)`, every other assignment leaving a Big-M relaxation. `STRICT_BOUNDARY` is
 /// also the right-hand side of both relaxations (`s_i >= sb - M` and `s_i <= M - sb`).
-pub fn if_in_value_core_relations() -> IfInValueCoreRelations {
-    IfInValueCoreRelations {
+pub fn in_values_value_core_relations() -> InValuesValueCoreRelations {
+    InValuesValueCoreRelations {
         when_indicator_true: vec![
             (ConstraintRelation::LessEqual, STEP_EPSILON),
             (ConstraintRelation::GreaterEqual, -STEP_EPSILON),
@@ -774,7 +774,7 @@ where
 /// 数学形式 / Mathematical Form:
 /// - `result = 1` if input in `{values[0], values[1], ...}`, otherwise `0`
 #[derive(Debug, Clone)]
-pub struct IfInFunction<V = f64>
+pub struct InValuesFunction<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -794,7 +794,7 @@ where
     declared_dependency_ids: Vec<u64>,
 }
 
-impl<V> IfInFunction<V>
+impl<V> InValuesFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -880,7 +880,7 @@ where
     }
 }
 
-impl<V> IfInFunction<V>
+impl<V> InValuesFunction<V>
 where
     V: Clone
         + Debug
@@ -1189,7 +1189,7 @@ where
     }
 }
 
-impl<V> Display for IfInFunction<V>
+impl<V> Display for InValuesFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -1198,7 +1198,7 @@ where
     }
 }
 
-impl<V> DynSymbol for IfInFunction<V>
+impl<V> DynSymbol for InValuesFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -1219,7 +1219,7 @@ where
     }
 }
 
-impl<V> Symbol for IfInFunction<V>
+impl<V> Symbol for InValuesFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
@@ -1230,7 +1230,7 @@ where
     }
 }
 
-impl<V> IntermediateSymbol<V> for IfInFunction<V>
+impl<V> IntermediateSymbol<V> for InValuesFunction<V>
 where
     V: Clone
         + Debug
@@ -1318,7 +1318,7 @@ where
             Ok(None) => self.configured_big_m().ok()?,
             Err(_) => return None,
         };
-        Some(Arc::new(IfInStructure::new(
+        Some(Arc::new(InValuesStructure::new(
             self.id.name.clone(),
             Arc::new(self.clone()),
             big_m,
@@ -1326,8 +1326,8 @@ where
     }
 }
 
-/// IF-IN 离散集合判定的求解器无关结构描述
-/// Solver-neutral structure description of the IF-IN discrete-set test
+/// InValues 离散集合判定的求解器无关结构描述
+/// Solver-neutral structure description of the InValues discrete-set test
 ///
 /// 与 IF/极值采用同一模式：持有产生它的符号（`Arc`）与创建时固定的 Big-M，物化时回调手写路径
 /// 的同一个公式生成器并传入同一个 M，因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。结果列是
@@ -1341,14 +1341,14 @@ where
 /// set-membership column, while the indicator and side columns of every candidate value are helpers
 /// and are all reported so a native path cannot wrongly omit them.
 #[derive(Debug)]
-pub struct IfInStructure<V = f64>
+pub struct InValuesStructure<V = f64>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
     /// 函数名称 / Function name
     name: String,
     /// 产生本结构的符号 / Symbol that produced this structure
-    symbol: Arc<IfInFunction<V>>,
+    symbol: Arc<InValuesFunction<V>>,
     /// 结果列 / Result column
     result: crate::variable::VariableId,
     /// 候选值的指示列与 side 列 / Indicator and side columns of the candidate values
@@ -1357,12 +1357,12 @@ where
     big_m: f64,
 }
 
-impl<V> IfInStructure<V>
+impl<V> InValuesStructure<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
     /// 创建结构描述 / Create a structure description.
-    pub fn new(name: impl Into<String>, symbol: Arc<IfInFunction<V>>, big_m: f64) -> Self {
+    pub fn new(name: impl Into<String>, symbol: Arc<InValuesFunction<V>>, big_m: f64) -> Self {
         let result = symbol.result_variable().id();
         let count = symbol.values.len();
         let mut helpers = Vec::with_capacity(count * 2);
@@ -1446,7 +1446,7 @@ where
     }
 }
 
-impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for IfInStructure<V>
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for InValuesStructure<V>
 where
     V: Clone
         + Debug
@@ -1510,7 +1510,7 @@ where
     }
 }
 
-impl<V> FunctionSymbol<V> for IfInFunction<V>
+impl<V> FunctionSymbol<V> for InValuesFunction<V>
 where
     V: Clone
         + Debug
@@ -1554,7 +1554,7 @@ where
     }
 }
 
-impl<V> LinearIntermediateSymbol<V> for IfInFunction<V>
+impl<V> LinearIntermediateSymbol<V> for InValuesFunction<V>
 where
     V: Clone
         + Debug
@@ -1688,8 +1688,8 @@ mod tests {
         )
     }
 
-    /// IF-IN 的核心关系表必须与即时展开里「不含 Big-M 的那些行」逐位一致
-    /// The IF-IN core-relation table must agree bit for bit with the eager rows carrying no Big-M.
+    /// InValues 的核心关系表必须与即时展开里「不含 Big-M 的那些行」逐位一致
+    /// The InValues core-relation table must agree bit for bit with the eager rows carrying no Big-M.
     ///
     /// 验证手法（与关系指示同一套）：用两个不同的 Big-M 生成同一候选值的四行即时展开，对每个
     /// `(b_i, side_i)` 取值组合做投影。投影不随 M 变化的行就是核心行，必须与表逐位相等（含 band
@@ -1713,7 +1713,7 @@ mod tests {
         let large_m = 16.0f64;
         let projection_tolerance = 1e-12;
 
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9100,
             "ifin_core_table",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
@@ -1741,7 +1741,7 @@ mod tests {
             .expect("eager rows with the larger big-M");
         assert_eq!(small_rows.len(), large_rows.len());
 
-        let expected = if_in_value_core_relations();
+        let expected = in_values_value_core_relations();
         assert_eq!(expected.band_tolerance, STEP_EPSILON);
         assert_eq!(expected.relaxed_lower_rhs, STRICT_BOUNDARY);
         assert_eq!(expected.relaxed_upper_rhs, STRICT_BOUNDARY);
@@ -1869,14 +1869,14 @@ mod tests {
         tx.set_result(3.0);
         tokens.add_token(tx);
 
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9000,
             "ifin_test",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
             vec![1.0, 3.0, 5.0],
             100.0,
         );
-        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+        let value = <InValuesFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(1.0));
     }
 
@@ -1888,14 +1888,14 @@ mod tests {
         tx.set_result(2.0);
         tokens.add_token(tx);
 
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9001,
             "ifin_test2",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
             vec![1.0, 3.0, 5.0],
             100.0,
         );
-        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+        let value = <InValuesFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(0.0));
     }
 
@@ -1911,14 +1911,14 @@ mod tests {
             .into_iter()
             .enumerate()
         {
-            let f: IfInFunction<f64> = IfInFunction::new(
+            let f: InValuesFunction<f64> = InValuesFunction::new(
                 90015 + index as u64,
                 "ifin_non_finite_calculate",
                 Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
                 vec![invalid_value],
                 100.0,
             );
-            let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+            let value = <InValuesFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
 
             assert_eq!(value, None);
             assert_ne!(value, Some(0.0));
@@ -1934,14 +1934,14 @@ mod tests {
         tokens.add_token(tx);
 
         // input = 2x + 1, when x=1 => input=3
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9002,
             "ifin_poly",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
             vec![1.0, 3.0, 5.0],
             100.0,
         );
-        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
+        let value = <InValuesFunction as FunctionSymbol>::calculate_value(&f, &tokens, false);
         assert_eq!(value, Some(1.0));
     }
 
@@ -1953,20 +1953,20 @@ mod tests {
         // no result set, so evaluate_linear returns None normally
         tokens.add_token(tx);
 
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9003,
             "ifin_none",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
             vec![0.0],
             100.0,
         );
-        let value = <IfInFunction as FunctionSymbol>::calculate_value(&f, &tokens, true);
+        let value = <InValuesFunction as FunctionSymbol>::calculate_value(&f, &tokens, true);
         assert_eq!(value, Some(1.0));
     }
 
     #[test]
     fn if_in_function_empty_values_forces_zero() {
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9004,
             "ifin_empty",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2003,7 +2003,7 @@ mod tests {
         // |lower - 5| = 8, |upper - 5| = 2 => max 8
         // 最大偏差为 8，推断 M = 8 + 严格边界。
         // Maximum difference is 8, so inferred M = 8 + strict boundary.
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9005,
             "ifin_bound",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
@@ -2052,7 +2052,7 @@ mod tests {
             "x",
             VariableRange::bounded(0.0, 1.0),
         );
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9011,
             "ifin_endpoint",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2122,7 +2122,7 @@ mod tests {
             "large_x",
             VariableRange::bounded(0.0, 1e16),
         );
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9012,
             "ifin_large_endpoint",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2176,7 +2176,7 @@ mod tests {
             "large_symmetric_x",
             VariableRange::bounded(0.0, 1e16),
         );
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9013,
             "ifin_large_symmetric_endpoint",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2233,7 +2233,7 @@ mod tests {
             "max_x",
             VariableRange::bounded(0.0, f64::MAX),
         );
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9014,
             "ifin_max_endpoint",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2250,7 +2250,7 @@ mod tests {
     #[test]
     fn if_in_function_falls_back_to_configured_big_m_without_bounds() {
         let x = ContinuousVariableItem::create(VariableId::standalone(90_050), "x");
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9006,
             "ifin_default",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2291,7 +2291,7 @@ mod tests {
     #[test]
     fn if_in_function_rejects_non_finite_set_value_without_partial_registration() {
         let x = ContinuousVariableItem::create(VariableId::standalone(90_051), "x");
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9015,
             "ifin_non_finite_value",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2330,7 +2330,7 @@ mod tests {
             "f32_x",
             VariableRange::bounded(1.0e20_f64, 2.0e20_f64),
         );
-        let f: IfInFunction<f32> = IfInFunction::new(
+        let f: InValuesFunction<f32> = InValuesFunction::new(
             9016,
             "ifin_f32_big_m",
             Linear::new(vec![LinearMonomial::new(1.0e20_f32, 0)], 0.0_f32),
@@ -2360,7 +2360,7 @@ mod tests {
 
     #[test]
     fn if_in_function_mechanism_constraints_or_link() {
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9007,
             "ifin_or",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2431,7 +2431,7 @@ mod tests {
     #[test]
     fn if_in_function_satisfies_constraints_when_result_is_one() {
         let _x = ContinuousVariableItem::create(VariableId::standalone(90_060), "x");
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9008,
             "ifin_sat",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2479,7 +2479,7 @@ mod tests {
     #[test]
     fn if_in_function_satisfies_constraints_when_result_is_zero() {
         let _x = ContinuousVariableItem::create(VariableId::standalone(90_070), "x");
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9009,
             "ifin_zero",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2527,7 +2527,7 @@ mod tests {
     #[test]
     fn if_in_function_violates_when_result_wrong() {
         let _x = ContinuousVariableItem::create(VariableId::standalone(90_080), "x");
-        let f: IfInFunction<f64> = IfInFunction::new(
+        let f: InValuesFunction<f64> = InValuesFunction::new(
             9010,
             "ifin_viol",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2885,7 +2885,7 @@ mod tests {
         // 因此推断 M = 6 + 严格边界，而不是构造时配置的 100。
         // input = 2x + 1 spans [-3, 7] over x ∈ [-2, 3]; both candidates 1 and 3 deviate by at most
         // 6, so the inferred M is 6 + strict boundary instead of the configured 100.
-        let function: IfInFunction<f64> = IfInFunction::new(
+        let function: InValuesFunction<f64> = InValuesFunction::new(
             96_601,
             "if_in_deferred",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
@@ -2938,7 +2938,7 @@ mod tests {
         assert!((band_upper.inequality.rhs - (expected_m + STEP_EPSILON)).abs() <= 1e-9);
         let concrete = structure
             .as_any()
-            .downcast_ref::<IfInStructure<f64>>()
+            .downcast_ref::<InValuesStructure<f64>>()
             .expect("if_in structure should downcast to the concrete structure");
         assert!((concrete.big_m() - expected_m).abs() <= 1e-9);
 
@@ -2956,7 +2956,7 @@ mod tests {
         assert_rows_match(&eager_default, &deferred_default);
         let configured_concrete = configured_structure
             .as_any()
-            .downcast_ref::<IfInStructure<f64>>()
+            .downcast_ref::<InValuesStructure<f64>>()
             .expect("if_in structure should downcast to the concrete structure");
         assert!((configured_concrete.big_m() - 100.0).abs() <= 1e-9);
     }
@@ -2968,7 +2968,7 @@ mod tests {
             "x",
             VariableRange::bounded(0.0, f64::MAX),
         );
-        let function: IfInFunction<f64> = IfInFunction::new(
+        let function: InValuesFunction<f64> = InValuesFunction::new(
             96_603,
             "if_in_without_big_m",
             Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
@@ -2999,7 +2999,7 @@ mod tests {
                 VariableRange::bounded(-2.0, 3.0),
             );
             let x_index = model.register_variable(x).expect("x should register");
-            let function: IfInFunction<f64> = IfInFunction::new(
+            let function: InValuesFunction<f64> = InValuesFunction::new(
                 96_701,
                 "if_in_pipeline",
                 Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),

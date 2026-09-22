@@ -14,7 +14,7 @@ use ospf_rust_core::symbol::function::{
     QuadraticBivariateLinearPiecewiseFunction, QuadraticCosFunction, QuadraticInStepRangeFunction,
     QuadraticInequalityFunction, QuadraticMaskingFunction, QuadraticMaskingRangeFunction,
     QuadraticMaxFunction, QuadraticMinFunction, QuadraticModFunction, QuadraticRoundingFunction,
-    QuadraticPositivePartFunction, QuadraticSigmoidFunction, QuadraticSinFunction,
+    QuadraticPositivePartFunction, QuadraticLogisticFunction, QuadraticSinFunction,
     QuadraticSlackFunction,
     QuadraticSlackRangeFunction, QuadraticUnivariateLinearPiecewiseFunction,
 };
@@ -121,7 +121,7 @@ fn gurobi_solves_quadratic_sigmoid_function_symbol_model() {
         vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
         0.0,
     );
-    let qsigmoid = QuadraticSigmoidFunction::new(1921, "qsigmoid", input);
+    let qsigmoid = QuadraticLogisticFunction::new(1921, "qsigmoid", input);
     let y_id = qsigmoid.result_variable().id();
     model.add_symbol(Arc::new(qsigmoid)).unwrap();
 
@@ -1482,7 +1482,7 @@ fn gurobi_solves_quadratic_sigmoid_with_non_linear_input() {
     let x = ContinuousVariableItem::create(VariableId::standalone(2070), "x");
     let x_index = model.register_variable(x).unwrap();
 
-    let qsigmoid = QuadraticSigmoidFunction::new(
+    let qsigmoid = QuadraticLogisticFunction::new(
         2071,
         "qsigmoid_non_linear_mapping",
         Quadratic::new(

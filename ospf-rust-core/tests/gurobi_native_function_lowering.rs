@@ -36,8 +36,10 @@ use ospf_rust_core::model::{
 use ospf_rust_core::solver::solvers::GurobiSolver;
 use ospf_rust_core::solver::solvers::gurobi::GurobiNativeContainer;
 use ospf_rust_core::symbol::function::{
-    AbsFunction, AbsStructure, AndFunction, BinaryzationFunction, BinaryzationMethod, IfInFunction,
-    ImplyFunction, InequalityFunction, InequalityKind, OrFunction, SigmoidFunction, SinFunction,
+    AbsFunction, AbsStructure, AndFunction, BalanceTernaryzationFunction, BinaryzationFunction,
+    BinaryzationMethod, ConditionBounds, ConditionRelation, ConditionalThenFunction, IfFunction,
+    InValuesFunction, ImplyFunction, InequalityFunction, InequalityKind, LogisticFunction,
+    MaskingFunction, MaskingWithPolyMaskFunction, OrFunction, SinFunction,
 };
 use ospf_rust_core::variable::{
     BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange,
@@ -596,7 +598,7 @@ fn pwl_target_mechanism(
             result
         }
         PwlShape::Sigmoid => {
-            let sigmoid = SigmoidFunction::new(SIGMOID_PWL_ID, "sigmoid_pwl_native", input);
+            let sigmoid = LogisticFunction::new(SIGMOID_PWL_ID, "sigmoid_pwl_native", input);
             let result = sigmoid.result_variable().id();
             model
                 .add_symbol(Arc::new(sigmoid))
@@ -1159,18 +1161,18 @@ fn an_unbounded_condition_column_falls_back_instead_of_writing_natively() {
 const IF_IN_X_ID: usize = 97_100;
 const IF_IN_ID: u64 = 97_200;
 
-/// IF-IN 验收用的机制模型：`res = [x ∈ values]`，输入列声明为 `range`。
+/// InValues 验收用的机制模型：`res = [x ∈ values]`，输入列声明为 `range`。
 ///
 /// `pin_result` 把结果列钉在真/假（`res >= 1` / `res <= 0`），`pin_x` 把输入钉在一个确定值上——
 /// 无目标的可行模型只会返回任一顶点，钉住取值才能让两条路径逐点比较。
 ///
-/// The mechanism model used by the IF-IN acceptance tests: `res = [x ∈ values]` with the input column
+/// The mechanism model used by the InValues acceptance tests: `res = [x ∈ values]` with the input column
 /// declared as `range`.
 ///
 /// `pin_result` pins the result column to true/false (`res >= 1` / `res <= 0`) and `pin_x` pins the input
 /// to a fixed value — a solver only returns some vertex for a feasible model without an objective, and
 /// pinning is what makes the two paths comparable point by point.
-fn if_in_target_mechanism(
+fn in_values_target_mechanism(
     policy: FunctionExpansionPolicy,
     range: VariableRange<f64>,
     values: Vec<f64>,
@@ -1184,7 +1186,7 @@ fn if_in_target_mechanism(
     let x = ContinuousVariableItem::with_range(VariableId::standalone(IF_IN_X_ID), "x", range);
     let x_index = model.register_variable(x).expect("x should register");
 
-    let if_in = IfInFunction::new(
+    let if_in = InValuesFunction::new(
         IF_IN_ID,
         "ifin_native",
         Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
@@ -1240,13 +1242,13 @@ fn if_in_target_mechanism(
 }
 
 #[test]
-fn native_if_in_write_is_used_by_a_real_solve() {
+fn native_in_values_write_is_used_by_a_real_solve() {
     // `res = [x ∈ {1, 3}]`，x ∈ [0, 4]，把 x 钉在集合里的 3 并把结果钉在真：即时展开用 band 行 +
     // side 行 + `or_lb_*` / `or_ub` 表达，原生写入用四条指示约束加一条 `or` 一般约束表达。
     // `res = [x ∈ {1, 3}]` with x ∈ [0, 4], pinning x to the in-set value 3 and the result to true:
     // eager expansion uses band rows, side rows and the `or_lb_*` / `or_ub` families while the native
     // write uses four indicator constraints plus one `or` general constraint.
-    let (mechanism, x_column, result_column) = if_in_target_mechanism(
+    let (mechanism, x_column, result_column) = in_values_target_mechanism(
         FunctionExpansionPolicy::DeferredNativeFirst,
         VariableRange::bounded(0.0, 4.0),
         vec![1.0, 3.0],
@@ -1266,7 +1268,7 @@ fn native_if_in_write_is_used_by_a_real_solve() {
         report.outcomes.iter().any(|outcome| matches!(
             outcome,
             NativeWriteOutcome::Native(record)
-                if record.writer == "gurobi_if_in" && record.schema == "functions-if-in-1"
+                if record.writer == "gurobi_in_values" && record.schema == "functions-in-values-1"
         )),
         "expected a native if-in write with the stable schema, got {:?}",
         report.outcomes
@@ -1293,9 +1295,9 @@ fn native_if_in_write_is_used_by_a_real_solve() {
     );
 }
 
-/// 在一条路径上求解给定的 IF-IN 配置，返回 `(是否可行, x 取值, 结果列取值)`。
-/// Solve one IF-IN configuration on one path, returning `(feasible, x value, result value)`.
-fn if_in_path_outcome(
+/// 在一条路径上求解给定的 InValues 配置，返回 `(是否可行, x 取值, 结果列取值)`。
+/// Solve one InValues configuration on one path, returning `(feasible, x value, result value)`.
+fn in_values_path_outcome(
     pin_x: f64,
     pin_result: bool,
     native: bool,
@@ -1305,7 +1307,7 @@ fn if_in_path_outcome(
     } else {
         FunctionExpansionPolicy::Eager
     };
-    let (mechanism, x_column, result_column) = if_in_target_mechanism(
+    let (mechanism, x_column, result_column) = in_values_target_mechanism(
         policy,
         VariableRange::bounded(0.0, 4.0),
         vec![1.0, 3.0],
@@ -1340,8 +1342,8 @@ fn if_in_path_outcome(
 }
 
 #[test]
-fn eager_and_native_if_in_paths_agree_at_the_set_boundary() {
-    // IF-IN 的边界语义是本批最容易写错的地方：候选值的 band（`|s_i| <= STEP_EPSILON`）与
+fn eager_and_native_in_values_paths_agree_at_the_set_boundary() {
+    // InValues 的边界语义是本批最容易写错的地方：候选值的 band（`|s_i| <= STEP_EPSILON`）与
     // 「不在集合内」的严格边界（`|s_i| >= STRICT_BOUNDARY`）之间有一段刻意留出的间隙，而
     // `STRICT_BOUNDARY = 2 · STEP_EPSILON` 远小于 Gurobi 默认的可行性容差（1e-6）。因此这里比较的是
     // **在可分辨尺度上的边界行为**：集合端点、集合内、刚出集合、集合之间，以及把结果钉在相反一侧：
@@ -1355,7 +1357,7 @@ fn eager_and_native_if_in_paths_agree_at_the_set_boundary() {
     // `STEP_EPSILON` / `STRICT_BOUNDARY` 与即时路径逐位相同这一更强性质，由 `native.rs` 与 `if_in.rs`
     // 里的机械化单测证明（用两个不同 Big-M 生成即时行，M-不变行必须与原生计划逐位相等）。
     //
-    // IF-IN boundary semantics are the most error-prone part of this batch: a deliberate gap sits
+    // InValues boundary semantics are the most error-prone part of this batch: a deliberate gap sits
     // between a candidate's band (`|s_i| <= STEP_EPSILON`) and the strict "outside the set" boundary
     // (`|s_i| >= STRICT_BOUNDARY`), and `STRICT_BOUNDARY = 2 · STEP_EPSILON` is far below Gurobi's
     // default feasibility tolerance (1e-6). This test therefore compares the boundary behaviour **at a
@@ -1386,9 +1388,9 @@ fn eager_and_native_if_in_paths_agree_at_the_set_boundary() {
         (2.0, false, true),
     ] {
         let (eager_feasible, eager_x, eager_result) =
-            if_in_path_outcome(pin_x, pin_result, false);
+            in_values_path_outcome(pin_x, pin_result, false);
         let (native_feasible, native_x, native_result) =
-            if_in_path_outcome(pin_x, pin_result, true);
+            in_values_path_outcome(pin_x, pin_result, true);
 
         assert_eq!(
             eager_feasible, native_feasible,
@@ -1412,7 +1414,7 @@ fn eager_and_native_if_in_paths_agree_at_the_set_boundary() {
 }
 
 #[test]
-fn an_externally_referenced_if_in_helper_falls_back_instead_of_writing_natively() {
+fn an_externally_referenced_in_values_helper_falls_back_instead_of_writing_natively() {
     // 候选值的指示列与 side 列都是本结构的辅助列：一旦模型在别处引用其中一列，原生写入就可能在
     // 那些列上与即时展开出现可区分的差异，因此 writer 必须拒绝并回退通用展开；回退后的模型仍然
     // 完整可解，且集合判定照旧成立。
@@ -1421,7 +1423,7 @@ fn an_externally_referenced_if_in_helper_falls_back_instead_of_writing_natively(
     // one of them elsewhere, the native write could become distinguishable from eager expansion on those
     // columns, so the writer must reject and fall back to the generic expansion; the fallback model still
     // solves completely and the set membership still holds.
-    let (mut mechanism, x_column, result_column) = if_in_target_mechanism(
+    let (mut mechanism, x_column, result_column) = in_values_target_mechanism(
         FunctionExpansionPolicy::DeferredNativeFirst,
         VariableRange::bounded(0.0, 4.0),
         vec![1.0, 3.0],
@@ -2595,4 +2597,1170 @@ fn an_externally_referenced_helper_column_forces_the_imply_fallback() {
         "the eager rows must still give r = 1 for p = 0, c = 0: r = {}",
         solution[columns[4]]
     );
+}
+
+const CONDITIONAL_VALUE_X_ID: usize = 99_400;
+const CONDITIONAL_VALUE_Y_ID: usize = 99_401;
+const CONDITIONAL_VALUE_ID: u64 = 99_500;
+
+/// 条件值验收模型：条件 `x - 1 >= 0`（声明范围由调用方给出，严格边界 0.1），then 多项式 `2y + 1`
+/// （then 范围 [-1, 3]）。返回 `(mechanism, [x, y, 条件指示列, 条件指示器结果列, 结果列])`。
+///
+/// 条件值即时展开含**三**块：条件块 2 条线性化行 + 条件指示器内部的等式链接行 + 分支块 4 条 McCormick
+/// 行（共 7 条），因此原生写入必须同时覆盖条件关系与「对两个内部二值列各写一遍」的分支等式。
+///
+/// The conditional-value acceptance model: condition `x - 1 >= 0` (declared range from the caller, strict
+/// boundary 0.1) and then polynomial `2y + 1` (then range [-1, 3]). It returns
+/// `(mechanism, [x, y, condition indicator, condition indicator result, result])`.
+///
+/// Eager expansion has **three** blocks: the condition block's two linearisation rows, the condition
+/// indicator's internal equality link row and the branch block's four McCormick rows (seven in total), so a
+/// native write must cover both the condition relation and the branch equalities written once per internal
+/// binary column.
+fn conditional_value_target_mechanism(
+    policy: FunctionExpansionPolicy,
+    condition_bounds: (f64, f64),
+    pin_x: Option<f64>,
+    pin_y: Option<f64>,
+) -> (MechanismModel<f64>, [usize; 5]) {
+    let mut model = MetaModel::<f64>::new("gurobi_native_conditional_value");
+    model.set_function_expansion_policy(policy);
+
+    let x = ContinuousVariableItem::with_range(
+        VariableId::standalone(CONDITIONAL_VALUE_X_ID),
+        "x",
+        VariableRange::bounded(-1.0, 3.0),
+    );
+    let y = ContinuousVariableItem::with_range(
+        VariableId::standalone(CONDITIONAL_VALUE_Y_ID),
+        "y",
+        VariableRange::bounded(-1.0, 3.0),
+    );
+    let x_index = model.register_variable(x).expect("x should register");
+    let y_index = model.register_variable(y).expect("y should register");
+
+    let function = ConditionalThenFunction::from_parts_with_bounds(
+        Linear::new(vec![LinearMonomial::new(1.0, x_index)], -1.0),
+        ConditionRelation::GreaterEqual,
+        0.1,
+        ConditionBounds {
+            lower: condition_bounds.0,
+            upper: condition_bounds.1,
+        },
+        Linear::new(vec![LinearMonomial::new(2.0, y_index)], 1.0),
+        ConditionBounds {
+            lower: -1.0,
+            upper: 3.0,
+        },
+    )
+    .expect("the conditional-value function should build");
+    let indicator_id = function.condition_indicator().indicator_variable().id();
+    let condition_result_id = function.condition_indicator().result_variable().id();
+    let result_id = function.result_variable().id();
+    model
+        .add_symbol(Arc::new(function))
+        .expect("conditional-value symbol should register");
+
+    let mut mechanism = model
+        .try_into_mechanism_model()
+        .expect("mechanism conversion should succeed");
+
+    let view = mechanism.linear_column_view();
+    let column_of = |id: VariableId, label: &str| {
+        view.iter()
+            .position(|column| column.id == id)
+            .unwrap_or_else(|| panic!("{label} column should exist"))
+    };
+    let x_column = column_of(VariableId::standalone(CONDITIONAL_VALUE_X_ID), "x");
+    let y_column = column_of(VariableId::standalone(CONDITIONAL_VALUE_Y_ID), "y");
+    let indicator_column = column_of(indicator_id, "condition indicator");
+    let condition_result_column = column_of(condition_result_id, "condition indicator result");
+    let result_column = column_of(result_id, "conditional-value result");
+
+    for (column, value, label) in [
+        (x_column, pin_x, "conditional_value_pin_x"),
+        (y_column, pin_y, "conditional_value_pin_y"),
+    ] {
+        if let Some(value) = value {
+            mechanism.add_constraint(LinearConstraint::new(
+                LinearInequality::new(
+                    Linear::new(vec![LinearMonomial::new(1.0, column)], 0.0),
+                    ConstraintRelation::Equal,
+                    value,
+                ),
+                label,
+            ));
+        }
+    }
+
+    (
+        mechanism,
+        [
+            x_column,
+            y_column,
+            indicator_column,
+            condition_result_column,
+            result_column,
+        ],
+    )
+}
+
+/// 在一条路径上求解给定的条件值配置，返回 `(是否可行, [条件指示列, 条件指示器结果列, 结果列])`。
+/// Solve one conditional-value configuration on one path, returning
+/// `(feasible, [indicator, condition result, result])`.
+fn conditional_value_path_outcome(
+    condition_bounds: (f64, f64),
+    pin_x: f64,
+    pin_y: f64,
+    native: bool,
+) -> (bool, [f64; 3]) {
+    let policy = if native {
+        FunctionExpansionPolicy::DeferredNativeFirst
+    } else {
+        FunctionExpansionPolicy::Eager
+    };
+    let (mechanism, columns) =
+        conditional_value_target_mechanism(policy, condition_bounds, Some(pin_x), Some(pin_y));
+    let solver = GurobiSolver::new();
+
+    let output = if native {
+        let (output, report) = solver
+            .solve_linear_with_native_lowering(mechanism, None)
+            .expect("gurobi should solve the natively lowered model");
+        assert_eq!(
+            report.native_writes, 1,
+            "the conditional value must be written natively, got {:?}",
+            report.outcomes
+        );
+        assert!(
+            report.outcomes.iter().any(|outcome| matches!(
+                outcome,
+                NativeWriteOutcome::Native(record)
+                    if record.writer == "gurobi_conditional_value"
+                        && record.schema == "functions-conditional-value-1"
+            )),
+            "expected a native conditional-value write with the stable schema, got {:?}",
+            report.outcomes
+        );
+        output
+    } else {
+        let model = mechanism.into_linear_triad_model();
+        solver
+            .solve_linear(&model)
+            .expect("gurobi should solve the eager model")
+    };
+
+    let feasible = output.status.is_feasible();
+    match output.solution.as_ref() {
+        Some(solution) => (
+            feasible,
+            [
+                solution[columns[2]],
+                solution[columns[3]],
+                solution[columns[4]],
+            ],
+        ),
+        None => (feasible, [f64::NAN; 3]),
+    }
+}
+
+#[test]
+fn native_conditional_value_write_is_used_by_a_real_solve() {
+    // `x = 1.5` 让条件成立（`x - 1 = 0.5 >= 0`），`y = 1` 给出 then 值 `2·1 + 1 = 3`：真分支上结果列必须
+    // 等于 then 多项式，条件指示列必须为 1。
+    //
+    // `x = 1.5` makes the condition hold (`x - 1 = 0.5 >= 0`) and `y = 1` gives the then value `2·1 + 1 = 3`:
+    // on the true branch the result must equal the then polynomial and the condition indicator must be 1.
+    let (mechanism, columns) = conditional_value_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        (-2.0, 2.0),
+        Some(1.5),
+        Some(1.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            NativeWriteOutcome::Native(record)
+                if record.writer == "gurobi_conditional_value"
+                    && record.schema == "functions-conditional-value-1"
+        )),
+        "expected a native conditional-value write with the stable schema, got {:?}",
+        report.outcomes
+    );
+
+    assert!(
+        output.status.is_feasible(),
+        "expected a feasible solve, got {:?}",
+        output.status
+    );
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        solution[columns[2]] >= 1.0 - 1e-6,
+        "the condition indicator must be 1: ind = {}",
+        solution[columns[2]]
+    );
+    assert!(
+        (solution[columns[4]] - 3.0).abs() <= 1e-6,
+        "the true branch must give result = then = 3: result = {}",
+        solution[columns[4]]
+    );
+}
+
+#[test]
+fn eager_and_native_conditional_value_paths_agree_on_both_branches() {
+    // 两条路径必须在真/假分支上给出同一组 `(条件指示列, 条件指示器结果列, 结果列)`：假分支结果为 0，真分支
+    // 结果为 then 多项式 `2y + 1`。
+    //
+    // Both paths must produce the same `(indicator, condition result, result)` on either branch: the false
+    // branch gives 0 and the true branch the then polynomial `2y + 1`.
+    for (pin_x, pin_y, expected_indicator, expected_result) in [
+        (0.5, 1.0, 0.0, 0.0),
+        (1.5, 1.0, 1.0, 3.0),
+        (0.5, 0.0, 0.0, 0.0),
+        (1.5, 0.0, 1.0, 1.0),
+    ] {
+        let (eager_feasible, eager) =
+            conditional_value_path_outcome((-2.0, 2.0), pin_x, pin_y, false);
+        let (native_feasible, native) =
+            conditional_value_path_outcome((-2.0, 2.0), pin_x, pin_y, true);
+
+        assert_eq!(
+            eager_feasible, native_feasible,
+            "the two paths must agree on feasibility at (x, y) = ({pin_x}, {pin_y})"
+        );
+        assert!(eager_feasible && native_feasible);
+        for index in 0..3 {
+            assert!(
+                (eager[index] - native[index]).abs() <= 1e-6,
+                "the two paths disagree on {} at (x, y) = ({pin_x}, {pin_y}): eager = {}, native = {}",
+                ["ind", "condition result", "result"][index],
+                eager[index],
+                native[index]
+            );
+        }
+        assert!((native[0] - expected_indicator).abs() <= 1e-6);
+        assert!(
+            (native[2] - expected_result).abs() <= 1e-6,
+            "native result must be {expected_result} at (x, y) = ({pin_x}, {pin_y}): result = {}",
+            native[2]
+        );
+    }
+}
+
+#[test]
+fn a_folded_conditional_value_falls_back_instead_of_writing_natively() {
+    // 条件声明范围 `[0.5, 2]` 让「条件成立」这一支完全覆盖，即时展开退化成两条**定值**行
+    // （`indicator = 1`、`result_ind = 1`）；定值行没有对应的一般约束接口，因此 planner 必须整体拒绝并回退
+    // 即时展开，回退后模型依然可解且真分支结果正确。
+    //
+    // The declared condition range `[0.5, 2]` lets the "condition holds" branch cover everything, so eager
+    // expansion collapses to the two **fixed-value** rows (`indicator = 1`, `result_ind = 1`); fixed rows have no
+    // general constraint counterpart, so the planner must reject as a whole and fall back to eager expansion,
+    // which still solves with the correct true-branch result.
+    let (mechanism, columns) = conditional_value_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        (0.5, 2.0),
+        Some(1.5),
+        Some(1.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the fallback model");
+
+    assert_eq!(
+        report.native_writes, 0,
+        "the folded case must forbid the native write"
+    );
+    assert_eq!(report.materialized_fallbacks, 1);
+    assert!(
+        matches!(
+            report.outcomes.as_slice(),
+            [NativeWriteOutcome::Fallback(FallbackReason::Rejected(message))]
+                if message.contains("folded case")
+        ),
+        "expected the folded-case rejection, got {:?}",
+        report.outcomes
+    );
+
+    assert!(
+        output.status.is_feasible(),
+        "the fallback model must still solve, got {:?}",
+        output.status
+    );
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        solution[columns[2]] >= 1.0 - 1e-6,
+        "the folded rows must pin the condition indicator to 1: ind = {}",
+        solution[columns[2]]
+    );
+    assert!(
+        (solution[columns[4]] - 3.0).abs() <= 1e-6,
+        "the fallback rows must still give result = then = 3: result = {}",
+        solution[columns[4]]
+    );
+}
+
+#[test]
+fn an_externally_referenced_conditional_value_helper_forces_a_fallback() {
+    // 条件指示器的结果列是本结构的辅助列。外部一旦引用它，原生分支等式与即时等式链接行在这些列上的含义就
+    // 可能被外部分辨出来，因此 writer 必须整体回退——这里用一条恒真的 `result_ind >= 0` 触发该门控。
+    //
+    // The condition indicator's result column is a helper of this structure. Once an external row references it,
+    // an external constraint could tell the native branch equalities and the eager link row apart on it, so the
+    // writer must fall back as a whole — an always-true `result_ind >= 0` triggers that gate here.
+    let (mut mechanism, columns) = conditional_value_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        (-2.0, 2.0),
+        Some(1.5),
+        Some(1.0),
+    );
+    mechanism.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, columns[3])], 0.0),
+            ConstraintRelation::GreaterEqual,
+            0.0,
+        ),
+        "conditional_value_external_helper_reference",
+    ));
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the fallback model");
+
+    assert_eq!(
+        report.native_writes, 0,
+        "an externally referenced helper column must forbid the native write"
+    );
+    assert_eq!(report.materialized_fallbacks, 1);
+    assert!(
+        matches!(
+            report.outcomes.as_slice(),
+            [NativeWriteOutcome::Fallback(FallbackReason::Rejected(message))]
+                if message.contains("helper columns")
+        ),
+        "expected the helper-exclusivity rejection, got {:?}",
+        report.outcomes
+    );
+
+    assert!(
+        output.status.is_feasible(),
+        "the fallback model must still solve, got {:?}",
+        output.status
+    );
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[columns[4]] - 3.0).abs() <= 1e-6,
+        "the eager rows must still give result = then = 3: result = {}",
+        solution[columns[4]]
+    );
+}
+
+const MASKING_X_ID: usize = 99_600;
+const MASKING_MASK_ID: usize = 99_601;
+const MASKING_ID: u64 = 99_700;
+const POLY_MASK_Y_ID: usize = 99_602;
+const POLY_MASK_ID: u64 = 99_800;
+
+/// 掩码验收模型：`y = mask ? x : 0`（`x` 是模型变量，掩码列由模型注册为二元变量）。
+/// 返回 `(mechanism, [x, mask, result])`。
+///
+/// The masking acceptance model: `y = mask ? x : 0` with `x` a model variable and the mask column registered by
+/// the model as a binary variable. Returns `(mechanism, [x, mask, result])`.
+fn masking_target_mechanism(
+    policy: FunctionExpansionPolicy,
+    big_m: f64,
+    x_range: VariableRange<f64>,
+    pin_x: Option<f64>,
+    mask_range: VariableRange<f64>,
+) -> (MechanismModel<f64>, [usize; 3]) {
+    let mut model = MetaModel::<f64>::new("gurobi_native_masking");
+    model.set_function_expansion_policy(policy);
+
+    let x = ContinuousVariableItem::with_range(VariableId::standalone(MASKING_X_ID), "x", x_range);
+    let x_index = model.register_variable(x).expect("x should register");
+    // 掩码列的取值用**变量范围**固定（`[1, 1]` / `[0, 0]`），而不是加一条外部约束：后者会让掩码列变成
+    // 「被外部引用」，辅助列独占性门控会（正确地）拒绝原生写入，从而测不到本批想测的路径。
+    // The mask column's value is fixed through its **variable range** (`[1, 1]` / `[0, 0]`) instead of an
+    // external constraint: the latter would make the mask column "externally referenced" and the helper
+    // exclusivity gate would (correctly) reject the native write, which would not exercise the path this batch
+    // is about.
+    let mask = BinaryVariableItem::with_range(
+        VariableId::standalone(MASKING_MASK_ID),
+        "mask",
+        mask_range,
+    );
+    model.register_variable(mask.clone()).expect("mask should register");
+
+    let function = MaskingFunction::with_big_m(
+        MASKING_ID,
+        "masking_native",
+        Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        mask.clone(),
+        big_m,
+    );
+    let result_id = function.result_variable().id();
+    model
+        .add_symbol(Arc::new(function))
+        .expect("masking symbol should register");
+
+    let mut mechanism = model
+        .try_into_mechanism_model()
+        .expect("mechanism conversion should succeed");
+    let view = mechanism.linear_column_view();
+    let column_of = |id: VariableId, label: &str| {
+        view.iter()
+            .position(|column| column.id == id)
+            .unwrap_or_else(|| panic!("{label} column should exist"))
+    };
+    let x_column = column_of(VariableId::standalone(MASKING_X_ID), "x");
+    let mask_column = column_of(VariableId::standalone(MASKING_MASK_ID), "mask");
+    let result_column = column_of(result_id, "masking result");
+
+    if let Some(value) = pin_x {
+        mechanism.add_constraint(LinearConstraint::new(
+            LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, x_column)], 0.0),
+                ConstraintRelation::Equal,
+                value,
+            ),
+            "masking_pin_x",
+        ));
+    }
+
+    (mechanism, [x_column, mask_column, result_column])
+}
+
+#[test]
+fn native_masking_write_is_used_by_a_real_solve() {
+    // `mask = 1` 时掩码行给出 `y = x`；把 `x` 钉在 1.5 得到 `y = 1.5`。同一配置也在 EAGER 上求解，
+    // 两条路径必须一致。
+    //
+    // At `mask = 1` the masking rows give `y = x`, so pinning `x` at 1.5 gives `y = 1.5`. The same configuration
+    // is solved on EAGER too and both paths must agree.
+    let (mechanism, columns) = masking_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        8.0,
+        VariableRange::bounded(-2.0, 2.0),
+        Some(1.5),
+        VariableRange::bounded(1.0, 1.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            NativeWriteOutcome::Native(record)
+                if record.writer == "gurobi_masking" && record.schema == "functions-masking-1"
+        )),
+        "expected a native masking write with the stable schema, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[columns[2]] - 1.5).abs() <= 1e-6,
+        "mask = 1 must give y = x = 1.5: y = {}",
+        solution[columns[2]]
+    );
+
+    // 同一配置的 EAGER 解必须一致。
+    // The EAGER solution of the same configuration must agree.
+    let (eager_mechanism, eager_columns) = masking_target_mechanism(
+        FunctionExpansionPolicy::Eager,
+        8.0,
+        VariableRange::bounded(-2.0, 2.0),
+        Some(1.5),
+        VariableRange::bounded(1.0, 1.0),
+    );
+    let eager = solver
+        .solve_linear(&eager_mechanism.into_linear_triad_model())
+        .expect("gurobi should solve the eager model");
+    let eager_solution = eager
+        .solution
+        .as_ref()
+        .expect("the eager solve should carry a solution");
+    assert!(
+        (eager_solution[eager_columns[2]] - solution[columns[2]]).abs() <= 1e-6,
+        "the two paths must agree on y: eager = {}, native = {}",
+        eager_solution[eager_columns[2]],
+        solution[columns[2]]
+    );
+}
+
+#[test]
+fn native_masking_zero_branch_matches_the_eager_solution() {
+    // `mask = 0` ⇒ `y = 0`（与 `x` 无关）。
+    // `mask = 0` gives `y = 0` regardless of `x`.
+    let (mechanism, columns) = masking_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        8.0,
+        VariableRange::bounded(-2.0, 2.0),
+        Some(-2.0),
+        VariableRange::bounded(0.0, 0.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        solution[columns[2]].abs() <= 1e-6,
+        "mask = 0 must give y = 0: y = {}",
+        solution[columns[2]]
+    );
+}
+
+#[test]
+fn an_externally_referenced_masking_helper_forces_a_fallback() {
+    // 掩码列是本结构的辅助列；外部引用它（恒真的 `mask >= 0`）必须让 writer 整体回退，回退后仍可解。
+    //
+    // The mask column is a helper of this structure; referencing it elsewhere (the always-true `mask >= 0`) must
+    // make the writer fall back as a whole, and the fallback still solves.
+    let (mut mechanism, columns) = masking_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        8.0,
+        VariableRange::bounded(-2.0, 2.0),
+        Some(1.5),
+        VariableRange::bounded(1.0, 1.0),
+    );
+    mechanism.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, columns[1])], 0.0),
+            ConstraintRelation::GreaterEqual,
+            0.0,
+        ),
+        "masking_external_helper_reference",
+    ));
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the fallback model");
+
+    assert_eq!(report.native_writes, 0);
+    assert_eq!(report.materialized_fallbacks, 1);
+    assert!(
+        matches!(
+            report.outcomes.as_slice(),
+            [NativeWriteOutcome::Fallback(FallbackReason::Rejected(message))]
+                if message.contains("mask helper column")
+        ),
+        "expected the mask-helper rejection, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[columns[2]] - 1.5).abs() <= 1e-6,
+        "the eager rows must still give y = x = 1.5: y = {}",
+        solution[columns[2]]
+    );
+}
+
+#[test]
+fn a_masking_input_box_the_writer_cannot_read_falls_back() {
+    // 输入列无界时 SDK 盒读不到有限区间，`M ≥ max|x|` 无法证明（结构性推断出的 M 正是盒界，配置值也无法
+    // 覆盖无界盒），writer 必须回退；回退后的 EAGER 模型依然可解（配置的 M = 0.5 仍把 `y`、`y − x` 限制在
+    // ±0.5 内，因此把 x 钉在 0.25）。
+    //
+    // With an unbounded input column the SDK box has no finite interval, so `M ≥ max|x|` cannot be proven (the
+    // structurally inferred M is exactly the box bound and the configured value cannot cover an unbounded box)
+    // and the writer must fall back; the EAGER model still solves (the configured M = 0.5 keeps `y` and `y − x`
+    // within ±0.5, so `x` is pinned at 0.25).
+    let (mechanism, columns) = masking_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        0.5,
+        VariableRange::unbounded(),
+        Some(0.25),
+        VariableRange::bounded(1.0, 1.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the fallback model");
+
+    assert_eq!(report.native_writes, 0);
+    assert_eq!(report.materialized_fallbacks, 1);
+    assert!(
+        matches!(
+            report.outcomes.as_slice(),
+            [NativeWriteOutcome::Fallback(FallbackReason::Rejected(message))]
+                if message.contains("big-M relaxation")
+        ),
+        "expected the big-M proof rejection, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[columns[2]] - 0.25).abs() <= 1e-6,
+        "the eager rows must still give y = x = 0.25: y = {}",
+        solution[columns[2]]
+    );
+}
+
+#[test]
+fn native_polynomial_mask_write_is_used_by_a_real_solve() {
+    // 多项式掩码：`mask_poly = m`（模型变量，钉在 1）经桥接列定义等式（原生用 4 条指示重建）后，分支等式给出
+    // `y = x = 1.5`。同配置在 EAGER 上求解并比较。
+    //
+    // The polynomial mask: with `mask_poly = m` (a model variable pinned at 1) the bridge definition (rebuilt
+    // natively through four indicators) makes the branch equality give `y = x = 1.5`. The same configuration is
+    // solved on EAGER for comparison.
+    let mut model = MetaModel::<f64>::new("gurobi_native_poly_mask");
+    model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+    let x = ContinuousVariableItem::with_range(
+        VariableId::standalone(MASKING_X_ID),
+        "x",
+        VariableRange::bounded(-2.0, 2.0),
+    );
+    let m = ContinuousVariableItem::with_range(
+        VariableId::standalone(POLY_MASK_Y_ID),
+        "m",
+        VariableRange::bounded(0.0, 2.0),
+    );
+    let x_index = model.register_variable(x).expect("x should register");
+    let m_index = model.register_variable(m).expect("m should register");
+    let function = MaskingWithPolyMaskFunction::with_big_m(
+        POLY_MASK_ID,
+        "poly_mask_native",
+        Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+        Linear::new(vec![LinearMonomial::new(1.0, m_index)], 0.0),
+        8.0,
+    );
+    let bridge_id = function.mask_bridge_variable().id();
+    let result_id = function.result_variable().id();
+    model
+        .add_symbol(Arc::new(function))
+        .expect("polynomial mask symbol should register");
+
+    let mut mechanism = model
+        .try_into_mechanism_model()
+        .expect("mechanism conversion should succeed");
+    let view = mechanism.linear_column_view();
+    let column_of = |id: VariableId, label: &str| {
+        view.iter()
+            .position(|column| column.id == id)
+            .unwrap_or_else(|| panic!("{label} column should exist"))
+    };
+    let x_column = column_of(VariableId::standalone(MASKING_X_ID), "x");
+    let m_column = column_of(VariableId::standalone(POLY_MASK_Y_ID), "m");
+    let bridge_column = column_of(bridge_id, "bridge");
+    let result_column = column_of(result_id, "polynomial mask result");
+    for (column, value, label) in [
+        (x_column, 1.5, "poly_mask_pin_x"),
+        (m_column, 1.0, "poly_mask_pin_m"),
+    ] {
+        mechanism.add_constraint(LinearConstraint::new(
+            LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, column)], 0.0),
+                ConstraintRelation::Equal,
+                value,
+            ),
+            label,
+        ));
+    }
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            NativeWriteOutcome::Native(record)
+                if record.writer == "gurobi_poly_mask" && record.schema == "functions-poly-mask-1"
+        )),
+        "expected a native polynomial-mask write with the stable schema, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[bridge_column] - 1.0).abs() <= 1e-6,
+        "the bridge definition must pin the bridge to mask_poly = 1: bridge = {}",
+        solution[bridge_column]
+    );
+    assert!(
+        (solution[result_column] - 1.5).abs() <= 1e-6,
+        "the branch equality must give y = x = 1.5: y = {}",
+        solution[result_column]
+    );
+}
+
+const IF_X_ID: usize = 99_900;
+const IF_Y_ID: usize = 99_901;
+const IF_ID: u64 = 99_950;
+
+/// IF 验收模型：条件 `c = x − 1`、then 多项式 `t = 2y + 1`、else 多项式 `e = −y`。
+/// 返回 `(mechanism, [x, y, 指示列, 结果列])`。
+///
+/// 即时 6 行给出的核心语义是 **`b = 0 ⇒ c = 0 且 res = e`、`b = 1 ⇒ res = t`**（`b = 1` 时 `c` 只剩
+/// `|c| ≤ M` 的松弛），因此 `c ≠ 0` 会**强制** `b = 1`（then 分支）——测试用它取得确定性的分支。
+///
+/// The IF acceptance model: condition `c = x − 1`, then polynomial `t = 2y + 1`, else polynomial `e = −y`.
+/// Returns `(mechanism, [x, y, indicator, result])`.
+///
+/// The six eager rows' core semantics is **`b = 0 ⇒ c = 0 and res = e`, `b = 1 ⇒ res = t`** (at `b = 1` only the
+/// `|c| ≤ M` relaxation remains), so `c ≠ 0` **forces** `b = 1` (the then branch), which is how the tests obtain a
+/// deterministic branch.
+fn if_target_mechanism(
+    policy: FunctionExpansionPolicy,
+    pin_x: Option<f64>,
+    pin_y: Option<f64>,
+) -> (MechanismModel<f64>, [usize; 4]) {
+    let mut model = MetaModel::<f64>::new("gurobi_native_if");
+    model.set_function_expansion_policy(policy);
+
+    let x = ContinuousVariableItem::with_range(
+        VariableId::standalone(IF_X_ID),
+        "x",
+        VariableRange::bounded(-2.0, 2.0),
+    );
+    let y = ContinuousVariableItem::with_range(
+        VariableId::standalone(IF_Y_ID),
+        "y",
+        VariableRange::bounded(-2.0, 2.0),
+    );
+    let x_index = model.register_variable(x).expect("x should register");
+    let y_index = model.register_variable(y).expect("y should register");
+
+    let function = IfFunction::new(
+        IF_ID,
+        "if_native",
+        Linear::new(vec![LinearMonomial::new(1.0, x_index)], -1.0),
+        Linear::new(vec![LinearMonomial::new(2.0, y_index)], 1.0),
+        Linear::new(vec![LinearMonomial::new(-1.0, y_index)], 0.0),
+    );
+    let indicator_id = function.condition_indicator_variable().id();
+    let result_id = function.result_variable().id();
+    model
+        .add_symbol(Arc::new(function))
+        .expect("IF symbol should register");
+
+    let mut mechanism = model
+        .try_into_mechanism_model()
+        .expect("mechanism conversion should succeed");
+    let view = mechanism.linear_column_view();
+    let column_of = |id: VariableId, label: &str| {
+        view.iter()
+            .position(|column| column.id == id)
+            .unwrap_or_else(|| panic!("{label} column should exist"))
+    };
+    let x_column = column_of(VariableId::standalone(IF_X_ID), "x");
+    let y_column = column_of(VariableId::standalone(IF_Y_ID), "y");
+    let indicator_column = column_of(indicator_id, "indicator");
+    let result_column = column_of(result_id, "IF result");
+
+    for (column, value, label) in [
+        (x_column, pin_x, "if_pin_x"),
+        (y_column, pin_y, "if_pin_y"),
+    ] {
+        if let Some(value) = value {
+            mechanism.add_constraint(LinearConstraint::new(
+                LinearInequality::new(
+                    Linear::new(vec![LinearMonomial::new(1.0, column)], 0.0),
+                    ConstraintRelation::Equal,
+                    value,
+                ),
+                label,
+            ));
+        }
+    }
+
+    (
+        mechanism,
+        [x_column, y_column, indicator_column, result_column],
+    )
+}
+
+#[test]
+fn native_if_write_is_used_by_a_real_solve() {
+    // `x = 2` 给出 `c = 1 ≠ 0`，因此 `b = 0` 不可行（它要求 `c = 0`），分支被迫走 then：`res = t = 2y + 1 = 3`。
+    // `x = 2` gives `c = 1 ≠ 0`, so `b = 0` is infeasible (it requires `c = 0`) and the branch is forced to then:
+    // `res = t = 2y + 1 = 3`.
+    let (mechanism, columns) = if_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        Some(2.0),
+        Some(1.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            NativeWriteOutcome::Native(record)
+                if record.writer == "gurobi_if" && record.schema == "functions-if-1"
+        )),
+        "expected a native IF write with the stable schema, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        solution[columns[2]] >= 1.0 - 1e-6,
+        "c != 0 must force the then branch: b = {}",
+        solution[columns[2]]
+    );
+    assert!(
+        (solution[columns[3]] - 3.0).abs() <= 1e-6,
+        "the then branch must give res = t = 3: res = {}",
+        solution[columns[3]]
+    );
+}
+
+#[test]
+fn eager_and_native_if_paths_agree_on_both_branch_values() {
+    // `c ≠ 0`（`x = 2` 与 `x = −1`）强制 then 分支，两条路径必须给出同一组 `(b, res)`；`x = 1` 让 `c = 0`，
+    // 此时**即时编码本身**也允许 `b` 自由取值（`b = 0` 与 `b = 1` 都可行），因此只断言两条路径一致，而不指定
+    // 具体分支。
+    //
+    // `c ≠ 0` (`x = 2` and `x = −1`) forces the then branch and both paths must give the same `(b, res)`; `x = 1`
+    // makes `c = 0`, where the **eager encoding itself** leaves `b` free (`b = 0` and `b = 1` are both feasible),
+    // so only path agreement is asserted there and no specific branch is prescribed.
+    for (pin_x, pin_y, forced_then) in [(2.0, 1.0, true), (-1.0, -2.0, true), (1.0, 1.0, false)] {
+        let (eager_mechanism, eager_columns) =
+            if_target_mechanism(FunctionExpansionPolicy::Eager, Some(pin_x), Some(pin_y));
+        let (native_mechanism, native_columns) = if_target_mechanism(
+            FunctionExpansionPolicy::DeferredNativeFirst,
+            Some(pin_x),
+            Some(pin_y),
+        );
+        let solver = GurobiSolver::new();
+        let eager = solver
+            .solve_linear(&eager_mechanism.into_linear_triad_model())
+            .expect("gurobi should solve the eager model");
+        let (native, report) = solver
+            .solve_linear_with_native_lowering(native_mechanism, None)
+            .expect("gurobi should solve the natively lowered model");
+
+        assert_eq!(report.native_writes, 1, "got {:?}", report.outcomes);
+        assert!(eager.status.is_feasible() && native.status.is_feasible());
+        let eager_solution = eager.solution.as_ref().expect("eager solution");
+        let native_solution = native.solution.as_ref().expect("native solution");
+        for (index, label) in [(2usize, "b"), (3, "res")] {
+            assert!(
+                (eager_solution[eager_columns[index]] - native_solution[native_columns[index]]).abs()
+                    <= 1e-6,
+                "the two paths disagree on {label} at (x, y) = ({pin_x}, {pin_y}): eager = {}, native = {}",
+                eager_solution[eager_columns[index]],
+                native_solution[native_columns[index]]
+            );
+        }
+        if forced_then {
+            assert!(
+                (native_solution[native_columns[3]] - (2.0 * pin_y + 1.0)).abs() <= 1e-6,
+                "the then branch must give res = 2y + 1: res = {}",
+                native_solution[native_columns[3]]
+            );
+        }
+    }
+}
+
+#[test]
+fn an_externally_referenced_if_helper_forces_a_fallback() {
+    // 条件指示列是本结构的辅助列；外部引用它（恒真的 `b >= 0`）必须让 writer 整体回退，回退后仍可解。
+    // The condition indicator column is a helper of this structure; referencing it elsewhere (the always-true
+    // `b >= 0`) must make the writer fall back as a whole, and the fallback still solves.
+    let (mut mechanism, columns) =
+        if_target_mechanism(FunctionExpansionPolicy::DeferredNativeFirst, Some(2.0), Some(1.0));
+    mechanism.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, columns[2])], 0.0),
+            ConstraintRelation::GreaterEqual,
+            0.0,
+        ),
+        "if_external_helper_reference",
+    ));
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the fallback model");
+
+    assert_eq!(report.native_writes, 0);
+    assert_eq!(report.materialized_fallbacks, 1);
+    assert!(
+        matches!(
+            report.outcomes.as_slice(),
+            [NativeWriteOutcome::Fallback(FallbackReason::Rejected(message))]
+                if message.contains("indicator helper column")
+        ),
+        "expected the indicator-helper rejection, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[columns[3]] - 3.0).abs() <= 1e-6,
+        "the eager rows must still give res = t = 3: res = {}",
+        solution[columns[3]]
+    );
+}
+
+// ===== 平衡三值化（BalanceTernaryzation）原生写入验收 =====
+// ===== Balance-ternaryzation native write acceptance =====
+
+const BALANCE_INPUT_ID: usize = 99_800;
+const BALANCE_FUNCTION_ID: u64 = 99_810;
+
+/// 平衡三值化的验收模型：input ≥ ε+sb ⇒ res=1；input ≤ −ε−sb ⇒ res=−1；否则 res=0。
+/// input 用变量范围给有限界（盒证明需要），`pin_input` 用外部约束钉值。返回 `(mechanism, [input, result])`。
+///
+/// The balance-ternary acceptance model. The input gets finite bounds through its variable range (the
+/// box proof needs them) and `pin_input` pins the value through an external constraint. Returns
+/// `(mechanism, [input, result])`.
+fn balance_ternary_target_mechanism(
+    policy: FunctionExpansionPolicy,
+    input_range: VariableRange<f64>,
+    pin_input: Option<f64>,
+) -> (MechanismModel<f64>, [usize; 2]) {
+    let mut model = MetaModel::<f64>::new("gurobi_native_balance_ternary");
+    model.set_function_expansion_policy(policy);
+
+    let input = ContinuousVariableItem::with_range(
+        VariableId::standalone(BALANCE_INPUT_ID),
+        "input",
+        input_range,
+    );
+    let input_index = model.register_variable(input).expect("input should register");
+
+    let function = BalanceTernaryzationFunction::new(
+        BALANCE_FUNCTION_ID,
+        "balance_ternary_native",
+        Linear::new(vec![LinearMonomial::new(1.0, input_index)], 0.0),
+        0.5,
+        8.0,
+    );
+    let result_id = function.result_variable().id();
+    model
+        .add_symbol(Arc::new(function))
+        .expect("balance ternary symbol should register");
+
+    let mut mechanism = model
+        .try_into_mechanism_model()
+        .expect("mechanism conversion should succeed");
+    let view = mechanism.linear_column_view();
+    let column_of = |id: VariableId, label: &str| {
+        view.iter()
+            .position(|column| column.id == id)
+            .unwrap_or_else(|| panic!("{label} column should exist"))
+    };
+    let input_column = column_of(VariableId::standalone(BALANCE_INPUT_ID), "input");
+    let result_column = column_of(result_id, "balance ternary result");
+
+    if let Some(value) = pin_input {
+        mechanism.add_constraint(LinearConstraint::new(
+            LinearInequality::new(
+                Linear::new(vec![LinearMonomial::new(1.0, input_column)], 0.0),
+                ConstraintRelation::Equal,
+                value,
+            ),
+            "balance_ternary_pin_input",
+        ));
+    }
+
+    (mechanism, [input_column, result_column])
+}
+
+#[test]
+fn native_balance_tern_write_is_used_by_a_real_solve() {
+    // input = 2 ≥ ε+sb ⇒ res = pos − neg = 1；writer/schema/计数/0 回退全验收。
+    // input = 2 ≥ ε+sb gives res = pos − neg = 1; writer/schema/counts/zero fallbacks all verified.
+    let (mechanism, columns) = balance_ternary_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        VariableRange::bounded(-4.0, 4.0),
+        Some(2.0),
+    );
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            NativeWriteOutcome::Native(record)
+                if record.writer == "gurobi_balance_ternary"
+                    && record.schema == "functions-balance-ternary-1"
+        )),
+        "expected a native balance-ternary write with the stable schema, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[columns[1]] - 1.0).abs() <= 1e-6,
+        "input = 2 must give res = 1: res = {}",
+        solution[columns[1]]
+    );
+}
+
+#[test]
+fn balance_tern_positive_direction_matches_the_eager_solution() {
+    // 正方向：input = 2 ⇒ res = 1，原生与 EAGER 一致。
+    // Positive direction: input = 2 gives res = 1, native and EAGER agree.
+    let (mechanism, columns) = balance_ternary_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        VariableRange::bounded(-4.0, 4.0),
+        Some(2.0),
+    );
+    let solver = GurobiSolver::new();
+    let (output, _report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!((solution[columns[1]] - 1.0).abs() <= 1e-6, "res = {}", solution[columns[1]]);
+
+    let (eager_mechanism, eager_columns) = balance_ternary_target_mechanism(
+        FunctionExpansionPolicy::Eager,
+        VariableRange::bounded(-4.0, 4.0),
+        Some(2.0),
+    );
+    let eager = solver
+        .solve_linear(&eager_mechanism.into_linear_triad_model())
+        .expect("gurobi should solve the eager model");
+    let eager_solution = eager
+        .solution
+        .as_ref()
+        .expect("the eager solve should carry a solution");
+    assert!(
+        (eager_solution[eager_columns[1]] - solution[columns[1]]).abs() <= 1e-6,
+        "the two paths must agree on res: eager = {}, native = {}",
+        eager_solution[eager_columns[1]],
+        solution[columns[1]]
+    );
+}
+
+#[test]
+fn balance_tern_negative_direction_matches_the_eager_solution() {
+    // 负方向：input = −2 ≤ −ε−sb ⇒ res = −1，原生与 EAGER 一致。
+    // Negative direction: input = −2 ≤ −ε−sb gives res = −1, native and EAGER agree.
+    let (mechanism, columns) = balance_ternary_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        VariableRange::bounded(-4.0, 4.0),
+        Some(-2.0),
+    );
+    let solver = GurobiSolver::new();
+    let (output, _report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!((solution[columns[1]] - (-1.0)).abs() <= 1e-6, "res = {}", solution[columns[1]]);
+
+    let (eager_mechanism, eager_columns) = balance_ternary_target_mechanism(
+        FunctionExpansionPolicy::Eager,
+        VariableRange::bounded(-4.0, 4.0),
+        Some(-2.0),
+    );
+    let eager = solver
+        .solve_linear(&eager_mechanism.into_linear_triad_model())
+        .expect("gurobi should solve the eager model");
+    let eager_solution = eager
+        .solution
+        .as_ref()
+        .expect("the eager solve should carry a solution");
+    assert!(
+        (eager_solution[eager_columns[1]] - solution[columns[1]]).abs() <= 1e-6,
+        "the two paths must agree on res: eager = {}, native = {}",
+        eager_solution[eager_columns[1]],
+        solution[columns[1]]
+    );
+}
+
+#[test]
+fn an_unbounded_balance_tern_input_falls_back() {
+    // input 列无界 ⇒ SDK 盒读不到有限界 ⇒ band 松弛无法证明 ⇒ 整体回退，回退后仍可行。
+    // An unbounded input column means no finite SDK box, so the band relaxations cannot be proven:
+    // the whole write falls back and the fallback model stays feasible.
+    let (mechanism, _columns) = balance_ternary_target_mechanism(
+        FunctionExpansionPolicy::DeferredNativeFirst,
+        VariableRange::unbounded(),
+        None,
+    );
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the fallback model");
+    assert_eq!(report.native_writes, 0);
+    assert!(
+        report.materialized_fallbacks >= 1,
+        "the unbounded input must force a fallback: {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
 }

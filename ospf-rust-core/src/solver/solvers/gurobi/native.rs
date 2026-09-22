@@ -28,10 +28,12 @@ use crate::model::intermediate::{
     NativeWriteRecord, NativeWriteRequest,
 };
 use crate::symbol::function::{
-    AbsStructure, AndStructure, BinaryzationStructure, CosStructure, INDICATOR_TOLERANCE,
-    IfInStructure, ImplyStructure, InequalityKind, InequalityStructure, MaxStructure, MinStructure,
-    OrStructure, SigmoidStructure, SinStructure, binaryzation_core_relations,
-    if_in_value_core_relations, imply_coupling_indicators, indicator_core_relations,
+    AbsStructure, AndStructure, BalanceTernaryzationStructure, BinaryzationStructure, ConditionalThenStructure, CosStructure,
+    INDICATOR_TOLERANCE, IfStructure, InValuesStructure, ImplyStructure, InequalityKind,
+    InequalityStructure, LogisticStructure, MaskingStructure, MaskingWithPolyMaskStructure,
+    MaxStructure, MinStructure, OrStructure, SinStructure, binaryzation_core_relations,
+    conditional_value_relation_core, imply_coupling_indicators, in_values_value_core_relations,
+    indicator_core_relations,
 };
 use crate::variable::VariableId;
 use grb::constr::IneqExpr;
@@ -199,6 +201,31 @@ impl GurobiNativeContainer {
     /// 可变访问 Gurobi 模型 / Mutably access the Gurobi model.
     pub fn model_mut(&mut self) -> &mut Model {
         &mut self.model
+    }
+
+    /// 写入一条普通线性行 / Write one plain linear row.
+    ///
+    /// 原生 writer 除了 genconstr 之外，还需要写与即时展开恒等的普通线性行（如
+    /// BalanceTernaryzation 的 `_bter_result` / `_bter_exclusive`）：等式第三支需要合取开关，
+    /// 指示约束表达不了；Kotlin 的原生路径本就混写「指示 + 普通行」。本入口包一层
+    /// `grb::Model::add_constr`，失败映射为模型错误。 / Native writers sometimes need plain
+    /// linear rows identical to their eager expansion (BalanceTernaryzation's `_bter_result` /
+    /// `_bter_exclusive`): the third branch of the equality needs a conjunction switch that
+    /// indicators cannot express, while Kotlin's native path mixes indicators and plain rows.
+    /// Wraps `grb::Model::add_constr`; failures map to a model error.
+    pub fn add_linear_row(
+        &mut self,
+        name: &str,
+        terms: Vec<(Var, f64)>,
+        constant: f64,
+        relation: ConstraintRelation,
+        rhs: f64,
+    ) -> Result<()> {
+        let expression = indicator_condition(&terms, constant, relation, rhs);
+        self.model.add_constr(name, expression).map_err(|error| {
+            ModelError::InvalidConstraint(format!("failed to add linear row `{name}`: {error}"))
+        })?;
+        Ok(())
     }
 
     /// 取回模型与列映射 / Take back the model and the column mapping.
@@ -794,8 +821,8 @@ pub fn plan_cos_native(
 }
 
 /// 规划 SIGMOID 的原生写入 / Plan the native write of a SIGMOID structure.
-pub fn plan_sigmoid_native(
-    structure: &SigmoidStructure<f64>,
+pub fn plan_logistic_native(
+    structure: &LogisticStructure<f64>,
 ) -> std::result::Result<PwlNativePlan, FallbackReason> {
     plan_pwl_native(
         "sigmoid",
@@ -844,7 +871,7 @@ fn is_pwl_structure(structure: &dyn DeferredFunctionStructure<f64>) -> bool {
     let any = structure.as_any();
     any.downcast_ref::<SinStructure<f64>>().is_some()
         || any.downcast_ref::<CosStructure<f64>>().is_some()
-        || any.downcast_ref::<SigmoidStructure<f64>>().is_some()
+        || any.downcast_ref::<LogisticStructure<f64>>().is_some()
 }
 
 impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiPwlWriter {
@@ -886,8 +913,8 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiPwlWriter {
                 plan_sin_native(structure)
             } else if let Some(structure) = any.downcast_ref::<CosStructure<f64>>() {
                 plan_cos_native(structure)
-            } else if let Some(structure) = any.downcast_ref::<SigmoidStructure<f64>>() {
-                plan_sigmoid_native(structure)
+            } else if let Some(structure) = any.downcast_ref::<LogisticStructure<f64>>() {
+                plan_logistic_native(structure)
             } else {
                 return Err(ModelError::InvalidConstraint(
                     "gurobi_pwl writer received a structure that is not a piecewise-linear shape"
@@ -1582,8 +1609,8 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIndicatorWriter 
     }
 }
 
-/// IF-IN（离散值集合判定）原生写入的 schema 版本
-/// Schema version of the native IF-IN (discrete set membership) write.
+/// InValues（离散值集合判定）原生写入的 schema 版本
+/// Schema version of the native InValues (discrete set membership) write.
 ///
 /// 与关系指示分开一个 writer 与 schema：原生结构不只包含指示约束，还包含一条把候选值指示列聚合起
 /// 来的 `or` 一般约束，并且带一份**逐候选值**的 Big-M 冗余证明。把两者混在同一个 schema 下会让
@@ -1593,9 +1620,9 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIndicatorWriter 
 /// indicator constraints but also an `or` general constraint aggregating the candidate indicators, plus
 /// a **per-candidate** Big-M redundancy proof. Sharing one schema would make recovery unable to tell the
 /// two meanings apart.
-pub const GUROBI_IF_IN_SCHEMA: &str = "functions-if-in-1";
+pub const GUROBI_IN_VALUES_SCHEMA: &str = "functions-in-values-1";
 
-/// IF-IN Big-M 冗余证明允许的容差 / Tolerance allowed by the IF-IN Big-M redundancy proof.
+/// InValues Big-M 冗余证明允许的容差 / Tolerance allowed by the InValues Big-M redundancy proof.
 ///
 /// 与关系指示的证明同源：取值 1e-9，比 `STRICT_BOUNDARY = 2e-8` 小一个多数量级，因此只用于吸收
 /// 推断链（`max_difference + STRICT_BOUNDARY` 及其 ULP 扩张）上的浮点舍入，不会掩盖真正的界不足。
@@ -1605,7 +1632,7 @@ pub const GUROBI_IF_IN_SCHEMA: &str = "functions-if-in-1";
 /// (`max_difference + STRICT_BOUNDARY` and its ULP expansion) and never hides a genuinely short bound.
 pub const GUROBI_IF_IN_BIG_M_TOLERANCE: f64 = GUROBI_INDICATOR_BIG_M_TOLERANCE;
 
-/// IF-IN 原生写入计划 / Plan for one native IF-IN write.
+/// InValues 原生写入计划 / Plan for one native InValues write.
 ///
 /// 每个候选值 `values[i]` 在平移量 `s_i = input - values[i]` 上贡献四条指示约束：
 ///
@@ -1632,7 +1659,7 @@ pub const GUROBI_IF_IN_BIG_M_TOLERANCE: f64 = GUROBI_INDICATOR_BIG_M_TOLERANCE;
 /// [`Self::prove_big_m_relaxation`]). The result column is then aggregated through
 /// `result = OR(b_0..b_{n-1})`, equivalent to the eager `or_lb_*` / `or_ub` row families.
 #[derive(Debug, Clone, PartialEq)]
-pub struct IfInNativePlan {
+pub struct InValuesNativePlan {
     /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
     pub name: String,
     /// 结果列（集合判定的二值列）/ Result column (the binary set-membership column)
@@ -1657,7 +1684,7 @@ pub struct IfInNativePlan {
     pub strict_boundary: f64,
 }
 
-impl IfInNativePlan {
+impl InValuesNativePlan {
     /// 证明第 `value_index` 个候选值在输入盒上被 Big-M 松弛掉的行恒成立。
     ///
     /// 需要成立的两条（其余松弛行都比它们弱）：
@@ -1723,11 +1750,11 @@ impl IfInNativePlan {
     }
 }
 
-/// 判断一个 IF-IN 结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+/// 判断一个 InValues 结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
 ///
 /// 允许的形态：值集合非空、Big-M 正且有限、输入多项式至少有一个非零变量项、每个集合值与输入常数
 /// 都有限、辅助列数量与集合大小一致。核心关系与两个容差直接来自符号文件里的
-/// [`if_in_value_core_relations`]，因此 band 容差与严格边界与即时路径逐位相同。
+/// [`in_values_value_core_relations`]，因此 band 容差与严格边界与即时路径逐位相同。
 ///
 /// 明确拒绝（回退 EAGER）：
 ///
@@ -1736,14 +1763,14 @@ impl IfInNativePlan {
 /// - **辅助列与集合大小不一致**：说明结构不是本 writer 认识的那一种，宁可回退。
 ///
 /// **本函数不做盒证明**：逐候选值的 Big-M 冗余需要读 SDK 列界，由 writer 在解析出列之后完成
-/// （见 [`GurobiIfInWriter::write_batch`]）。
+/// （见 [`GurobiInValuesWriter::write_batch`]）。
 ///
-/// Decide whether an IF-IN structure may be written natively and produce its write plan (SDK-free).
+/// Decide whether an InValues structure may be written natively and produce its write plan (SDK-free).
 ///
 /// Admitted shape: a non-empty value set, a positive finite Big-M, an input polynomial with at least one
 /// non-zero variable term, finite set values and input constant, and a helper count matching the set
 /// size. The core relations and both tolerances come straight from the symbol file's
-/// [`if_in_value_core_relations`], so the band tolerance and strict boundary are bit-identical to the
+/// [`in_values_value_core_relations`], so the band tolerance and strict boundary are bit-identical to the
 /// eager path's.
 ///
 /// Explicitly rejected (kept on EAGER):
@@ -1757,10 +1784,10 @@ impl IfInNativePlan {
 ///
 /// This function performs **no box proof**: the per-candidate Big-M redundancy needs the SDK column bounds
 /// and therefore happens in the writer once the columns are resolved (see
-/// [`GurobiIfInWriter::write_batch`]).
-pub fn plan_if_in_native(
-    structure: &IfInStructure<f64>,
-) -> std::result::Result<IfInNativePlan, FallbackReason> {
+/// [`GurobiInValuesWriter::write_batch`]).
+pub fn plan_in_values_native(
+    structure: &InValuesStructure<f64>,
+) -> std::result::Result<InValuesNativePlan, FallbackReason> {
     let name = structure.name();
 
     let raw_values = structure.values();
@@ -1824,8 +1851,8 @@ pub fn plan_if_in_native(
         )));
     }
 
-    let core = if_in_value_core_relations();
-    Ok(IfInNativePlan {
+    let core = in_values_value_core_relations();
+    Ok(InValuesNativePlan {
         name: name.to_string(),
         result: structure.result().clone(),
         coefficients,
@@ -1841,10 +1868,10 @@ pub fn plan_if_in_native(
     })
 }
 
-/// Gurobi 的 IF-IN（离散值集合判定）原生 writer / Gurobi's native IF-IN (set membership) writer.
+/// Gurobi 的 InValues（离散值集合判定）原生 writer / Gurobi's native InValues (set membership) writer.
 ///
-/// 服务 [`IfInStructure`]（`ospf-rust-core/src/symbol/functions/if_in.rs`）：每个候选值写四条
-/// `add_genconstr_indicator`（band 两条 + side 两条，见 [`IfInNativePlan`]），再用一条
+/// 服务 [`InValuesStructure`]（`ospf-rust-core/src/symbol/functions/if_in.rs`）：每个候选值写四条
+/// `add_genconstr_indicator`（band 两条 + side 两条，见 [`InValuesNativePlan`]），再用一条
 /// `add_genconstr_or` 聚合候选值指示列，与即时展开的 `or_lb_*` / `or_ub` 行族等价（二元变量上
 /// `result = OR(b_i)` 正是那两族行的精确 hull）。
 ///
@@ -1854,8 +1881,8 @@ pub fn plan_if_in_native(
 /// 候选值平移；界不完整或某条松弛行不成立即回退）。绝不写语义不完整的关系；真正的 SDK 写入失败
 /// 返回 `Err`，由调用方对整模型回退。
 ///
-/// Serves [`IfInStructure`] (`ospf-rust-core/src/symbol/functions/if_in.rs`): every candidate writes
-/// four `add_genconstr_indicator` calls (two band rows plus two side rows, see [`IfInNativePlan`]) and one
+/// Serves [`InValuesStructure`] (`ospf-rust-core/src/symbol/functions/if_in.rs`): every candidate writes
+/// four `add_genconstr_indicator` calls (two band rows plus two side rows, see [`InValuesNativePlan`]) and one
 /// `add_genconstr_or` aggregates the candidate indicators, equivalent to the eager `or_lb_*` / `or_ub`
 /// row families (over binary variables `result = OR(b_i)` is exactly their precise hull).
 ///
@@ -1868,24 +1895,24 @@ pub fn plan_if_in_native(
 /// relation is never written, and a genuine SDK write failure returns `Err` so the caller can fall back
 /// for the whole model.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct GurobiIfInWriter;
+pub struct GurobiInValuesWriter;
 
-impl GurobiIfInWriter {
+impl GurobiInValuesWriter {
     /// 创建 writer / Create the writer.
     pub fn new() -> Self {
         Self
     }
 }
 
-impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiInValuesWriter {
     fn name(&self) -> &str {
-        "gurobi_if_in"
+        "gurobi_in_values"
     }
 
     fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
         structure
             .as_any()
-            .downcast_ref::<IfInStructure<f64>>()
+            .downcast_ref::<InValuesStructure<f64>>()
             .is_some()
     }
 
@@ -1903,7 +1930,7 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
         // pending changes are flushed once first.
         container.model_mut().update().map_err(|error| {
             ModelError::InvalidConstraint(format!(
-                "gurobi_if_in writer failed to flush pending model changes before the big-M proof: {error}"
+                "gurobi_in_values writer failed to flush pending model changes before the big-M proof: {error}"
             ))
         })?;
 
@@ -1912,15 +1939,15 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
             let structure = request
                 .structure
                 .as_any()
-                .downcast_ref::<IfInStructure<f64>>()
+                .downcast_ref::<InValuesStructure<f64>>()
                 .ok_or_else(|| {
                     ModelError::InvalidConstraint(
-                        "gurobi_if_in writer received a structure that is not an if-in structure"
+                        "gurobi_in_values writer received a structure that is not an if-in structure"
                             .to_string(),
                     )
                 })?;
 
-            let plan = match plan_if_in_native(structure) {
+            let plan = match plan_in_values_native(structure) {
                 Ok(plan) => plan,
                 Err(reason) => {
                     outcomes.push(NativeWriteOutcome::Fallback(reason));
@@ -2139,7 +2166,7 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
                     )
                     .map_err(|error| {
                         ModelError::InvalidConstraint(format!(
-                            "gurobi_if_in writer failed to write if_in `{}` band upper row for candidate {value_index}: {error}",
+                            "gurobi_in_values writer failed to write if_in `{}` band upper row for candidate {value_index}: {error}",
                             plan.name
                         ))
                     })?;
@@ -2160,7 +2187,7 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
                     )
                     .map_err(|error| {
                         ModelError::InvalidConstraint(format!(
-                            "gurobi_if_in writer failed to write if_in `{}` band lower row for candidate {value_index}: {error}",
+                            "gurobi_in_values writer failed to write if_in `{}` band lower row for candidate {value_index}: {error}",
                             plan.name
                         ))
                     })?;
@@ -2183,7 +2210,7 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
                     )
                     .map_err(|error| {
                         ModelError::InvalidConstraint(format!(
-                            "gurobi_if_in writer failed to write if_in `{}` out upper row for candidate {value_index}: {error}",
+                            "gurobi_in_values writer failed to write if_in `{}` out upper row for candidate {value_index}: {error}",
                             plan.name
                         ))
                     })?;
@@ -2206,7 +2233,7 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
                     )
                     .map_err(|error| {
                         ModelError::InvalidConstraint(format!(
-                            "gurobi_if_in writer failed to write if_in `{}` out lower row for candidate {value_index}: {error}",
+                            "gurobi_in_values writer failed to write if_in `{}` out lower row for candidate {value_index}: {error}",
                             plan.name
                         ))
                     })?;
@@ -2221,14 +2248,14 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfInWriter {
                 )
                 .map_err(|error| {
                     ModelError::InvalidConstraint(format!(
-                        "gurobi_if_in writer failed to write if_in `{}` or constraint: {error}",
+                        "gurobi_in_values writer failed to write if_in `{}` or constraint: {error}",
                         plan.name
                     ))
                 })?;
 
             outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
                 self.name(),
-                GUROBI_IF_IN_SCHEMA,
+                GUROBI_IN_VALUES_SCHEMA,
             )));
         }
 
@@ -2348,7 +2375,7 @@ pub fn plan_or_native(
 /// 结果列或任一操作数列不是二元，都回退。辅助列门控保留为恒真的一致性检查（结构上报的 helpers 为空）。
 /// 真正的 SDK 写入失败返回 `Err`，由调用方对整模型回退。
 ///
-/// 约束命名用 `{name}_and_native` / `{name}_or_native`，与 IF-IN 用来聚合候选值指示列的那条
+/// 约束命名用 `{name}_and_native` / `{name}_or_native`，与 InValues 用来聚合候选值指示列的那条
 /// `{name}_or` 明确区分：两者虽然都落在 `add_genconstr_or` 上，但语义位置不同（一个是函数的定义
 /// 关系，一个是候选值聚合），各自独立写入、不共用约束名。
 ///
@@ -2366,7 +2393,7 @@ pub fn plan_or_native(
 /// model.
 ///
 /// Constraints are named `{name}_and_native` / `{name}_or_native`, explicitly distinct from the
-/// `{name}_or` IF-IN uses to aggregate candidate indicators: both land on `add_genconstr_or` but in
+/// `{name}_or` InValues uses to aggregate candidate indicators: both land on `add_genconstr_or` but in
 /// different semantic positions (a function's defining relation versus a candidate aggregation), so they
 /// are written independently and never share a constraint name.
 #[derive(Debug, Default, Clone, Copy)]
@@ -3544,13 +3571,2336 @@ impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiImplyWriter {
     }
 }
 
+/// 条件值原生写入的 schema 版本 / Schema version of the native conditional-value write.
+pub const GUROBI_CONDITIONAL_VALUE_SCHEMA: &str = "functions-conditional-value-1";
+
+/// 条件值原生写入计划 / Plan for one native conditional-value write.
+///
+/// 即时展开 = 条件块（2 条把条件差式 `s` 与条件指示列 `ind` 线性化的行）+ 条件指示器内部的
+/// **等式链接行** `result_ind − ind = 0` + 分支块（4 条 `result = y·t` 的 McCormick 行，开关取条件
+/// 指示器的 **result 列** `result_ind`）。原生写入用 6 条指示约束覆盖：
+///
+/// | # | 指示列 | 取值 | 条件 |
+/// |---|---|---|---|
+/// | 1 | `ind` | 1 | `s REL when_true`（条件核心关系） |
+/// | 2 | `ind` | 0 | `s REL when_false`（条件核心关系） |
+/// | 3 | `result_ind` | 1 | `result − t = 0`（真分支等式） |
+/// | 4 | `result_ind` | 0 | `result = 0`（假分支等式） |
+/// | 5 | `ind` | 1 | `result − t = 0`（真分支等式） |
+/// | 6 | `ind` | 0 | `result = 0`（假分支等式） |
+///
+/// **等价性是二元域上「公开列投影」的点集等价，不是逐行对应**：`ind` 与 `result_ind` 都是内部二值列且被
+/// 上报为辅助列（`helpers_are_exclusive()` 保证它们不被外部引用）。两条分支等式对**两列各写一遍**后，即时
+/// 那条 `result_ind = ind` 的等式链接行就由「两列各自唯一决定同一个 `result`」推导出来：两列取值不同时原生
+/// 约束会强制 `t = 0` 且 `result = 0`，而该公开列点恰好也是即时展开在「两列同取假」时的可行点；反过来即时
+/// 可行点把两列取成同值即可满足全部 6 条。条件块与分支块被范围松弛掉的行分别是符号声明的条件范围与 then
+/// 范围（见 [`ConditionalValueNativePlan::prove_declared_range_relaxations`]），因此本批**不从 SDK 读列界**。
+///
+/// The eager expansion is the condition block (two rows linearising the condition difference `s` against the
+/// condition indicator column `ind`) plus the condition indicator's internal **equality link row**
+/// `result_ind − ind = 0` plus the branch block (four `result = y·t` McCormick rows keyed on the condition
+/// indicator's **result column** `result_ind`). The native write covers it with six indicator constraints:
+///
+/// | # | indicator column | value | condition |
+/// |---|---|---|---|
+/// | 1 | `ind` | 1 | `s REL when_true` (condition core relation) |
+/// | 2 | `ind` | 0 | `s REL when_false` (condition core relation) |
+/// | 3 | `result_ind` | 1 | `result − t = 0` (true-branch equality) |
+/// | 4 | `result_ind` | 0 | `result = 0` (false-branch equality) |
+/// | 5 | `ind` | 1 | `result − t = 0` (true-branch equality) |
+/// | 6 | `ind` | 0 | `result = 0` (false-branch equality) |
+///
+/// **The equivalence is a point-set equivalence of the public-column projection on the binary domain, not a
+/// row-by-row correspondence**: `ind` and `result_ind` are both internal binary columns reported as helpers
+/// (`helpers_are_exclusive()` guarantees they are not referenced elsewhere). Once the two branch equalities are
+/// written for **both** columns, the eager `result_ind = ind` link row follows from "each column determines the
+/// same `result` uniquely": when the two columns disagree the native constraints force `t = 0` and `result = 0`,
+/// and that public-column point is exactly an eager-feasible point with both columns false; conversely any eager
+/// point satisfies all six by giving both columns the same value. The rows relaxed by a range in the condition
+/// and branch blocks are the symbol's declared condition range and then range respectively (see
+/// [`ConditionalValueNativePlan::prove_declared_range_relaxations`]), which is why this batch **never reads SDK
+/// column bounds**.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConditionalValueNativePlan {
+    /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
+    pub name: String,
+    /// 结果列 `result` / Result column `result`
+    pub result: VariableId,
+    /// 条件指示列 `ind` / Condition indicator column `ind`
+    pub condition_indicator: VariableId,
+    /// 条件指示器的结果列 `result_ind` / Result column of the condition indicator `result_ind`
+    pub condition_result: VariableId,
+    /// 条件差式 `s` 的单项式：条件列下标 + 系数
+    /// Monomials of the condition difference `s`: condition column index + coefficient
+    pub condition_coefficients: Vec<(usize, f64)>,
+    /// 条件差式的常数项 / Constant of the condition difference
+    pub condition_constant: f64,
+    /// 条件指示列取真时的核心关系 / Core relation for `indicator = 1`
+    pub when_true: (ConstraintRelation, f64),
+    /// 条件指示列取假时的核心关系 / Core relation for `indicator = 0`
+    pub when_false: (ConstraintRelation, f64),
+    /// then 多项式的单项式 / Monomials of the then polynomial
+    pub then_coefficients: Vec<(usize, f64)>,
+    /// then 多项式的常数项 / Constant of the then polynomial
+    pub then_constant: f64,
+    /// 符号声明的条件范围下界 / Lower bound of the symbol's declared condition range
+    pub condition_lower: f64,
+    /// 符号声明的条件范围上界 / Upper bound of the symbol's declared condition range
+    pub condition_upper: f64,
+    /// 条件关系的严格边界 / Strict boundary of the condition relation
+    pub strict_boundary: f64,
+    /// then 多项式范围下界 / Lower bound of the then polynomial range
+    pub then_lower: f64,
+    /// then 多项式范围上界 / Upper bound of the then polynomial range
+    pub then_upper: f64,
+}
+
+impl ConditionalValueNativePlan {
+    /// 证明即时展开里被范围松弛掉的行成立 / Prove the rows eager expansion relaxes through a range.
+    ///
+    /// 与其它批次不同，本函数**不读 SDK 列界**：条件块被松弛掉的两侧恰好是符号声明的条件范围
+    /// `[condition_lower, condition_upper]`（`ConditionalIndicatorFunction` 只接受显式有限范围，绝不回退
+    /// 到默认 Big-M），分支块被松弛掉的两侧恰好是 then 多项式的显式有限范围
+    /// `[then_lower, then_upper]`。两者都是符号构造时就已知的受控输入，即时展开的线性化本身就以它们为
+    /// 有效性前提；因此原生写入只需确认这两对范围**有限且有序**、严格边界为正，即可在与即时路径**同一
+    /// 前提**下丢掉那些松弛行。
+    ///
+    /// Unlike the other batches this function **does not read SDK column bounds**: the two sides the condition
+    /// block relaxes are exactly the symbol's declared condition range `[condition_lower, condition_upper]`
+    /// (`ConditionalIndicatorFunction` only accepts explicit finite ranges and never falls back to a default
+    /// Big-M), and the two sides the branch block relaxes are exactly the then polynomial's explicit finite
+    /// range `[then_lower, then_upper]`. Both are controlled inputs known when the symbol is built and the eager
+    /// linearisation's validity is premised on them, so a native write only has to confirm that both pairs are
+    /// finite and ordered and that the strict boundary is positive to drop those relaxed rows under the **same
+    /// premise** as the eager path.
+    pub fn prove_declared_range_relaxations(&self) -> std::result::Result<(), String> {
+        if !self.condition_lower.is_finite()
+            || !self.condition_upper.is_finite()
+            || self.condition_lower > self.condition_upper
+        {
+            return Err(format!(
+                "conditional value `{}` has no finite ordered condition range, got [{}, {}]",
+                self.name, self.condition_lower, self.condition_upper
+            ));
+        }
+        if !self.strict_boundary.is_finite() || self.strict_boundary <= 0.0 {
+            return Err(format!(
+                "conditional value `{}` requires a positive finite strict boundary, got {}",
+                self.name, self.strict_boundary
+            ));
+        }
+        if !self.then_lower.is_finite()
+            || !self.then_upper.is_finite()
+            || self.then_lower > self.then_upper
+        {
+            return Err(format!(
+                "conditional value `{}` has no finite ordered then range, got [{}, {}]",
+                self.name, self.then_lower, self.then_upper
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 判断一个条件值结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+///
+/// 明确拒绝（回退 EAGER）：条件范围使某一分支完全覆盖的**折叠情形**（即时展开退化为
+/// `indicator = v` / `result = v` 两条定值行，没有对应的一般约束接口）、条件指示器自身校验失败、
+/// 结果列或内部条件列出现在 then 多项式里 / 内部条件列出现在条件差式里（指示约束的开关不能同时是它自己的
+/// 操作数）、条件或 then 多项式含非有限系数、条件多项式没有任何变量项（条件核心关系将无意义）。
+///
+/// Decide whether a conditional-value structure may be written natively and produce its write plan
+/// (SDK-free).
+///
+/// Explicitly rejected (kept on EAGER): the **folded case** where the condition range lets one branch cover
+/// everything (eager expansion collapses to the two fixed-value rows `indicator = v` / `result = v`, which have
+/// no general constraint counterpart), a condition indicator that fails its own validation, the result column or
+/// an internal condition column appearing in the then polynomial / an internal condition column appearing in the
+/// condition difference (an indicator constraint's switch cannot also be one of its own operands), non-finite
+/// coefficients in either polynomial, and a condition polynomial without any variable term (its core relation
+/// would be meaningless).
+pub fn plan_conditional_value_native(
+    structure: &ConditionalThenStructure<f64>,
+) -> std::result::Result<ConditionalValueNativePlan, FallbackReason> {
+    let name = structure.name();
+    let symbol = structure.symbol();
+
+    symbol.validate().map_err(|error| {
+        FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering rejected an invalid symbol: {error:?}"
+        ))
+    })?;
+
+    let condition_indicator = symbol.condition_indicator();
+    // 折叠情形：即时展开不再是线性化行，而是两条定值行，原生接口表达不了。
+    // The folded case: eager expansion is no longer a linearisation but two fixed-value rows, which the native
+    // interface cannot express.
+    match condition_indicator.branch_coverage() {
+        Ok(None) => {}
+        Ok(Some(_)) => {
+            return Err(FallbackReason::Rejected(format!(
+                "conditional value `{name}` native lowering rejected the folded case: the declared condition range makes one branch cover everything, so eager expansion emits the fixed-value rows `indicator = v` / `result = v`"
+            )));
+        }
+        Err(error) => {
+            return Err(FallbackReason::Rejected(format!(
+                "conditional value `{name}` native lowering could not classify the condition range: {error:?}"
+            )));
+        }
+    }
+
+    let strict_boundary = *condition_indicator.strict_boundary();
+    if !strict_boundary.is_finite() || strict_boundary <= 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering requires a positive finite strict boundary, got {strict_boundary}"
+        )));
+    }
+
+    let condition = condition_indicator.condition_polynomial();
+    let condition_constant = *condition.constant_term();
+    if !condition_constant.is_finite() {
+        return Err(FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering requires a finite condition constant, got {condition_constant}"
+        )));
+    }
+    let mut condition_coefficients = Vec::with_capacity(condition.monomials().len());
+    for monomial in condition.monomials() {
+        let coefficient = *monomial.coefficient();
+        if !coefficient.is_finite() {
+            return Err(FallbackReason::Rejected(format!(
+                "conditional value `{name}` native lowering requires finite condition coefficients, got {coefficient}"
+            )));
+        }
+        condition_coefficients.push((monomial.var_index(), coefficient));
+    }
+    if !condition_coefficients
+        .iter()
+        .any(|(_, coefficient)| *coefficient != 0.0)
+    {
+        return Err(FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering requires at least one variable term in the condition, got {} monomials with no non-zero coefficient",
+            condition_coefficients.len()
+        )));
+    }
+
+    let then_poly = symbol.then_polynomial();
+    let then_constant = *then_poly.constant_term();
+    if !then_constant.is_finite() {
+        return Err(FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering requires a finite then constant, got {then_constant}"
+        )));
+    }
+    let mut then_coefficients = Vec::with_capacity(then_poly.monomials().len());
+    for monomial in then_poly.monomials() {
+        let coefficient = *monomial.coefficient();
+        if !coefficient.is_finite() {
+            return Err(FallbackReason::Rejected(format!(
+                "conditional value `{name}` native lowering requires finite then coefficients, got {coefficient}"
+            )));
+        }
+        then_coefficients.push((monomial.var_index(), coefficient));
+    }
+
+    let result = structure.result().clone();
+    let condition_indicator_column = condition_indicator.indicator_variable().id();
+    let condition_result = condition_indicator.result_variable().id();
+    if condition_indicator_column == result || condition_result == result {
+        return Err(FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering requires the result column to stay distinct from both condition indicator columns"
+        )));
+    }
+    if condition_indicator_column == condition_result {
+        return Err(FallbackReason::Rejected(format!(
+            "conditional value `{name}` native lowering requires the condition indicator and its result column to stay distinct"
+        )));
+    }
+
+    // 「开关不能出现在自己的条件里」的自指检查放在 writer 里做：那里才能把列下标解析成 SDK 变量并做
+    // 同列比较。planner 里的单项式下标是最终列号口径，而 `VariableId::unique_id()` 是另一套编号，两者不可
+    // 直接比较（这正是本批与第 1 批都踩过的坑）。
+    // The self-reference check ("a switch must not appear in its own condition") happens in the writer, which is
+    // the only place that can resolve column indices into SDK variables and compare them for identity. A
+    // planner-side monomial index is a final column number while `VariableId::unique_id()` uses another
+    // numbering, and the two must never be compared directly (the very trap batch 1 also hit).
+
+    let core = conditional_value_relation_core(condition_indicator.relation(), strict_boundary);
+    // 结构固定为 f64 视角：条件范围与 then 范围本身就是 f64。
+    // The structure is viewed as f64: the condition range and then range are f64 themselves.
+    let condition_bounds = condition_indicator.condition_bounds();
+    let condition_lower = condition_bounds.lower;
+    let condition_upper = condition_bounds.upper;
+    let then_bounds = structure.then_bounds();
+    let then_lower = then_bounds.lower;
+    let then_upper = then_bounds.upper;
+
+    Ok(ConditionalValueNativePlan {
+        name: name.to_string(),
+        result,
+        condition_indicator: condition_indicator_column,
+        condition_result,
+        condition_coefficients,
+        condition_constant,
+        when_true: core.when_true,
+        when_false: core.when_false,
+        then_coefficients,
+        then_constant,
+        condition_lower,
+        condition_upper,
+        strict_boundary,
+        then_lower,
+        then_upper,
+    })
+}
+
+/// Gurobi 的条件值原生 writer / Gurobi's native conditional-value writer.
+///
+/// 服务 [`ConditionalThenStructure`]（`ospf-rust-core/src/symbol/functions/if_then.rs`）：条件块写 2 条指示
+/// 约束，分支块对**两个内部二值列各写一遍**（各 2 条，`ind = 1 ⇒ result − t = 0`、`ind = 0 ⇒ result = 0`），
+/// 合计 6 条，见 [`ConditionalValueNativePlan`] 的映射表与「二元域公开列投影点集等价」论证。
+///
+/// 门控：结果列被固定、辅助列（条件指示器的结果列与条件指示列）被外部引用、结果列或内部列在求解模型中
+/// 缺失、两个内部列不是二元列、planner 的折叠/自指/非有限拒绝，都回退。**冗余证明不读 SDK 列界**：条件块
+/// 与分支块被松弛的两侧是符号声明的条件范围与 then 范围，只校验它们有限有序（见
+/// [`ConditionalValueNativePlan::prove_declared_range_relaxations`]）。
+///
+/// Serves [`ConditionalThenStructure`] (`ospf-rust-core/src/symbol/functions/if_then.rs`): the condition block
+/// writes two indicator constraints while the branch block is written **once per internal binary column** (two
+/// each, `ind = 1 ⇒ result − t = 0` and `ind = 0 ⇒ result = 0`), six in total, as mapped and argued in
+/// [`ConditionalValueNativePlan`].
+///
+/// Gates: a fixed result column, externally referenced helper columns (the condition indicator's result and
+/// indicator columns), a result or internal column missing from the solve model, either internal column not being
+/// binary, and the planner's folded/self-referential/non-finite rejections all force a fallback. The **redundancy
+/// proof never reads SDK column bounds**: the sides relaxed by the condition and branch blocks are the symbol's
+/// declared condition range and then range, and only their finiteness and order are checked (see
+/// [`ConditionalValueNativePlan::prove_declared_range_relaxations`]).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GurobiConditionalValueWriter;
+
+impl GurobiConditionalValueWriter {
+    /// 创建 writer / Create the writer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiConditionalValueWriter {
+    fn name(&self) -> &str {
+        "gurobi_conditional_value"
+    }
+
+    fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
+        structure
+            .as_any()
+            .downcast_ref::<ConditionalThenStructure<f64>>()
+            .is_some()
+    }
+
+    fn write_batch(
+        &self,
+        container: &mut GurobiNativeContainer,
+        requests: &[NativeWriteRequest<'_, f64>],
+    ) -> Result<Option<Vec<NativeWriteOutcome>>> {
+        if requests.is_empty() {
+            return Ok(None);
+        }
+
+        // 与其它 writer 同理：列类型读取需要先把待定变更落地。
+        // As in the other writers: reading column types needs the pending changes flushed first.
+        container.model_mut().update().map_err(|error| {
+            ModelError::InvalidConstraint(format!(
+                "gurobi_conditional_value writer failed to flush pending model changes before the checks: {error}"
+            ))
+        })?;
+
+        let mut outcomes = Vec::with_capacity(requests.len());
+        for request in requests {
+            let structure = request
+                .structure
+                .as_any()
+                .downcast_ref::<ConditionalThenStructure<f64>>()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "gurobi_conditional_value writer received a structure that is not a conditional-value structure"
+                            .to_string(),
+                    )
+                })?;
+
+            let plan = match plan_conditional_value_native(structure) {
+                Ok(plan) => plan,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(reason));
+                    continue;
+                }
+            };
+
+            if request.usage.forbids_native_write() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` native lowering rejected a fixed result column",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // 条件指示器的两个内部列都是辅助列：一旦被外部引用，原生写入与即时展开在这些列上的含义就可能被
+            // 外部行区分出来。
+            // Both internal columns of the condition indicator are helpers: once referenced elsewhere, an
+            // external row could tell the native write and eager expansion apart on them.
+            if !request.usage.helpers_are_exclusive() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` native lowering rejected externally referenced helper columns",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let Some(result_var) = container.variable(&plan.result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(indicator_var) = container.variable(&plan.condition_indicator) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` condition indicator column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(condition_result_var) = container.variable(&plan.condition_result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` condition result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+
+            let mut condition_terms: Vec<(Var, f64)> =
+                Vec::with_capacity(plan.condition_coefficients.len());
+            let mut then_terms: Vec<(Var, f64)> = Vec::with_capacity(plan.then_coefficients.len());
+            let mut missing_column = None;
+            for (index, coefficient) in &plan.condition_coefficients {
+                match container.variable_at(*index) {
+                    Some(var) => condition_terms.push((var, *coefficient)),
+                    None => {
+                        missing_column = Some("condition");
+                        break;
+                    }
+                }
+            }
+            if missing_column.is_none() {
+                for (index, coefficient) in &plan.then_coefficients {
+                    match container.variable_at(*index) {
+                        Some(var) => then_terms.push((var, *coefficient)),
+                        None => {
+                            missing_column = Some("then");
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Some(label) = missing_column {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` {label} column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // 「开关不能出现在自己的条件里」的自指检查放在这里做：只有此处能把 planner 的列下标解析成
+            // SDK 变量并做同列比较（planner 的单项式下标是最终列号口径，而 `VariableId::unique_id()` 是
+            // 另一套编号，两者不可直接比较——这正是第 1 批就踩过的坑）。条件差式不得含两个内部列，then
+            // 多项式不得含结果列，也不得含它所对应的开关列（`result − t = 0` 会把开关当操作数）。
+            // The self-reference check ("a switch must not appear in its own condition") happens here: only
+            // this place can resolve the planner's column indices into SDK variables and compare them for
+            // identity (a planner-side monomial index is a final column number while
+            // `VariableId::unique_id()` uses another numbering, and the two must never be compared directly —
+            // the very trap batch 1 hit). The condition difference must not contain either internal column,
+            // and the then polynomial must not contain the result column or the switch column it is keyed on
+            // (`result − t = 0` would use the switch as an operand).
+            let mut self_reference = None;
+            if condition_terms
+                .iter()
+                .any(|(var, _)| *var == indicator_var || *var == condition_result_var)
+            {
+                self_reference = Some("condition");
+            } else if then_terms.iter().any(|(var, _)| {
+                *var == result_var || *var == indicator_var || *var == condition_result_var
+            }) {
+                self_reference = Some("then");
+            }
+            if let Some(label) = self_reference {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` native lowering requires the {label} polynomial to keep the result and internal condition columns out of its own indicator conditions",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // 两个内部列必须都是二元列：分支等式的点集等价依赖二元性（见 writer 文档）。
+            // Both internal columns must be binary: the branch equalities' point-set equivalence relies on
+            // binariness (see the writer documentation).
+            let mut non_binary = None;
+            for (var, label) in [
+                (indicator_var, "condition indicator"),
+                (condition_result_var, "condition result"),
+            ] {
+                match container.model_mut().get_obj_attr(attr::VType, &var) {
+                    Ok(VarType::Binary) => {}
+                    Ok(other) => {
+                        non_binary = Some(format!("{label} column is {other:?}"));
+                        break;
+                    }
+                    Err(error) => {
+                        non_binary = Some(format!(
+                            "could not read the {label} column type from the Gurobi model: {error}"
+                        ));
+                        break;
+                    }
+                }
+            }
+            if let Some(reason) = non_binary {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` native lowering requires binary internal columns: {reason}",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // 冗余证明：只校验符号声明的条件范围与 then 范围有限有序（本批不读 SDK 列界）。
+            // Redundancy proof: only check that the symbol's declared condition range and then range are finite
+            // and ordered (this batch reads no SDK column bounds).
+            if let Err(reason) = plan.prove_declared_range_relaxations() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "conditional value `{}` native lowering cannot justify dropping the range relaxations: {reason}",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // 分支等式：`result − t = 0`（真分支）与 `result = 0`（假分支）。`grb` 的 `IneqExpr` 带
+            // `ConstrSense`，因此 `ConstrSense::Equal` 会被原样传给 `GRBaddgenconstrIndicator`。
+            // Branch equalities: `result − t = 0` (true branch) and `result = 0` (false branch). `grb`'s
+            // `IneqExpr` carries a `ConstrSense`, so `ConstrSense::Equal` reaches `GRBaddgenconstrIndicator`
+            // unchanged.
+            let mut branch_terms: Vec<(Var, f64)> = Vec::with_capacity(then_terms.len() + 1);
+            branch_terms.push((result_var, 1.0));
+            for (var, coefficient) in &then_terms {
+                branch_terms.push((*var, -*coefficient));
+            }
+
+            let mut write_failure = None;
+            for (key_var, is_condition_block, suffix) in [
+                (indicator_var, true, "condition"),
+                (condition_result_var, false, "branch_result"),
+                (indicator_var, false, "branch_indicator"),
+            ] {
+                for (indicator_value, side) in [(true, "true"), (false, "false")] {
+                    let condition = if is_condition_block {
+                        let (relation, rhs) = if indicator_value {
+                            plan.when_true
+                        } else {
+                            plan.when_false
+                        };
+                        indicator_condition(
+                            &condition_terms,
+                            plan.condition_constant,
+                            relation,
+                            rhs,
+                        )
+                    } else if indicator_value {
+                        indicator_condition(
+                            &branch_terms,
+                            -plan.then_constant,
+                            ConstraintRelation::Equal,
+                            0.0,
+                        )
+                    } else {
+                        indicator_condition(
+                            &[(result_var, 1.0)],
+                            0.0,
+                            ConstraintRelation::Equal,
+                            0.0,
+                        )
+                    };
+                    if let Err(error) = container.model_mut().add_genconstr_indicator(
+                        &format!("{}_{suffix}_{side}", plan.name),
+                        key_var,
+                        indicator_value,
+                        condition,
+                    ) {
+                        write_failure = Some(format!("failed to write `{suffix}_{side}`: {error}"));
+                        break;
+                    }
+                }
+                if write_failure.is_some() {
+                    break;
+                }
+            }
+            if let Some(reason) = write_failure {
+                return Err(ModelError::InvalidConstraint(format!(
+                    "gurobi_conditional_value writer {reason}"
+                ))
+                .into());
+            }
+
+            outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
+                self.name(),
+                GUROBI_CONDITIONAL_VALUE_SCHEMA,
+            )));
+        }
+
+        Ok(Some(outcomes))
+    }
+}
+
+/// 掩码原生写入的 schema 版本 / Schema version of the native masking write.
+pub const GUROBI_MASKING_SCHEMA: &str = "functions-masking-1";
+
+/// 多项式掩码原生写入的 schema 版本 / Schema version of the native polynomial-mask write.
+pub const GUROBI_POLY_MASK_SCHEMA: &str = "functions-poly-mask-1";
+
+/// 掩码系 Big-M 冗余证明允许的容差 / Tolerance allowed by the masking Big-M redundancy proof.
+///
+/// 与关系指示的证明同源（1e-9）：即时四条掩码行两侧的松弛量就是输入盒界本身，容差只吸收盒界求和上的
+/// 浮点舍入，不会掩盖真正的界不足。
+///
+/// Same origin as the relation indicator's proof (1e-9): the relaxed sides of the four eager masking rows are
+/// exactly the input box bounds, so the tolerance only absorbs floating-point rounding in the box sum and never
+/// hides a genuinely short bound.
+pub const GUROBI_MASKING_BIG_M_TOLERANCE: f64 = GUROBI_INDICATOR_BIG_M_TOLERANCE;
+
+/// 平衡三值化原生写入 schema / Native balance-ternary write schema.
+pub const GUROBI_BALANCE_TERN_SCHEMA: &str = "functions-balance-ternary-1";
+
+/// 平衡三值化 band 行的 Big-M 容差 / Big-M tolerance for the balance-ternary band rows.
+pub const GUROBI_BALANCE_TERN_BIG_M_TOLERANCE: f64 = GUROBI_INDICATOR_BIG_M_TOLERANCE;
+
+/// 读输入多项式 `Σ c_k x_k + constant` 在 SDK 盒 `[x_min, x_max]` 上的取值区间。
+///
+/// 与其它 writer 同源：Gurobi 用 ±1e100（`grb::INFINITY`）表示无穷界，它本身是有限数，必须显式比较；
+/// 界不完整（无界或读不到）返回原因字符串，由调用方回退。
+///
+/// Read the range of the input polynomial `Σ c_k x_k + constant` over the SDK box `[x_min, x_max]`.
+///
+/// Same origin as the other writers: Gurobi represents infinite bounds as ±1e100 (`grb::INFINITY`), which are
+/// finite, so they must be compared explicitly; incomplete bounds (unbounded or unreadable) return a reason the
+/// caller turns into a fallback.
+fn sdk_polynomial_box(
+    container: &mut GurobiNativeContainer,
+    terms: &[(Var, f64)],
+    constant: f64,
+) -> std::result::Result<(f64, f64), String> {
+    let mut minimum = constant;
+    let mut maximum = constant;
+    for (var, coefficient) in terms {
+        let bounds = {
+            let model = container.model_mut();
+            match model.get_obj_attr(attr::LB, var) {
+                Ok(lb) => model
+                    .get_obj_attr(attr::UB, var)
+                    .map(|ub| (lb, ub))
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error.to_string()),
+            }
+        };
+        let (lower_bound, upper_bound) =
+            bounds.map_err(|error| format!("could not read the column bounds from the Gurobi model: {error}"))?;
+        if !lower_bound.is_finite()
+            || !upper_bound.is_finite()
+            || lower_bound <= -INFINITY
+            || upper_bound >= INFINITY
+        {
+            return Err(format!(
+                "column bounds [{lower_bound}, {upper_bound}] are not a finite interval"
+            ));
+        }
+        if *coefficient >= 0.0 {
+            minimum += coefficient * lower_bound;
+            maximum += coefficient * upper_bound;
+        } else {
+            minimum += coefficient * upper_bound;
+            maximum += coefficient * lower_bound;
+        }
+    }
+    Ok((minimum, maximum))
+}
+
+/// 掩码原生写入计划 / Plan for one native masking write.
+///
+/// 即时展开是四条 Big-M 行（`(y − x) + M·m ≤ M`、`(y − x) − M·m ≥ −M`、`y − M·m ≤ 0`、`y + M·m ≥ 0`），
+/// 核心语义是「`m = 1 ⇒ y = x`、`m = 0 ⇒ y = 0`」，原生写入就是这两条**等式指示**（`grb` 的 `IneqExpr` 带
+/// `ConstrSense`，`ConstrSense::Equal` 会被原样传给 `GRBaddgenconstrIndicator`）。
+///
+/// 四条即时行相对这两条指示的差别只有 Big-M 松弛，且松弛**不是**在 `y − x` 的列盒上直接成立，而是靠核心
+/// 等式归约后成立：`m = 0` 时核心行把 `y` 钉成 0，于是 `|y − x| ≤ M` 归约为 `|x| ≤ M`；`m = 1` 时 `y = x`，
+/// 于是 `|y| ≤ M` 归约为 `|x| ≤ M`。因此需要证明的义务只有一条：**`M ≥ max|x|`（输入盒界）**——这正是
+/// [`Self::prove_input_box`] 检查的内容（若不满足即回退，绝不写入语义不完整的关系）。
+///
+/// The eager expansion is four Big-M rows (`(y − x) + M·m ≤ M`, `(y − x) − M·m ≥ −M`, `y − M·m ≤ 0`,
+/// `y + M·m ≥ 0`) whose core semantics is `m = 1 ⇒ y = x` and `m = 0 ⇒ y = 0`, so the native write is those two
+/// **equality indicators** (`grb`'s `IneqExpr` carries a `ConstrSense` and `ConstrSense::Equal` reaches
+/// `GRBaddgenconstrIndicator` unchanged).
+///
+/// The four eager rows differ from the two indicators only through Big-M relaxations, and those relaxations do
+/// **not** hold directly on the `y − x` column box: they hold after the core equalities reduce them — at `m = 0`
+/// the core rows pin `y` to 0 so `|y − x| ≤ M` reduces to `|x| ≤ M`, and at `m = 1` `y = x` so `|y| ≤ M` reduces
+/// to `|x| ≤ M`. The only obligation is therefore **`M ≥ max|x|` over the input box**, exactly what
+/// [`Self::prove_input_box`] checks (a failure forces a fallback rather than writing an incomplete relation).
+#[derive(Debug, Clone, PartialEq)]
+/// 平衡三值化原生写入计划 / Plan for one native balance-ternary write.
+///
+/// 即时展开为 6 行：2 条普通行（`_bter_result`：`res − pos + neg = 0`；`_bter_exclusive`：
+/// `pos + neg ≤ 1`）+ 4 条 band Big-M 行。原生写入为「2 条普通行（经容器 `add_linear_row`
+/// 恒等替换，无需证明）+ 4 条 band 指示」，与 Kotlin 的 `_bter_*` 对照一一对应。
+///
+/// The eager expansion is six rows: two plain rows (`_bter_result`: `res − pos + neg = 0`;
+/// `_bter_exclusive`: `pos + neg ≤ 1`) plus four band Big-M rows. The native write is "two plain
+/// rows (written identically through the container's `add_linear_row`, no proof needed) plus four
+/// band indicators", matching Kotlin's `_bter_*` rows one to one.
+pub struct BalanceTernNativePlan {
+    /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
+    pub name: String,
+    /// 结果列 `res`（`res = pos − neg`）/ Result column `res` (`res = pos − neg`)
+    pub result: VariableId,
+    /// 正号指示列 `pos` / Positive sign indicator column
+    pub positive: VariableId,
+    /// 负号指示列 `neg` / Negative sign indicator column
+    pub negative: VariableId,
+    /// 输入多项式 `input` 的单项式：列下标 + 系数 / Monomials of the input polynomial
+    pub input_coefficients: Vec<(usize, f64)>,
+    /// 输入多项式的常数项 / Constant of the input polynomial
+    pub input_constant: f64,
+    /// 结构创建时固定的 Big-M / Big-M fixed when the structure was created
+    pub big_m: f64,
+    /// 零带阈值 / Zero-band threshold
+    pub epsilon: f64,
+    /// 严格边界 / Strict boundary
+    pub strict_boundary: f64,
+}
+
+impl BalanceTernNativePlan {
+    /// 证明即时 4 条 band 行的 Big-M 松弛成立 / Prove the four band rows' Big-M relaxations hold.
+    ///
+    /// 四条义务：`M + x_min ≥ ε+sb`、`M − x_max ≥ ε+sb`、`M + x_min ≥ −ε`、`M − x_max ≥ ε`。
+    /// 结构推断 `M = bound + ε + sb` 且 `bound ≥ max|x|`，四条在盒角取等成立。
+    ///
+    /// The four obligations: `M + x_min ≥ ε+sb`, `M − x_max ≥ ε+sb`, `M + x_min ≥ −ε` and
+    /// `M − x_max ≥ ε`. The structure infers `M = bound + ε + sb` with `bound ≥ max|x|`, so all
+    /// four hold with equality at the box corners.
+    pub fn prove_input_box(&self, x_min: f64, x_max: f64) -> std::result::Result<(), String> {
+        if !x_min.is_finite() || !x_max.is_finite() || x_min > x_max {
+            return Err(format!(
+                "balance ternary `{}` has no finite input domain, got [{x_min}, {x_max}]",
+                self.name
+            ));
+        }
+        let tolerance = GUROBI_BALANCE_TERN_BIG_M_TOLERANCE;
+        let tight = self.epsilon + self.strict_boundary;
+        if self.big_m + x_min < tight - tolerance
+            || self.big_m - x_max < tight - tolerance
+            || self.big_m + x_min < -self.epsilon - tolerance
+            || self.big_m - x_max < self.epsilon - tolerance
+        {
+            return Err(format!(
+                "balance ternary `{}` big-M {} does not cover the input box [{x_min}, {x_max}], so the band rows' relaxations are not implied",
+                self.name, self.big_m
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 判断一个平衡三值化结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+///
+/// 拒绝：Big-M 非正非有限、三列重合、ε/严格边界非有限或为负、输入系数/常数非有限。
+/// 盒证明与列类型校验由 writer 在解析出列之后完成。
+///
+/// Decide whether a balance-ternary structure may be written natively (SDK-free). Rejected: a
+/// non-positive or non-finite big-M, coinciding columns, a non-finite or negative ε / strict
+/// boundary, and non-finite input coefficients or constant. The box proof and column type check
+/// happen in the writer once the columns are resolved.
+pub fn plan_balance_tern_native(
+    structure: &BalanceTernaryzationStructure<f64>,
+) -> std::result::Result<BalanceTernNativePlan, FallbackReason> {
+    let name = structure.name();
+    let big_m = structure.big_m();
+    if !big_m.is_finite() || big_m <= 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "balance ternary `{name}` native lowering requires a positive finite big-M, got {big_m}"
+        )));
+    }
+
+    let result = structure.result().clone();
+    let positive = structure.positive().clone();
+    let negative = structure.negative().clone();
+    if result == positive || result == negative || positive == negative {
+        return Err(FallbackReason::Rejected(format!(
+            "balance ternary `{name}` native lowering requires the result, positive and negative columns to stay distinct"
+        )));
+    }
+
+    let symbol = structure.symbol();
+    let epsilon = *symbol.epsilon();
+    let strict_boundary = *symbol.strict_boundary();
+    if !epsilon.is_finite() || epsilon < 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "balance ternary `{name}` native lowering requires a finite non-negative epsilon, got {epsilon}"
+        )));
+    }
+    if !strict_boundary.is_finite() || strict_boundary < 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "balance ternary `{name}` native lowering requires a finite non-negative strict boundary, got {strict_boundary}"
+        )));
+    }
+
+    let input = symbol.input_polynomial();
+    let input_constant = *input.constant_term();
+    if !input_constant.is_finite() {
+        return Err(FallbackReason::Rejected(format!(
+            "balance ternary `{name}` native lowering requires a finite input constant, got {input_constant}"
+        )));
+    }
+    let mut input_coefficients = Vec::with_capacity(input.monomials().len());
+    for monomial in input.monomials() {
+        let coefficient = *monomial.coefficient();
+        if !coefficient.is_finite() {
+            return Err(FallbackReason::Rejected(format!(
+                "balance ternary `{name}` native lowering requires finite input coefficients, got {coefficient}"
+            )));
+        }
+        input_coefficients.push((monomial.var_index(), coefficient));
+    }
+
+    Ok(BalanceTernNativePlan {
+        name: name.to_string(),
+        result,
+        positive,
+        negative,
+        input_coefficients,
+        input_constant,
+        big_m,
+        epsilon,
+        strict_boundary,
+    })
+}
+
+/// Gurobi 的平衡三值化原生 writer / Gurobi's native balance-ternary writer.
+///
+/// 服务 [`BalanceTernaryzationStructure`]（`ospf-rust-core/src/symbol/functions/balance_ternaryzation.rs`）：
+/// 写 2 条普通行（`_bter_result` / `_bter_exclusive`，经容器 `add_linear_row` 恒等替换）+ 4 条 band
+/// 指示（`pos=1 ⇒ input ≥ ε+sb`、`pos=0 ⇒ input ≤ ε`、`neg=1 ⇒ input ≤ −ε−sb`、`neg=0 ⇒ input ≥ −ε`），
+/// 并在写入前用 SDK 输入盒证明 4 条 band 行的松弛成立。
+///
+/// Serves [`BalanceTernaryzationStructure`]: it writes two plain rows (through the container's
+/// `add_linear_row`, identical to the eager rows) plus four band indicators, after proving the band
+/// rows' relaxations on the SDK input box.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GurobiBalanceTernWriter;
+
+impl GurobiBalanceTernWriter {
+    /// 创建 writer / Create the writer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiBalanceTernWriter {
+    fn name(&self) -> &str {
+        "gurobi_balance_ternary"
+    }
+
+    fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
+        structure
+            .as_any()
+            .downcast_ref::<BalanceTernaryzationStructure<f64>>()
+            .is_some()
+    }
+
+    fn write_batch(
+        &self,
+        container: &mut GurobiNativeContainer,
+        requests: &[NativeWriteRequest<'_, f64>],
+    ) -> Result<Option<Vec<NativeWriteOutcome>>> {
+        if requests.is_empty() {
+            return Ok(None);
+        }
+        container.model_mut().update().map_err(|error| {
+            ModelError::InvalidConstraint(format!(
+                "gurobi_balance_ternary writer failed to flush pending model changes before the checks: {error}"
+            ))
+        })?;
+
+        let mut outcomes = Vec::with_capacity(requests.len());
+        for request in requests {
+            let structure = request
+                .structure
+                .as_any()
+                .downcast_ref::<BalanceTernaryzationStructure<f64>>()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "gurobi_balance_ternary writer received a structure that is not a balance-ternary structure"
+                            .to_string(),
+                    )
+                })?;
+
+            let plan = match plan_balance_tern_native(structure) {
+                Ok(plan) => plan,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(reason));
+                    continue;
+                }
+            };
+
+            if request.usage.forbids_native_write() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` native lowering rejected a fixed result column",
+                    plan.name
+                ))));
+                continue;
+            }
+            if !request.usage.helpers_are_exclusive() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` native lowering rejected an externally referenced sign helper column",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let Some(result_var) = container.variable(&plan.result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(positive_var) = container.variable(&plan.positive) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` positive column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(negative_var) = container.variable(&plan.negative) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` negative column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+
+            let mut input_terms: Vec<(Var, f64)> = Vec::with_capacity(plan.input_coefficients.len());
+            let mut missing = false;
+            for (index, coefficient) in &plan.input_coefficients {
+                match container.variable_at(*index) {
+                    Some(var) => input_terms.push((var, *coefficient)),
+                    None => {
+                        missing = true;
+                        break;
+                    }
+                }
+            }
+            if missing {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` input column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            }
+            // 开关不能是自己的操作数 / A switch cannot be its own operand.
+            if input_terms
+                .iter()
+                .any(|(var, _)| *var == positive_var || *var == negative_var)
+            {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` native lowering requires the sign columns to stay out of the input polynomial",
+                    plan.name
+                ))));
+                continue;
+            }
+            for (label, sign_var) in [("positive", &positive_var), ("negative", &negative_var)] {
+                match container.model_mut().get_obj_attr(attr::VType, sign_var) {
+                    Ok(VarType::Binary) => {}
+                    Ok(other) => {
+                        outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                            "balance ternary `{}` native lowering requires a binary {label} column, got {other:?}",
+                            plan.name
+                        ))));
+                        continue;
+                    }
+                    Err(error) => {
+                        outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                            "balance ternary `{}` native lowering could not read the {label} column type from the Gurobi model: {error}",
+                            plan.name
+                        ))));
+                        continue;
+                    }
+                }
+                break;
+            }
+            // 上面的 for 循环只为复用 break 语义；两条列类型校验都必须通过，因此这里再显式确认一次。
+            // The loop above only reuses `break`; both column type checks must pass, so re-verify here.
+            let pos_binary = matches!(
+                container.model_mut().get_obj_attr(attr::VType, &positive_var),
+                Ok(VarType::Binary)
+            );
+            let neg_binary = matches!(
+                container.model_mut().get_obj_attr(attr::VType, &negative_var),
+                Ok(VarType::Binary)
+            );
+            if !pos_binary || !neg_binary {
+                continue;
+            }
+
+            let box_result = sdk_polynomial_box(container, &input_terms, plan.input_constant);
+            let (input_min, input_max) = match box_result {
+                Ok(bounds) => bounds,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "balance ternary `{}` native lowering cannot prove the band relaxations: {reason}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+            };
+            if let Err(reason) = plan.prove_input_box(input_min, input_max) {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "balance ternary `{}` native lowering cannot prove the band relaxations: {reason}",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // 2 条普通行：与即时展开恒等（`res − pos + neg = 0`、`pos + neg ≤ 1`）。
+            // Two plain rows, identical to the eager expansion.
+            container
+                .add_linear_row(
+                    &format!("{}_bter_result", plan.name),
+                    vec![
+                        (result_var, 1.0),
+                        (positive_var, -1.0),
+                        (negative_var, 1.0),
+                    ],
+                    0.0,
+                    ConstraintRelation::Equal,
+                    0.0,
+                )
+                .map_err(|error| {
+                    ModelError::InvalidConstraint(format!(
+                        "gurobi_balance_ternary writer failed to write balance ternary `{}` (_bter_result): {error}",
+                        plan.name
+                    ))
+                })?;
+            container
+                .add_linear_row(
+                    &format!("{}_bter_exclusive", plan.name),
+                    vec![(positive_var, 1.0), (negative_var, 1.0)],
+                    0.0,
+                    ConstraintRelation::LessEqual,
+                    1.0,
+                )
+                .map_err(|error| {
+                    ModelError::InvalidConstraint(format!(
+                        "gurobi_balance_ternary writer failed to write balance ternary `{}` (_bter_exclusive): {error}",
+                        plan.name
+                    ))
+                })?;
+
+            // 4 条 band 指示（core 侧）：pos=1 ⇒ input ≥ ε+sb；pos=0 ⇒ input ≤ ε；
+            // neg=1 ⇒ input ≤ −ε−sb；neg=0 ⇒ input ≥ −ε。
+            // Four band indicators (core sides).
+            let shift = plan.input_constant;
+            for (indicator_var, indicator_value, offset, relation, suffix) in [
+                (
+                    positive_var,
+                    true,
+                    -(plan.epsilon + plan.strict_boundary),
+                    ConstraintRelation::GreaterEqual,
+                    "positive_lb",
+                ),
+                (
+                    positive_var,
+                    false,
+                    -plan.epsilon,
+                    ConstraintRelation::LessEqual,
+                    "positive_ub",
+                ),
+                (
+                    negative_var,
+                    true,
+                    plan.epsilon + plan.strict_boundary,
+                    ConstraintRelation::LessEqual,
+                    "negative_ub",
+                ),
+                (
+                    negative_var,
+                    false,
+                    plan.epsilon,
+                    ConstraintRelation::GreaterEqual,
+                    "negative_lb",
+                ),
+            ] {
+                let condition = indicator_condition(
+                    &input_terms,
+                    shift + offset,
+                    relation,
+                    0.0,
+                );
+                container
+                    .model_mut()
+                    .add_genconstr_indicator(
+                        &format!("{}_{}", plan.name, suffix),
+                        indicator_var,
+                        indicator_value,
+                        condition,
+                    )
+                    .map_err(|error| {
+                        ModelError::InvalidConstraint(format!(
+                            "gurobi_balance_ternary writer failed to write balance ternary `{}` ({suffix}): {error}",
+                            plan.name
+                        ))
+                    })?;
+            }
+
+            outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
+                self.name(),
+                GUROBI_BALANCE_TERN_SCHEMA,
+            )));
+        }
+
+        Ok(Some(outcomes))
+    }
+}
+
+pub struct MaskingNativePlan {
+    /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
+    pub name: String,
+    /// 结果列 `y` / Result column `y`
+    pub result: VariableId,
+    /// 掩码列 `m`（二元；本结构的辅助列）/ Mask column `m` (binary; a helper of this structure)
+    pub mask: VariableId,
+    /// 输入多项式 `x` 的单项式：列下标 + 系数 / Monomials of the input polynomial `x`: index + coefficient
+    pub input_coefficients: Vec<(usize, f64)>,
+    /// 输入多项式的常数项 / Constant of the input polynomial
+    pub input_constant: f64,
+    /// 结构创建时固定的 Big-M / Big-M fixed when the structure was created
+    pub big_m: f64,
+}
+
+impl MaskingNativePlan {
+    /// 证明即时四条行的 Big-M 松弛成立 / Prove the four eager rows' Big-M relaxations hold.
+    ///
+    /// 义务是 `M ≥ max|x|`，写成与其它批次同形的两侧检查：`M + x_min ≥ 0` 与 `M − x_max ≥ 0`。
+    ///
+    /// The obligation is `M ≥ max|x|`, written as the same two-sided check as the other batches:
+    /// `M + x_min ≥ 0` and `M − x_max ≥ 0`.
+    pub fn prove_input_box(&self, x_min: f64, x_max: f64) -> std::result::Result<(), String> {
+        if !x_min.is_finite() || !x_max.is_finite() || x_min > x_max {
+            return Err(format!(
+                "masking `{}` has no finite input domain, got [{x_min}, {x_max}]",
+                self.name
+            ));
+        }
+        if self.big_m + x_min < -GUROBI_MASKING_BIG_M_TOLERANCE
+            || self.big_m - x_max < -GUROBI_MASKING_BIG_M_TOLERANCE
+        {
+            return Err(format!(
+                "masking `{}` big-M {} does not cover the input box [{x_min}, {x_max}], so the eager rows' relaxations are not implied",
+                self.name, self.big_m
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 判断一个掩码结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+///
+/// 拒绝（回退 EAGER）：结果列与掩码列重合、Big-M 非正非有限、输入系数或常数非有限。
+/// **本函数不做盒证明与列类型校验**：两者都需要读 SDK 列属性，由 writer 在解析出列之后完成。
+///
+/// Decide whether a masking structure may be written natively and produce its write plan (SDK-free).
+///
+/// Rejected (kept on EAGER): a result column coinciding with the mask column, a non-positive or non-finite
+/// Big-M, and non-finite input coefficients or constant. This function performs **no box proof and no column
+/// type check**: both need SDK column attributes and happen in the writer once the columns are resolved.
+pub fn plan_masking_native(
+    structure: &MaskingStructure<f64>,
+) -> std::result::Result<MaskingNativePlan, FallbackReason> {
+    let name = structure.name();
+    let symbol = structure.symbol();
+
+    let big_m = structure.big_m();
+    if !big_m.is_finite() || big_m <= 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "masking `{name}` native lowering requires a positive finite big-M, got {big_m}"
+        )));
+    }
+
+    let result = structure.result().clone();
+    let mask = structure.mask().clone();
+    if result == mask {
+        return Err(FallbackReason::Rejected(format!(
+            "masking `{name}` native lowering requires the result column to stay distinct from the mask column"
+        )));
+    }
+
+    let input = symbol.input_polynomial();
+    let input_constant = *input.constant_term();
+    if !input_constant.is_finite() {
+        return Err(FallbackReason::Rejected(format!(
+            "masking `{name}` native lowering requires a finite input constant, got {input_constant}"
+        )));
+    }
+    let mut input_coefficients = Vec::with_capacity(input.monomials().len());
+    for monomial in input.monomials() {
+        let coefficient = *monomial.coefficient();
+        if !coefficient.is_finite() {
+            return Err(FallbackReason::Rejected(format!(
+                "masking `{name}` native lowering requires finite input coefficients, got {coefficient}"
+            )));
+        }
+        input_coefficients.push((monomial.var_index(), coefficient));
+    }
+
+    Ok(MaskingNativePlan {
+        name: name.to_string(),
+        result,
+        mask,
+        input_coefficients,
+        input_constant,
+        big_m,
+    })
+}
+
+/// Gurobi 的掩码原生 writer / Gurobi's native masking writer.
+///
+/// 服务 [`MaskingStructure`]（`ospf-rust-core/src/symbol/functions/masking.rs`）：写两条等式指示
+/// （`m = 1 ⇒ y − x = 0`、`m = 0 ⇒ y = 0`），并在写入前用 SDK 输入盒证明 `M ≥ max|x|`（即时四条行的松弛
+/// 经核心等式归约后的唯一义务）。
+///
+/// 门控：结果列被固定、掩码辅助列被外部引用、结果列或掩码列缺失、掩码列不是二元列、输入含掩码列本身
+/// （开关不能是自己的操作数）、盒证明失败，都回退。
+///
+/// Serves [`MaskingStructure`] (`ospf-rust-core/src/symbol/functions/masking.rs`): it writes two equality
+/// indicators (`m = 1 ⇒ y − x = 0`, `m = 0 ⇒ y = 0`) after proving `M ≥ max|x|` on the SDK input box — the only
+/// obligation left once the four eager rows' relaxations are reduced through the core equalities.
+///
+/// Gates: a fixed result column, an externally referenced mask helper column, a missing result or mask column, a
+/// non-binary mask column, an input containing the mask column itself (a switch cannot be its own operand), and a
+/// failed box proof all force a fallback.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GurobiMaskingWriter;
+
+impl GurobiMaskingWriter {
+    /// 创建 writer / Create the writer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiMaskingWriter {
+    fn name(&self) -> &str {
+        "gurobi_masking"
+    }
+
+    fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
+        structure
+            .as_any()
+            .downcast_ref::<MaskingStructure<f64>>()
+            .is_some()
+    }
+
+    fn write_batch(
+        &self,
+        container: &mut GurobiNativeContainer,
+        requests: &[NativeWriteRequest<'_, f64>],
+    ) -> Result<Option<Vec<NativeWriteOutcome>>> {
+        if requests.is_empty() {
+            return Ok(None);
+        }
+        container.model_mut().update().map_err(|error| {
+            ModelError::InvalidConstraint(format!(
+                "gurobi_masking writer failed to flush pending model changes before the checks: {error}"
+            ))
+        })?;
+
+        let mut outcomes = Vec::with_capacity(requests.len());
+        for request in requests {
+            let structure = request
+                .structure
+                .as_any()
+                .downcast_ref::<MaskingStructure<f64>>()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "gurobi_masking writer received a structure that is not a masking structure"
+                            .to_string(),
+                    )
+                })?;
+
+            let plan = match plan_masking_native(structure) {
+                Ok(plan) => plan,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(reason));
+                    continue;
+                }
+            };
+
+            if request.usage.forbids_native_write() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` native lowering rejected a fixed result column",
+                    plan.name
+                ))));
+                continue;
+            }
+            // 掩码列是本结构的辅助列：一旦被外部引用，原生写入与即时展开在它上面的含义就可能被外部分辨出来。
+            // The mask column is a helper of this structure: once referenced elsewhere an external row could tell
+            // the native write and eager expansion apart on it.
+            if !request.usage.helpers_are_exclusive() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` native lowering rejected an externally referenced mask helper column",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let Some(result_var) = container.variable(&plan.result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(mask_var) = container.variable(&plan.mask) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` mask column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+
+            let mut input_terms: Vec<(Var, f64)> = Vec::with_capacity(plan.input_coefficients.len());
+            let mut missing = false;
+            for (index, coefficient) in &plan.input_coefficients {
+                match container.variable_at(*index) {
+                    Some(var) => input_terms.push((var, *coefficient)),
+                    None => {
+                        missing = true;
+                        break;
+                    }
+                }
+            }
+            if missing {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` input column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            }
+            // 开关不能是自己的操作数：掩码列出现在输入多项式里时，`m = 1 ⇒ y − x = 0` 会把开关写进它自己的条件。
+            // A switch cannot be its own operand: when the mask column appears in the input polynomial,
+            // `m = 1 ⇒ y − x = 0` would put the switch inside its own condition.
+            if input_terms.iter().any(|(var, _)| *var == mask_var) {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` native lowering requires the mask column to stay out of the input polynomial",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // SDK 要求指示变量是二元变量。
+            // The SDK requires the indicator variable to be binary.
+            match container.model_mut().get_obj_attr(attr::VType, &mask_var) {
+                Ok(VarType::Binary) => {}
+                Ok(other) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "masking `{}` native lowering requires a binary mask column, got {other:?}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+                Err(error) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "masking `{}` native lowering could not read the mask column type from the Gurobi model: {error}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+            }
+
+            let box_result = sdk_polynomial_box(container, &input_terms, plan.input_constant);
+            let (input_min, input_max) = match box_result {
+                Ok(bounds) => bounds,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "masking `{}` native lowering cannot prove the big-M relaxation: {reason}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+            };
+            if let Err(reason) = plan.prove_input_box(input_min, input_max) {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "masking `{}` native lowering cannot prove the big-M relaxation: {reason}",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            // `m = 1 ⇒ y − x = 0` 与 `m = 0 ⇒ y = 0`。
+            // `m = 1 ⇒ y − x = 0` and `m = 0 ⇒ y = 0`.
+            let mut equality_terms: Vec<(Var, f64)> = Vec::with_capacity(input_terms.len() + 1);
+            equality_terms.push((result_var, 1.0));
+            for (var, coefficient) in &input_terms {
+                equality_terms.push((*var, -*coefficient));
+            }
+            for (indicator_value, condition, suffix) in [
+                (
+                    true,
+                    indicator_condition(
+                        &equality_terms,
+                        -plan.input_constant,
+                        ConstraintRelation::Equal,
+                        0.0,
+                    ),
+                    "true",
+                ),
+                (
+                    false,
+                    indicator_condition(&[(result_var, 1.0)], 0.0, ConstraintRelation::Equal, 0.0),
+                    "false",
+                ),
+            ] {
+                container
+                    .model_mut()
+                    .add_genconstr_indicator(
+                        &format!("{}_mask_{suffix}", plan.name),
+                        mask_var,
+                        indicator_value,
+                        condition,
+                    )
+                    .map_err(|error| {
+                        ModelError::InvalidConstraint(format!(
+                            "gurobi_masking writer failed to write masking `{}` ({suffix}): {error}",
+                            plan.name
+                        ))
+                    })?;
+            }
+
+            outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
+                self.name(),
+                GUROBI_MASKING_SCHEMA,
+            )));
+        }
+
+        Ok(Some(outcomes))
+    }
+}
+
+/// 多项式掩码原生写入计划 / Plan for one native polynomial-mask write.
+///
+/// 即时展开是「桥接列定义等式 `mask_poly − bridge = 0`」+ 与 [`MaskingNativePlan`] 同形的四条 Big-M 行
+/// （把 `m` 换成 `bridge`）。原生写入覆盖为：
+///
+/// | # | 指示列 | 取值 | 条件 |
+/// |---|---|---|---|
+/// | 1 | `bridge` | 1 | `y − x = 0` |
+/// | 2 | `bridge` | 0 | `y = 0` |
+/// | 3 | `bridge` | 1 | `mask_poly ≤ 1` |
+/// | 4 | `bridge` | 1 | `mask_poly ≥ 1` |
+/// | 5 | `bridge` | 0 | `mask_poly ≤ 0` |
+/// | 6 | `bridge` | 0 | `mask_poly ≥ 0` |
+///
+/// 第 3-6 条用指示约束重建桥接列定义等式，**与 Kotlin 的普通线性等式行写法不同**：本仓库的原生写入通道只
+/// 暴露 `add_genconstr_*`（`GurobiNativeContainer` 仅有 `model_mut()`，没有写入普通行的既有路径），而在
+/// 二元 `bridge` 上这四条指示与 `mask_poly = bridge` **点集完全相同**——`bridge = 0` 要求
+/// `mask_poly ∈ [0, 0]`、`bridge = 1` 要求 `mask_poly ∈ [1, 1]`，其它取值两侧都不可行，因此不是近似而是
+/// 恒等。引入普通行需要新增容器 API，不应搭在本批里做。
+///
+/// The eager expansion is the bridge definition equality `mask_poly − bridge = 0` plus four Big-M rows shaped
+/// like [`MaskingNativePlan`]'s (with `m` replaced by `bridge`). The native write covers it as the table above.
+///
+/// Rows 3-6 rebuild the bridge definition through indicator constraints, **unlike Kotlin's plain linear equality
+/// row**: this repository's native-write channel only exposes `add_genconstr_*` (`GurobiNativeContainer` has just
+/// `model_mut()` and no established plain-row path), and over a binary `bridge` those four indicators have
+/// **exactly the same point set** as `mask_poly = bridge` — `bridge = 0` forces `mask_poly ∈ [0, 0]` and
+/// `bridge = 1` forces `mask_poly ∈ [1, 1]`, while every other value is infeasible on both sides, so this is an
+/// identity rather than an approximation. Introducing a plain row would need a new container API, which does not
+/// belong in this batch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolyMaskNativePlan {
+    /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
+    pub name: String,
+    /// 结果列 `y` / Result column `y`
+    pub result: VariableId,
+    /// 掩码桥接列 `bridge`（二元；本结构的辅助列）/ Bridge column (binary; a helper of this structure)
+    pub bridge: VariableId,
+    /// 输入多项式 `x` 的单项式 / Monomials of the input polynomial
+    pub input_coefficients: Vec<(usize, f64)>,
+    /// 输入多项式的常数项 / Constant of the input polynomial
+    pub input_constant: f64,
+    /// 掩码多项式 `mask_poly` 的单项式 / Monomials of the mask polynomial
+    pub mask_coefficients: Vec<(usize, f64)>,
+    /// 掩码多项式的常数项 / Constant of the mask polynomial
+    pub mask_constant: f64,
+    /// 结构创建时固定的 Big-M / Big-M fixed when the structure was created
+    pub big_m: f64,
+}
+
+impl PolyMaskNativePlan {
+    /// 证明即时四条掩码行的 Big-M 松弛成立（义务与 [`MaskingNativePlan::prove_input_box`] 相同）。
+    /// Prove the four eager masking rows' Big-M relaxations (same obligation as
+    /// [`MaskingNativePlan::prove_input_box`]).
+    pub fn prove_input_box(&self, x_min: f64, x_max: f64) -> std::result::Result<(), String> {
+        if !x_min.is_finite() || !x_max.is_finite() || x_min > x_max {
+            return Err(format!(
+                "polynomial mask `{}` has no finite input domain, got [{x_min}, {x_max}]",
+                self.name
+            ));
+        }
+        if self.big_m + x_min < -GUROBI_MASKING_BIG_M_TOLERANCE
+            || self.big_m - x_max < -GUROBI_MASKING_BIG_M_TOLERANCE
+        {
+            return Err(format!(
+                "polynomial mask `{}` big-M {} does not cover the input box [{x_min}, {x_max}], so the eager rows' relaxations are not implied",
+                self.name, self.big_m
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 判断一个多项式掩码结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+///
+/// 拒绝（回退 EAGER）：结果列与桥接列重合、Big-M 非正非有限、输入或掩码多项式含非有限系数或常数。
+///
+/// Decide whether a polynomial-mask structure may be written natively and produce its write plan (SDK-free).
+///
+/// Rejected (kept on EAGER): a result column coinciding with the bridge column, a non-positive or non-finite
+/// Big-M, and non-finite coefficients or constants in the input or mask polynomial.
+pub fn plan_poly_mask_native(
+    structure: &MaskingWithPolyMaskStructure<f64>,
+) -> std::result::Result<PolyMaskNativePlan, FallbackReason> {
+    let name = structure.name();
+    let symbol = structure.symbol();
+
+    let big_m = structure.big_m();
+    if !big_m.is_finite() || big_m <= 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "polynomial mask `{name}` native lowering requires a positive finite big-M, got {big_m}"
+        )));
+    }
+
+    let result = structure.result().clone();
+    let bridge = structure.bridge().clone();
+    if result == bridge {
+        return Err(FallbackReason::Rejected(format!(
+            "polynomial mask `{name}` native lowering requires the result column to stay distinct from the bridge column"
+        )));
+    }
+
+    let input = symbol.input_polynomial();
+    let input_constant = *input.constant_term();
+    if !input_constant.is_finite() {
+        return Err(FallbackReason::Rejected(format!(
+            "polynomial mask `{name}` native lowering requires a finite input constant, got {input_constant}"
+        )));
+    }
+    let mut input_coefficients = Vec::with_capacity(input.monomials().len());
+    for monomial in input.monomials() {
+        let coefficient = *monomial.coefficient();
+        if !coefficient.is_finite() {
+            return Err(FallbackReason::Rejected(format!(
+                "polynomial mask `{name}` native lowering requires finite input coefficients, got {coefficient}"
+            )));
+        }
+        input_coefficients.push((monomial.var_index(), coefficient));
+    }
+
+    let mask = symbol.mask_polynomial();
+    let mask_constant = *mask.constant_term();
+    if !mask_constant.is_finite() {
+        return Err(FallbackReason::Rejected(format!(
+            "polynomial mask `{name}` native lowering requires a finite mask constant, got {mask_constant}"
+        )));
+    }
+    let mut mask_coefficients = Vec::with_capacity(mask.monomials().len());
+    for monomial in mask.monomials() {
+        let coefficient = *monomial.coefficient();
+        if !coefficient.is_finite() {
+            return Err(FallbackReason::Rejected(format!(
+                "polynomial mask `{name}` native lowering requires finite mask coefficients, got {coefficient}"
+            )));
+        }
+        mask_coefficients.push((monomial.var_index(), coefficient));
+    }
+
+    Ok(PolyMaskNativePlan {
+        name: name.to_string(),
+        result,
+        bridge,
+        input_coefficients,
+        input_constant,
+        mask_coefficients,
+        mask_constant,
+        big_m,
+    })
+}
+
+/// Gurobi 的多项式掩码原生 writer / Gurobi's native polynomial-mask writer.
+///
+/// 服务 [`MaskingWithPolyMaskStructure`]（`ospf-rust-core/src/symbol/functions/masking.rs`）：写 2 条分支等式
+/// 指示 + 4 条桥接列定义指示（共 6 条，见 [`PolyMaskNativePlan`]），并在写入前用 SDK 输入盒证明
+/// `M ≥ max|x|`。
+///
+/// 门控：结果列被固定、桥接辅助列被外部引用、结果列/桥接列/输入列/掩码列缺失、桥接列不是二元列、输入或
+/// 掩码多项式含桥接列本身（开关不能是自己的操作数）、盒证明失败，都回退。
+///
+/// Serves [`MaskingWithPolyMaskStructure`] (`ospf-rust-core/src/symbol/functions/masking.rs`): two branch
+/// equality indicators plus four bridge-definition indicators (six in total, see [`PolyMaskNativePlan`]), after
+/// proving `M ≥ max|x|` on the SDK input box.
+///
+/// Gates: a fixed result column, an externally referenced bridge helper column, missing result / bridge / input /
+/// mask columns, a non-binary bridge column, the bridge column appearing in the input or mask polynomial (a
+/// switch cannot be its own operand), and a failed box proof all force a fallback.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GurobiPolyMaskWriter;
+
+impl GurobiPolyMaskWriter {
+    /// 创建 writer / Create the writer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiPolyMaskWriter {
+    fn name(&self) -> &str {
+        "gurobi_poly_mask"
+    }
+
+    fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
+        structure
+            .as_any()
+            .downcast_ref::<MaskingWithPolyMaskStructure<f64>>()
+            .is_some()
+    }
+
+    fn write_batch(
+        &self,
+        container: &mut GurobiNativeContainer,
+        requests: &[NativeWriteRequest<'_, f64>],
+    ) -> Result<Option<Vec<NativeWriteOutcome>>> {
+        if requests.is_empty() {
+            return Ok(None);
+        }
+        container.model_mut().update().map_err(|error| {
+            ModelError::InvalidConstraint(format!(
+                "gurobi_poly_mask writer failed to flush pending model changes before the checks: {error}"
+            ))
+        })?;
+
+        let mut outcomes = Vec::with_capacity(requests.len());
+        for request in requests {
+            let structure = request
+                .structure
+                .as_any()
+                .downcast_ref::<MaskingWithPolyMaskStructure<f64>>()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "gurobi_poly_mask writer received a structure that is not a polynomial-mask structure"
+                            .to_string(),
+                    )
+                })?;
+
+            let plan = match plan_poly_mask_native(structure) {
+                Ok(plan) => plan,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(reason));
+                    continue;
+                }
+            };
+
+            if request.usage.forbids_native_write() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` native lowering rejected a fixed result column",
+                    plan.name
+                ))));
+                continue;
+            }
+            if !request.usage.helpers_are_exclusive() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` native lowering rejected an externally referenced bridge helper column",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let Some(result_var) = container.variable(&plan.result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(bridge_var) = container.variable(&plan.bridge) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` bridge column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+
+            let mut input_terms: Vec<(Var, f64)> = Vec::with_capacity(plan.input_coefficients.len());
+            let mut mask_terms: Vec<(Var, f64)> = Vec::with_capacity(plan.mask_coefficients.len());
+            let mut missing = None;
+            for (index, coefficient) in &plan.input_coefficients {
+                match container.variable_at(*index) {
+                    Some(var) => input_terms.push((var, *coefficient)),
+                    None => {
+                        missing = Some("input");
+                        break;
+                    }
+                }
+            }
+            if missing.is_none() {
+                for (index, coefficient) in &plan.mask_coefficients {
+                    match container.variable_at(*index) {
+                        Some(var) => mask_terms.push((var, *coefficient)),
+                        None => {
+                            missing = Some("mask");
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Some(label) = missing {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` {label} column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            }
+            if input_terms.iter().any(|(var, _)| *var == bridge_var)
+                || mask_terms.iter().any(|(var, _)| *var == bridge_var)
+            {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` native lowering requires the bridge column to stay out of the input and mask polynomials",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            match container.model_mut().get_obj_attr(attr::VType, &bridge_var) {
+                Ok(VarType::Binary) => {}
+                Ok(other) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "polynomial mask `{}` native lowering requires a binary bridge column, got {other:?}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+                Err(error) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "polynomial mask `{}` native lowering could not read the bridge column type from the Gurobi model: {error}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+            }
+
+            let box_result = sdk_polynomial_box(container, &input_terms, plan.input_constant);
+            let (input_min, input_max) = match box_result {
+                Ok(bounds) => bounds,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "polynomial mask `{}` native lowering cannot prove the big-M relaxation: {reason}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+            };
+            if let Err(reason) = plan.prove_input_box(input_min, input_max) {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "polynomial mask `{}` native lowering cannot prove the big-M relaxation: {reason}",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let mut equality_terms: Vec<(Var, f64)> = Vec::with_capacity(input_terms.len() + 1);
+            equality_terms.push((result_var, 1.0));
+            for (var, coefficient) in &input_terms {
+                equality_terms.push((*var, -*coefficient));
+            }
+
+            let mut write_failure = None;
+            // 分支等式（键在桥接列上）与桥接列定义（同样键在桥接列上）。
+            // The branch equalities and the bridge definition, both keyed on the bridge column.
+            for (indicator_value, suffix) in [(true, "true"), (false, "false")] {
+                let branch = if indicator_value {
+                    indicator_condition(
+                        &equality_terms,
+                        -plan.input_constant,
+                        ConstraintRelation::Equal,
+                        0.0,
+                    )
+                } else {
+                    indicator_condition(&[(result_var, 1.0)], 0.0, ConstraintRelation::Equal, 0.0)
+                };
+                let (mask_relation, mask_rhs, mask_suffix) = if indicator_value {
+                    (ConstraintRelation::LessEqual, 1.0, "le1")
+                } else {
+                    (ConstraintRelation::LessEqual, 0.0, "le0")
+                };
+                let (mask_other_relation, mask_other_rhs, mask_other_suffix) = if indicator_value {
+                    (ConstraintRelation::GreaterEqual, 1.0, "ge1")
+                } else {
+                    (ConstraintRelation::GreaterEqual, 0.0, "ge0")
+                };
+                for (condition, name_suffix) in [
+                    (branch, format!("mask_{suffix}")),
+                    (
+                        indicator_condition(
+                            &mask_terms,
+                            plan.mask_constant,
+                            mask_relation,
+                            mask_rhs,
+                        ),
+                        format!("bridge_{suffix}_{mask_suffix}"),
+                    ),
+                    (
+                        indicator_condition(
+                            &mask_terms,
+                            plan.mask_constant,
+                            mask_other_relation,
+                            mask_other_rhs,
+                        ),
+                        format!("bridge_{suffix}_{mask_other_suffix}"),
+                    ),
+                ] {
+                    if let Err(error) = container.model_mut().add_genconstr_indicator(
+                        &format!("{}_{name_suffix}", plan.name),
+                        bridge_var,
+                        indicator_value,
+                        condition,
+                    ) {
+                        write_failure = Some(format!("failed to write `{name_suffix}`: {error}"));
+                        break;
+                    }
+                }
+                if write_failure.is_some() {
+                    break;
+                }
+            }
+            if let Some(reason) = write_failure {
+                return Err(ModelError::InvalidConstraint(format!(
+                    "gurobi_poly_mask writer {reason}"
+                ))
+                .into());
+            }
+
+            outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
+                self.name(),
+                GUROBI_POLY_MASK_SCHEMA,
+            )));
+        }
+
+        Ok(Some(outcomes))
+    }
+}
+
+/// IF 原生写入的 schema 版本 / Schema version of the native IF write.
+pub const GUROBI_IF_SCHEMA: &str = "functions-if-1";
+
+/// IF 原生写入计划 / Plan for one native IF write.
+///
+/// 即时展开是 6 条 Big-M 行：`c − M·b ≤ 0`、`−c − M·b ≤ 0`、`res − t + M·b ≤ M`、`−res + t + M·b ≤ M`、
+/// `res − e − M·b ≤ 0`、`−res + e − M·b ≤ 0`。按 `b` 投影：
+///
+/// | 行 | `b = 1` | `b = 0` |
+/// |---|---|---|
+/// | 1/2（条件） | `c ≤ M`、`c ≥ −M`（松弛） | `c ≤ 0`、`c ≥ 0`（核心，即 `b = 0 ⇒ c = 0`） |
+/// | 3/4（then 侧） | `res ≤ t`、`res ≥ t`（核心） | `res − t ≤ M`、`res − t ≥ −M`（松弛） |
+/// | 5/6（else 侧） | `res − e ≤ M`、`res − e ≥ −M`（松弛） | `res ≤ e`、`res ≥ e`（核心） |
+///
+/// 原生写入是 4 条指示约束：`b = 1 ⇒ c ≥ 0`、`b = 1 ⇒ c ≤ 0`（合成即时 `b = 1 ⇒ c = 0`；即时行**不给**反向
+/// 蕴含，`b = 0` 时 `c = 0` 仍可行）、`b = 1 ⇒ res − t = 0`、`b = 0 ⇒ res − e = 0`。
+///
+/// **本批的证明是「分支等式归约 + SDK 盒证明」**，与条件值批「只校验声明范围有限有序」不同：4 条松弛行不是
+/// 自己成立，而是被分支等式与 `b` 的二元性**归约**掉——`b = 0` 时核心行给出 `res = e`，于是第 3/4 行松弛成
+/// `|e − t| ≤ M`；`b = 1` 时核心行给出 `res = t`，于是第 5/6 行松弛成 `|t − e| ≤ M`；第 1/2 行的松弛与分支
+/// 无关，是 `|c| ≤ M`。因此只剩两条义务：**`M ≥ max|c|` 与 `M ≥ max|e − t|`（在条件/分支多项式的 SDK 盒
+/// 上）**。这正是不需要结果列 `res` 有限界的原因（`IfFunction.result_var` 由
+/// `ContinuousVariableItem::create` 创建、本身无界），而条件值批的条件界是符号声明的受控输入。两条义务任一在
+/// SDK 盒上不成立（如列无界）即回退。
+///
+/// The eager expansion is six Big-M rows (`c − M·b ≤ 0`, `−c − M·b ≤ 0`, `res − t + M·b ≤ M`,
+/// `−res + t + M·b ≤ M`, `res − e − M·b ≤ 0`, `−res + e − M·b ≤ 0`) projecting as tabulated above. The native
+/// write is four indicators: `b = 1 ⇒ c ≥ 0`, `b = 1 ⇒ c ≤ 0` (together the eager `b = 1 ⇒ c = 0`; the eager rows
+/// give **no** converse so `c = 0` with `b = 0` stays feasible), `b = 1 ⇒ res − t = 0` and
+/// `b = 0 ⇒ res − e = 0`.
+///
+/// **This batch's proof is a "branch-equality reduction plus SDK box proof"**, unlike the conditional-value
+/// batch's "only check the declared ranges are finite and ordered": the four relaxed rows do not hold by
+/// themselves but are **reduced** away through the branch equalities and `b`'s binariness — at `b = 0` the core
+/// rows give `res = e` so rows 3/4 relax to `|e − t| ≤ M`, at `b = 1` they give `res = t` so rows 5/6 relax to
+/// `|t − e| ≤ M`, and rows 1/2 relax to `|c| ≤ M` regardless of the branch. Only two obligations remain:
+/// **`M ≥ max|c|` and `M ≥ max|e − t|` on the SDK boxes of the condition / branch polynomials**. This is exactly
+/// why no finite bound on the result column is needed (`IfFunction.result_var` comes from
+/// `ContinuousVariableItem::create` and is unbounded), whereas the conditional-value batch's condition bounds are
+/// a controlled symbol-declared input. Either obligation failing on the SDK box (an unbounded column, say) forces
+/// a fallback.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfNativePlan {
+    /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
+    pub name: String,
+    /// 结果列 `res` / Result column
+    pub result: VariableId,
+    /// 条件指示列 `b`（二元；本结构的辅助列）/ Condition indicator column (binary; a helper of this structure)
+    pub indicator: VariableId,
+    /// 条件多项式 `c` 的单项式 / Monomials of the condition polynomial
+    pub condition_coefficients: Vec<(usize, f64)>,
+    /// 条件多项式的常数项 / Constant of the condition polynomial
+    pub condition_constant: f64,
+    /// then 多项式 `t` 的单项式 / Monomials of the then polynomial
+    pub then_coefficients: Vec<(usize, f64)>,
+    /// then 多项式的常数项 / Constant of the then polynomial
+    pub then_constant: f64,
+    /// else 多项式 `e` 的单项式 / Monomials of the else polynomial
+    pub else_coefficients: Vec<(usize, f64)>,
+    /// else 多项式的常数项 / Constant of the else polynomial
+    pub else_constant: f64,
+    /// 结构创建时固定的 Big-M / Big-M fixed when the structure was created
+    pub big_m: f64,
+}
+
+impl IfNativePlan {
+    /// 证明归约后剩下的两条义务：`M ≥ max|c|` 与 `M ≥ max|e − t|`。
+    ///
+    /// Prove the two obligations left after the reduction: `M ≥ max|c|` and `M ≥ max|e − t|`.
+    pub fn prove_reduced_obligations(
+        &self,
+        condition_min: f64,
+        condition_max: f64,
+        then_min: f64,
+        then_max: f64,
+        else_min: f64,
+        else_max: f64,
+    ) -> std::result::Result<(), String> {
+        for (label, minimum, maximum) in [
+            ("condition", condition_min, condition_max),
+            ("then", then_min, then_max),
+            ("else", else_min, else_max),
+        ] {
+            if !minimum.is_finite() || !maximum.is_finite() || minimum > maximum {
+                return Err(format!(
+                    "if `{}` has no finite {label} domain, got [{minimum}, {maximum}]",
+                    self.name
+                ));
+            }
+        }
+        if self.big_m + condition_min < -GUROBI_INDICATOR_BIG_M_TOLERANCE
+            || self.big_m - condition_max < -GUROBI_INDICATOR_BIG_M_TOLERANCE
+        {
+            return Err(format!(
+                "if `{}` big-M {} does not cover the condition box [{condition_min}, {condition_max}], so the eager rows' b = 0 relaxations are not implied",
+                self.name, self.big_m
+            ));
+        }
+        // 分支侧：`e − t` 的区间由两条多项式各自的区间相减得到。
+        // Branch side: the interval of `e − t` comes from subtracting the two polynomials' intervals.
+        let difference_min = else_min - then_max;
+        let difference_max = else_max - then_min;
+        if self.big_m + difference_min < -GUROBI_INDICATOR_BIG_M_TOLERANCE
+            || self.big_m - difference_max < -GUROBI_INDICATOR_BIG_M_TOLERANCE
+        {
+            return Err(format!(
+                "if `{}` big-M {} does not cover the branch difference box [{difference_min}, {difference_max}], so the eager rows' relaxations are not implied",
+                self.name, self.big_m
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// 判断一个 IF 结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+///
+/// 拒绝（回退 EAGER）：结果列与指示列重合、Big-M 非正非有限、任一多项式含非有限系数或常数、条件多项式没有
+/// 任何变量项（`b = 1 ⇒ c = 0` 会退化成常数判定）。**本函数不做盒证明与列类型校验**：两者都需要读 SDK 列
+/// 属性，由 writer 在解析出列之后完成。
+///
+/// Decide whether an IF structure may be written natively and produce its write plan (SDK-free).
+///
+/// Rejected (kept on EAGER): a result column coinciding with the indicator column, a non-positive or non-finite
+/// Big-M, non-finite coefficients or constants in any polynomial, and a condition polynomial without any variable
+/// term. This function performs **no box proof and no column type check**: both need SDK column attributes and
+/// happen in the writer.
+pub fn plan_if_native(
+    structure: &IfStructure<f64>,
+) -> std::result::Result<IfNativePlan, FallbackReason> {
+    let name = structure.name();
+    let symbol = structure.symbol();
+
+    let big_m = structure.big_m();
+    if !big_m.is_finite() || big_m <= 0.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "if `{name}` native lowering requires a positive finite big-M, got {big_m}"
+        )));
+    }
+
+    let result = structure.result().clone();
+    let indicator = structure.indicator().clone();
+    if result == indicator {
+        return Err(FallbackReason::Rejected(format!(
+            "if `{name}` native lowering requires the result column to stay distinct from the indicator column"
+        )));
+    }
+
+    let collect =
+        |polynomial: &Linear<f64>, label: &str| -> std::result::Result<Vec<(usize, f64)>, FallbackReason> {
+            if !polynomial.constant_term().is_finite() {
+                return Err(FallbackReason::Rejected(format!(
+                    "if `{name}` native lowering requires a finite {label} constant, got {}",
+                    polynomial.constant_term()
+                )));
+            }
+            let mut coefficients = Vec::with_capacity(polynomial.monomials().len());
+            for monomial in polynomial.monomials() {
+                let coefficient = *monomial.coefficient();
+                if !coefficient.is_finite() {
+                    return Err(FallbackReason::Rejected(format!(
+                        "if `{name}` native lowering requires finite {label} coefficients, got {coefficient}"
+                    )));
+                }
+                coefficients.push((monomial.var_index(), coefficient));
+            }
+            Ok(coefficients)
+        };
+
+    let condition_coefficients = collect(symbol.condition_polynomial(), "condition")?;
+    if !condition_coefficients
+        .iter()
+        .any(|(_, coefficient)| *coefficient != 0.0)
+    {
+        return Err(FallbackReason::Rejected(format!(
+            "if `{name}` native lowering requires at least one variable term in the condition, got {} monomials with no non-zero coefficient",
+            condition_coefficients.len()
+        )));
+    }
+    let then_coefficients = collect(symbol.then_polynomial(), "then")?;
+    let else_coefficients = collect(symbol.else_polynomial(), "else")?;
+
+    Ok(IfNativePlan {
+        name: name.to_string(),
+        result,
+        indicator,
+        condition_coefficients,
+        condition_constant: *symbol.condition_polynomial().constant_term(),
+        then_coefficients,
+        then_constant: *symbol.then_polynomial().constant_term(),
+        else_coefficients,
+        else_constant: *symbol.else_polynomial().constant_term(),
+        big_m,
+    })
+}
+
+/// Gurobi 的 IF 原生 writer / Gurobi's native IF writer.
+///
+/// 服务 [`IfStructure`]（`ospf-rust-core/src/symbol/functions/if_function.rs`）：写 4 条指示约束
+/// （`b = 1 ⇒ c ≥ 0`、`b = 1 ⇒ c ≤ 0`、`b = 1 ⇒ res − t = 0`、`b = 0 ⇒ res − e = 0`），并在写入前用 SDK 盒
+/// 证明归约后的两条义务（见 [`IfNativePlan`]）。
+///
+/// 门控：结果列被固定、指示辅助列被外部引用、结果列或指示列缺失、指示列不是二元列、任一多项式含指示列本身
+/// （开关不能是自己的操作数）、盒证明失败，都回退。
+///
+/// Serves [`IfStructure`] (`ospf-rust-core/src/symbol/functions/if_function.rs`): four indicator constraints
+/// (`b = 1 ⇒ c ≥ 0`, `b = 1 ⇒ c ≤ 0`, `b = 1 ⇒ res − t = 0`, `b = 0 ⇒ res − e = 0`) after proving the two reduced
+/// obligations on the SDK box (see [`IfNativePlan`]).
+///
+/// Gates: a fixed result column, an externally referenced indicator helper column, a missing result or indicator
+/// column, a non-binary indicator column, the indicator column appearing in any polynomial (a switch cannot be its
+/// own operand), and a failed box proof all force a fallback.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GurobiIfWriter;
+
+impl GurobiIfWriter {
+    /// 创建 writer / Create the writer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiIfWriter {
+    fn name(&self) -> &str {
+        "gurobi_if"
+    }
+
+    fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
+        structure
+            .as_any()
+            .downcast_ref::<IfStructure<f64>>()
+            .is_some()
+    }
+
+    fn write_batch(
+        &self,
+        container: &mut GurobiNativeContainer,
+        requests: &[NativeWriteRequest<'_, f64>],
+    ) -> Result<Option<Vec<NativeWriteOutcome>>> {
+        if requests.is_empty() {
+            return Ok(None);
+        }
+        container.model_mut().update().map_err(|error| {
+            ModelError::InvalidConstraint(format!(
+                "gurobi_if writer failed to flush pending model changes before the checks: {error}"
+            ))
+        })?;
+
+        let mut outcomes = Vec::with_capacity(requests.len());
+        for request in requests {
+            let structure = request
+                .structure
+                .as_any()
+                .downcast_ref::<IfStructure<f64>>()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "gurobi_if writer received a structure that is not an IF structure".to_string(),
+                    )
+                })?;
+
+            let plan = match plan_if_native(structure) {
+                Ok(plan) => plan,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(reason));
+                    continue;
+                }
+            };
+
+            if request.usage.forbids_native_write() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "if `{}` native lowering rejected a fixed result column",
+                    plan.name
+                ))));
+                continue;
+            }
+            if !request.usage.helpers_are_exclusive() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "if `{}` native lowering rejected an externally referenced indicator helper column",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let Some(result_var) = container.variable(&plan.result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "if `{}` result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(indicator_var) = container.variable(&plan.indicator) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "if `{}` indicator column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+
+            let mut resolved: Vec<(&str, Vec<(Var, f64)>, f64)> = Vec::with_capacity(3);
+            let mut missing = None;
+            for (label, coefficients, constant) in [
+                (
+                    "condition",
+                    &plan.condition_coefficients,
+                    plan.condition_constant,
+                ),
+                ("then", &plan.then_coefficients, plan.then_constant),
+                ("else", &plan.else_coefficients, plan.else_constant),
+            ] {
+                let mut terms = Vec::with_capacity(coefficients.len());
+                for (index, coefficient) in coefficients {
+                    match container.variable_at(*index) {
+                        Some(var) => terms.push((var, *coefficient)),
+                        None => {
+                            missing = Some(label);
+                            break;
+                        }
+                    }
+                }
+                if missing.is_some() {
+                    break;
+                }
+                resolved.push((label, terms, constant));
+            }
+
+            let Some(label) = missing else {
+                let [condition, then_branch, else_branch] = resolved.as_slice() else {
+                    return Err(ModelError::InvalidConstraint(
+                        "gurobi_if writer could not resolve all three polynomials".to_string(),
+                    )
+                    .into());
+                };
+                if condition
+                    .1
+                    .iter()
+                    .chain(then_branch.1.iter())
+                    .chain(else_branch.1.iter())
+                    .any(|(var, _)| *var == indicator_var)
+                {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "if `{}` native lowering requires the indicator column to stay out of the condition and both branches",
+                        plan.name
+                    ))));
+                    continue;
+                }
+
+                match container.model_mut().get_obj_attr(attr::VType, &indicator_var) {
+                    Ok(VarType::Binary) => {}
+                    Ok(other) => {
+                        outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(
+                            format!(
+                                "if `{}` native lowering requires a binary indicator column, got {other:?}",
+                                plan.name
+                            ),
+                        )));
+                        continue;
+                    }
+                    Err(error) => {
+                        outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(
+                            format!(
+                                "if `{}` native lowering could not read the indicator column type from the Gurobi model: {error}",
+                                plan.name
+                            ),
+                        )));
+                        continue;
+                    }
+                }
+
+                // 归约后剩下的两条义务：`M ≥ max|c|` 与 `M ≥ max|e − t|`（都在 SDK 盒上算）。
+                // The two obligations left after the reduction: `M ≥ max|c|` and `M ≥ max|e − t|`, both computed
+                // on the SDK box.
+                let mut boxes = Vec::with_capacity(3);
+                let mut box_problem = None;
+                for (label, terms, constant) in [condition, then_branch, else_branch] {
+                    match sdk_polynomial_box(container, terms, *constant) {
+                        Ok(bounds) => boxes.push(bounds),
+                        Err(reason) => {
+                            box_problem = Some(format!("{label}: {reason}"));
+                            break;
+                        }
+                    }
+                }
+                let problem = box_problem.or_else(|| {
+                    plan.prove_reduced_obligations(
+                        boxes[0].0, boxes[0].1, boxes[1].0, boxes[1].1, boxes[2].0, boxes[2].1,
+                    )
+                    .err()
+                });
+                if let Some(reason) = problem {
+                    outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                        "if `{}` native lowering cannot prove the reduced big-M obligations: {reason}",
+                        plan.name
+                    ))));
+                    continue;
+                }
+
+                let mut then_equality: Vec<(Var, f64)> = Vec::with_capacity(then_branch.1.len() + 1);
+                then_equality.push((result_var, 1.0));
+                for (var, coefficient) in &then_branch.1 {
+                    then_equality.push((*var, -*coefficient));
+                }
+                let mut else_equality: Vec<(Var, f64)> = Vec::with_capacity(else_branch.1.len() + 1);
+                else_equality.push((result_var, 1.0));
+                for (var, coefficient) in &else_branch.1 {
+                    else_equality.push((*var, -*coefficient));
+                }
+
+                let mut write_failure = None;
+                for (indicator_value, condition_expr, suffix) in [
+                    // 条件核心关系键在 **b = 0** 上：即时行 `c − M·b ≤ 0` 与 `−c − M·b ≤ 0` 在 `b = 0` 时退化为
+                    // `c ≤ 0` 与 `c ≥ 0`（即 `b = 0 ⇒ c = 0`），而在 `b = 1` 时只剩松弛 `|c| ≤ M`。
+                    // The condition core relations are keyed on **b = 0**: the eager rows `c − M·b ≤ 0` and
+                    // `−c − M·b ≤ 0` degenerate to `c ≤ 0` and `c ≥ 0` (that is `b = 0 ⇒ c = 0`) at `b = 0`, while
+                    // at `b = 1` only the relaxation `|c| ≤ M` remains.
+                    (
+                        false,
+                        indicator_condition(
+                            &condition.1,
+                            condition.2,
+                            ConstraintRelation::GreaterEqual,
+                            0.0,
+                        ),
+                        "condition_ge",
+                    ),
+                    (
+                        false,
+                        indicator_condition(
+                            &condition.1,
+                            condition.2,
+                            ConstraintRelation::LessEqual,
+                            0.0,
+                        ),
+                        "condition_le",
+                    ),
+                    (
+                        true,
+                        indicator_condition(
+                            &then_equality,
+                            -then_branch.2,
+                            ConstraintRelation::Equal,
+                            0.0,
+                        ),
+                        "branch_then",
+                    ),
+                    (
+                        false,
+                        indicator_condition(
+                            &else_equality,
+                            -else_branch.2,
+                            ConstraintRelation::Equal,
+                            0.0,
+                        ),
+                        "branch_else",
+                    ),
+                ] {
+                    if let Err(error) = container.model_mut().add_genconstr_indicator(
+                        &format!("{}_{suffix}", plan.name),
+                        indicator_var,
+                        indicator_value,
+                        condition_expr,
+                    ) {
+                        write_failure = Some(format!("failed to write `{suffix}`: {error}"));
+                        break;
+                    }
+                }
+                if let Some(reason) = write_failure {
+                    return Err(ModelError::InvalidConstraint(format!("gurobi_if writer {reason}"))
+                        .into());
+                }
+
+                outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
+                    self.name(),
+                    GUROBI_IF_SCHEMA,
+                )));
+                continue;
+            };
+            outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                "if `{}` {label} column is missing from the solve model",
+                plan.name
+            ))));
+        }
+
+        Ok(Some(outcomes))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{LinearConstraint, LinearInequality};
     use crate::model::flatten::{Linear, LinearMonomial};
     use crate::symbol::function::{
-        AbsFunction, CosFunction, Point2, SigmoidFunction, SinFunction,
+        AbsFunction, CosFunction, Point2, LogisticFunction, SinFunction,
     };
     use std::sync::Arc;
 
@@ -3832,10 +6182,10 @@ mod tests {
         name: &str,
         input: Linear<f64>,
         points: Vec<Point2<f64>>,
-    ) -> SigmoidStructure<f64> {
-        SigmoidStructure::new(
+    ) -> LogisticStructure<f64> {
+        LogisticStructure::new(
             name,
-            Arc::new(SigmoidFunction::<f64>::with_points(id, name, input, points)),
+            Arc::new(LogisticFunction::<f64>::with_points(id, name, input, points)),
         )
     }
 
@@ -3886,7 +6236,7 @@ mod tests {
             ],
         );
         let sigmoid_plan =
-            plan_sigmoid_native(&sigmoid).expect("sigmoid should share the same admission");
+            plan_logistic_native(&sigmoid).expect("sigmoid should share the same admission");
         assert_eq!(sigmoid_plan.shape, "sigmoid");
         assert_eq!(sigmoid_plan.result, *sigmoid.result());
         assert_eq!(sigmoid_plan.argument_index, 3);
@@ -4271,17 +6621,17 @@ mod tests {
         assert!(!writer.supports(abs.as_ref()));
     }
 
-    /// 构造一个 IF-IN 结构：`input = 2x + 1`（x 在列 0）。
-    /// Build an IF-IN structure: `input = 2x + 1` with x on column 0.
-    fn if_in_structure(values: Vec<f64>, big_m: f64) -> IfInStructure<f64> {
-        let symbol = Arc::new(crate::symbol::function::IfInFunction::<f64>::new(
+    /// 构造一个 InValues 结构：`input = 2x + 1`（x 在列 0）。
+    /// Build an InValues structure: `input = 2x + 1` with x on column 0.
+    fn if_in_structure(values: Vec<f64>, big_m: f64) -> InValuesStructure<f64> {
+        let symbol = Arc::new(crate::symbol::function::InValuesFunction::<f64>::new(
             8_000,
             "ifin_native_plan",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
             values,
             big_m,
         ));
-        IfInStructure::new("ifin_native_plan", symbol, big_m)
+        InValuesStructure::new("ifin_native_plan", symbol, big_m)
     }
 
     #[test]
@@ -4289,7 +6639,7 @@ mod tests {
         use crate::symbol::function::{STRICT_BOUNDARY, STEP_EPSILON};
 
         let structure = if_in_structure(vec![3.0, 5.0], 8.0);
-        let plan = plan_if_in_native(&structure).expect("a two-value set should be admitted");
+        let plan = plan_in_values_native(&structure).expect("a two-value set should be admitted");
 
         assert_eq!(plan.name, "ifin_native_plan");
         assert_eq!(plan.result, *structure.result());
@@ -4324,15 +6674,15 @@ mod tests {
         // 两个结构包着同一个符号，只是固定的 Big-M 不同；这样两次物化给出同一组即时行、不同的 M。
         // Both structures wrap the same symbol and differ only in the fixed Big-M, so the two
         // materializations give the same eager rows with different M values.
-        let symbol = Arc::new(crate::symbol::function::IfInFunction::<f64>::new(
+        let symbol = Arc::new(crate::symbol::function::InValuesFunction::<f64>::new(
             8_010,
             "ifin_native_plan",
             Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
             vec![3.0, 5.0],
             8.0,
         ));
-        let small = IfInStructure::new("ifin_native_plan", symbol.clone(), 8.0);
-        let large = IfInStructure::new("ifin_native_plan", symbol, 16.0);
+        let small = InValuesStructure::new("ifin_native_plan", symbol.clone(), 8.0);
+        let large = InValuesStructure::new("ifin_native_plan", symbol, 16.0);
 
         let mut symbol_to_index = HashMap::new();
         symbol_to_index.insert(small.result().unique_id() as usize, RESULT_COLUMN);
@@ -4351,7 +6701,7 @@ mod tests {
         let large_rows = large
             .materialize(&symbol_to_index)
             .expect("the large big-M structure should materialize");
-        let plan = plan_if_in_native(&small).expect("the structure should be admitted");
+        let plan = plan_in_values_native(&small).expect("the structure should be admitted");
 
         // 只分析第一个候选值的四行（`{name}_pt0_*`）。
         // Only the first candidate's four rows (`{name}_pt0_*`) are analysed.
@@ -4430,39 +6780,39 @@ mod tests {
 
     #[test]
     fn if_in_plan_rejects_value_sets_and_inputs_it_cannot_write() {
-        use crate::symbol::function::IfInFunction;
+        use crate::symbol::function::InValuesFunction;
 
         // 空值集合：即时展开退化成 `result = 0`，`or` 一般约束没有零个操作数的含义。
         // An empty value set: eager expansion collapses to `result = 0` and an `or` general constraint
         // has no zero-operand meaning.
-        assert!(plan_if_in_native(&if_in_structure(Vec::new(), 8.0)).is_err());
+        assert!(plan_in_values_native(&if_in_structure(Vec::new(), 8.0)).is_err());
 
         // 非正 Big-M 无法给出任何松弛界。
         // A non-positive big-M cannot provide any relaxation bound.
-        assert!(plan_if_in_native(&if_in_structure(vec![3.0], 0.0)).is_err());
+        assert!(plan_in_values_native(&if_in_structure(vec![3.0], 0.0)).is_err());
 
         // 集合值非有限：平移量无法确定。
         // A non-finite set value leaves the shift undetermined.
-        assert!(plan_if_in_native(&if_in_structure(vec![f64::NAN], 8.0)).is_err());
+        assert!(plan_in_values_native(&if_in_structure(vec![f64::NAN], 8.0)).is_err());
 
         // 输入没有变量项：指示约束的线性表达式会变空。
         // An input without variable terms: the indicator constraints' linear expression would be empty.
-        let constant_input = Arc::new(IfInFunction::<f64>::new(
+        let constant_input = Arc::new(InValuesFunction::<f64>::new(
             8_020,
             "ifin_constant_input",
             Linear::new(Vec::new(), 1.0),
             vec![1.0],
             8.0,
         ));
-        let constant_input = IfInStructure::new("ifin_constant_input", constant_input, 8.0);
-        assert!(plan_if_in_native(&constant_input).is_err());
+        let constant_input = InValuesStructure::new("ifin_constant_input", constant_input, 8.0);
+        assert!(plan_in_values_native(&constant_input).is_err());
     }
 
     #[test]
     fn if_in_big_m_proof_accepts_an_implying_big_m_and_rejects_a_short_one() {
         use crate::symbol::function::STRICT_BOUNDARY;
 
-        let plan = plan_if_in_native(&if_in_structure(vec![3.0], 8.0))
+        let plan = plan_in_values_native(&if_in_structure(vec![3.0], 8.0))
             .expect("the structure should be admitted");
         assert_eq!(plan.strict_boundary, STRICT_BOUNDARY);
 
@@ -4498,9 +6848,9 @@ mod tests {
 
     #[test]
     fn if_in_writer_claims_only_if_in_structures() {
-        let writer = GurobiIfInWriter::new();
-        assert_eq!(writer.name(), "gurobi_if_in");
-        assert_eq!(GUROBI_IF_IN_SCHEMA, "functions-if-in-1");
+        let writer = GurobiInValuesWriter::new();
+        assert_eq!(writer.name(), "gurobi_in_values");
+        assert_eq!(GUROBI_IN_VALUES_SCHEMA, "functions-in-values-1");
         assert_eq!(
             GUROBI_IF_IN_BIG_M_TOLERANCE,
             GUROBI_INDICATOR_BIG_M_TOLERANCE
@@ -4918,6 +7268,73 @@ mod tests {
             premise_big_m,
             consequence_big_m,
         )
+    }
+
+    #[test]
+    fn conditional_value_plan_admits_the_linearisation_and_rejects_the_folded_case() {
+        use crate::symbol::function::{ConditionBounds, ConditionRelation, ConditionalThenFunction};
+
+        let build = |condition_bounds: (f64, f64)| {
+            let function = ConditionalThenFunction::from_parts_with_bounds(
+                Linear::new(vec![LinearMonomial::new(1.0, 0)], -1.0),
+                ConditionRelation::GreaterEqual,
+                0.1,
+                ConditionBounds {
+                    lower: condition_bounds.0,
+                    upper: condition_bounds.1,
+                },
+                Linear::new(vec![LinearMonomial::new(2.0, 1)], 1.0),
+                ConditionBounds {
+                    lower: -1.0,
+                    upper: 3.0,
+                },
+            )
+            .expect("the conditional-value function should build");
+            ConditionalThenStructure::new("conditional_value_plan", Arc::new(function))
+        };
+
+        let writer = GurobiConditionalValueWriter::new();
+        assert_eq!(writer.name(), "gurobi_conditional_value");
+        assert_eq!(
+            GUROBI_CONDITIONAL_VALUE_SCHEMA,
+            "functions-conditional-value-1"
+        );
+
+        // 常规情形：准入，且核心关系取自符号文件的映射表。
+        // The regular case is admitted and its core relations come from the symbol file's table.
+        let structure = build((-2.0, 2.0));
+        assert!(writer.supports(&structure));
+        let plan = plan_conditional_value_native(&structure)
+            .expect("the regular case should be admitted");
+        assert_eq!(plan.name, "conditional_value_plan");
+        assert_eq!(
+            plan.when_true,
+            (ConstraintRelation::GreaterEqual, 0.0),
+            "GreaterEqual gives `ind = 1 ⇒ s >= 0`"
+        );
+        assert_eq!(
+            plan.when_false,
+            (ConstraintRelation::LessEqual, -0.1),
+            "GreaterEqual gives `ind = 0 ⇒ s <= -boundary`"
+        );
+        assert_eq!(plan.condition_lower, -2.0);
+        assert_eq!(plan.condition_upper, 2.0);
+        assert_eq!(plan.then_lower, -1.0);
+        assert_eq!(plan.then_upper, 3.0);
+        assert!(plan.prove_declared_range_relaxations().is_ok());
+
+        // 折叠情形：条件范围让「成立」一支完全覆盖，即时展开退化为定值行，必须整体拒绝。
+        // The folded case: the condition range makes the "holds" branch cover everything, eager expansion
+        // collapses to fixed-value rows and must be rejected as a whole.
+        let folded = build((0.5, 2.0));
+        let reason = plan_conditional_value_native(&folded).expect_err("the folded case is rejected");
+        match reason {
+            FallbackReason::Rejected(message) => assert!(
+                message.contains("folded case"),
+                "the rejection must name the folded case: {message}"
+            ),
+            other => panic!("expected a rejection, got {other:?}"),
+        }
     }
 
     #[test]
