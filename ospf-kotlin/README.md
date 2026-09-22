@@ -2,7 +2,7 @@
 
 [![GitHub license](https://img.shields.io/badge/license-Apache%20License%202.0-green.svg?style=flat)](http://www.apache.org/licenses/LICENSE-2.0)
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.fuookami.ospf.kotlin/ospf-kotlin)](https://mvnrepository.com/artifact/io.github.fuookami.ospf.kotlin/ospf-kotlin)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.24-yellow.svg?logo=kotlin)](http://kotlinlang.org)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.20-yellow.svg?logo=kotlin)](http://kotlinlang.org)
 
 ## Introduction
 
@@ -13,7 +13,6 @@ ospf: https://github.com/fuookami/ospf
 documentation: https://fuookami.github.io/ospf/
 
 :us: English | :cn: [简体中文](README_ch.md)
-
 
 ## Architecture Overview
 
@@ -59,7 +58,7 @@ For new module documentation, use [docs/README_TEMPLATE.md](docs/README_TEMPLATE
 
 Requirements:
 
-* JDK: 17+ or 8+
+* JDK: 25+ or 8+
 * maven: 3+
 
 ospf-kotlin has been released to the maven central repository. Therefore, if you are using maven, you only need to add a dependency in the pom.xml file:
@@ -190,8 +189,6 @@ If you need to use the network scheduling development package, add the dependenc
 </dependency>
 ```
 
-
-
 ## Constraint Programming Boundary
 
 `ospf-kotlin-core` exposes an integer-domain constraint-programming model with immutable snapshots, stable IDs, source verification, and a unified solver report. The generic MIP lowerer uses checked arithmetic internally and only crosses the existing floating-point solver boundary when every integer coefficient, bound, and generated Big-M is exactly representable.
@@ -272,8 +269,8 @@ mvn --% -pl ospf-kotlin-benchmark -Pbench -DskipTests exec:java -Dexec.args=".*M
 
 Baseline environment used in P21-1:
 
-1. JDK: GraalVM JDK 17.0.12
-2. Maven: Apache Maven 3.9.12
+1. JDK: 25+
+2. Maven: Apache Maven 3.9.16
 3. OS: Windows (PowerShell)
 4. JVM opts recommendation (for frequent CodeHeap warnings):
    - PowerShell (current session):
@@ -288,4 +285,3 @@ Baseline environment used in P21-1:
 The ospf-kotlin is licensed under the terms of the Apache License 2.0.
 
 See [LICENSE](LICENSE) for more information.
-
