@@ -88,8 +88,100 @@ where
 }
 
 const MIN_BIG_M: f64 = 1.0;
-const STEP_EPSILON: f64 = 1e-8;
-const STRICT_BOUNDARY: f64 = STEP_EPSILON + STEP_EPSILON;
+
+/// IF-IN 即时展开的 band 容差 / Band tolerance of the IF-IN eager expansion
+///
+/// 候选值的指示列取真（`b_i = 1`）时，即时展开的 `band_ub` / `band_lb` 两条核心行把平移量
+/// `s_i = input - values[i]` 夹在 `[-STEP_EPSILON, +STEP_EPSILON]` 内。原生 writer 必须复用本常量，
+/// 绝不能另取一个容差：两条路径的可行域差异只有 1e-8 量级。
+///
+/// When a candidate value's indicator is true (`b_i = 1`), the eager `band_ub` / `band_lb` core rows
+/// clamp the shift `s_i = input - values[i]` into `[-STEP_EPSILON, +STEP_EPSILON]`. A native writer
+/// must reuse this very constant and must never pick another tolerance: the two paths' feasible sets
+/// differ only at the 1e-8 scale.
+pub const STEP_EPSILON: f64 = 1e-8;
+
+/// IF-IN 即时展开的严格边界 / Strict boundary of the IF-IN eager expansion
+///
+/// `s_i` 落在 band 之外（即候选值指示列为假）时，即时展开要求它离候选值至少这么远
+/// （`out_ub` / `out_lb` 两条核心行给出 `s_i <= -STRICT_BOUNDARY` 或 `s_i >= STRICT_BOUNDARY`）。
+/// 它等于两倍 band 容差，因此 band 与「不在集合内」之间存在一段**刻意留出的间隙**；原生 writer
+/// 必须复用同一常量，否则间隙宽度会变。
+///
+/// When `s_i` lies outside the band (that is, the candidate value's indicator is false), eager
+/// expansion requires it to stay at least this far from the candidate value (the `out_ub` / `out_lb`
+/// core rows give `s_i <= -STRICT_BOUNDARY` or `s_i >= STRICT_BOUNDARY`). It equals twice the band
+/// tolerance, so a **deliberate gap** sits between the band and "not in the set"; a native writer must
+/// reuse the same constant or the gap width changes.
+pub const STRICT_BOUNDARY: f64 = STEP_EPSILON + STEP_EPSILON;
+
+/// IF-IN 每个候选值在平移量 `s_i = input - values[i]` 上的核心关系与 Big-M 松弛量
+/// Core relations and Big-M relaxations of one IF-IN candidate value on the shift
+/// `s_i = input - values[i]`
+///
+/// 「核心关系」是即时展开里**不含 Big-M 项**的那些行（对每个 `(b_i, side_i)` 取值组合而言）；
+/// 「松弛量」是同一批行在其它组合下只剩 Big-M 的形状：`s_i >= relaxed_lower_rhs - M` 或
+/// `s_i <= M - relaxed_upper_rhs`（band 行的松弛还要用到 `band_tolerance`）。原生 writer 只写核心
+/// 关系，因此必须证明这些松弛行在输入的实际盒上成立，证明所需的 ε 全部取自本表。
+///
+/// The "core relations" are the eager rows that carry **no Big-M term** (for each `(b_i, side_i)`
+/// assignment); the "relaxations" are what the same rows reduce to for the other assignments, namely
+/// `s_i >= relaxed_lower_rhs - M` or `s_i <= M - relaxed_upper_rhs` (band relaxations additionally use
+/// `band_tolerance`). A native writer writes only the core relations, so it must prove those relaxed
+/// rows hold on the input's actual box, and every ε the proof needs comes from this table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct IfInValueCoreRelations {
+    /// 候选值指示列取真时的核心关系：`s_i <= tol` 与 `s_i >= -tol`
+    /// Core relations for `indicator = 1`: `s_i <= tol` and `s_i >= -tol`
+    pub when_indicator_true: Vec<(ConstraintRelation, f64)>,
+    /// side 列取真（且指示列为假）时的核心关系：`s_i >= strict_boundary`
+    /// Core relation for `side = 1` (with the indicator false): `s_i >= strict_boundary`
+    pub when_side_true: (ConstraintRelation, f64),
+    /// side 列取假（且指示列为假）时的核心关系：`s_i <= -strict_boundary`
+    /// Core relation for `side = 0` (with the indicator false): `s_i <= -strict_boundary`
+    pub when_side_false: (ConstraintRelation, f64),
+    /// 需要证明的下侧松弛 `M + s_i_min >= relaxed_lower_rhs`
+    /// Lower relaxation to prove: `M + s_i_min >= relaxed_lower_rhs`
+    pub relaxed_lower_rhs: f64,
+    /// 需要证明的上侧松弛 `M - s_i_max >= relaxed_upper_rhs`
+    /// Upper relaxation to prove: `M - s_i_max >= relaxed_upper_rhs`
+    pub relaxed_upper_rhs: f64,
+    /// band 行使用的容差（`s_i` 取真时的核心关系即由它给出）
+    /// Tolerance the band rows use (it also gives the core relations for `indicator = 1`)
+    pub band_tolerance: f64,
+    /// 「不在集合内」一侧与候选值之间的最小距离 / Minimum distance from a candidate when outside the set
+    pub strict_boundary: f64,
+}
+
+/// 返回 IF-IN 即时展开的核心关系与 Big-M 松弛量（所有候选值共用同一张表）
+/// Core relations and Big-M relaxations of the IF-IN eager expansion (one table for every candidate)
+///
+/// 逐条对应 `build_mechanism_constraints` 里每个候选值的四行：`band_ub` / `band_lb` 在 `b_i = 1`
+/// 时给出 band 核心关系、在 `b_i = 0` 时只剩 `s_i <= tol + M` 与 `s_i >= -tol - M`；`out_lb` 只在
+/// `(b_i, side_i) = (0, 1)` 时给出 `s_i >= STRICT_BOUNDARY`，`out_ub` 只在 `(b_i, side_i) = (0, 0)`
+/// 时给出 `s_i <= -STRICT_BOUNDARY`，其余组合都只剩 Big-M 松弛。`STRICT_BOUNDARY` 同时是两侧松弛
+/// 的右端（`s_i >= sb - M` 与 `s_i <= M - sb`）。
+///
+/// Each entry mirrors one of the four rows `build_mechanism_constraints` emits per candidate:
+/// `band_ub` / `band_lb` give the band core relations at `b_i = 1` and reduce to `s_i <= tol + M` and
+/// `s_i >= -tol - M` at `b_i = 0`; `out_lb` gives `s_i >= STRICT_BOUNDARY` only at
+/// `(b_i, side_i) = (0, 1)` while `out_ub` gives `s_i <= -STRICT_BOUNDARY` only at
+/// `(b_i, side_i) = (0, 0)`, every other assignment leaving a Big-M relaxation. `STRICT_BOUNDARY` is
+/// also the right-hand side of both relaxations (`s_i >= sb - M` and `s_i <= M - sb`).
+pub fn if_in_value_core_relations() -> IfInValueCoreRelations {
+    IfInValueCoreRelations {
+        when_indicator_true: vec![
+            (ConstraintRelation::LessEqual, STEP_EPSILON),
+            (ConstraintRelation::GreaterEqual, -STEP_EPSILON),
+        ],
+        when_side_true: (ConstraintRelation::GreaterEqual, STRICT_BOUNDARY),
+        when_side_false: (ConstraintRelation::LessEqual, -STRICT_BOUNDARY),
+        relaxed_lower_rhs: STRICT_BOUNDARY,
+        relaxed_upper_rhs: STRICT_BOUNDARY,
+        band_tolerance: STEP_EPSILON,
+        strict_boundary: STRICT_BOUNDARY,
+    }
+}
 
 fn next_up_finite(value: f64) -> Option<f64> {
     if !value.is_finite() || value < 0.0 {
@@ -1208,6 +1300,214 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("if_in({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Big-M 必须在结构创建时固定，取法与即时路径的 `mechanism_constraints_with_tokens` 完全一致：
+        // 先按令牌边界推断，取不到时回退到构造配置值；推断本身报错（集合值不可用）或两者都不可用
+        // 时不提供结构，让即时展开路径给出同一个错误，而不是把错误推迟到物化阶段。
+        // The Big-M must be fixed when the structure is created, resolved exactly like the eager
+        // `mechanism_constraints_with_tokens`: infer from token bounds first and fall back to the
+        // configured value. When inference itself fails (unusable set values) or neither source is
+        // available, no structure is offered so eager expansion reports the same error instead of
+        // deferring it to materialization.
+        let big_m = match self.infer_big_m_from_tokens(tokens) {
+            Ok(Some(inferred)) => inferred,
+            Ok(None) => self.configured_big_m().ok()?,
+            Err(_) => return None,
+        };
+        Some(Arc::new(IfInStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+            big_m,
+        )))
+    }
+}
+
+/// IF-IN 离散集合判定的求解器无关结构描述
+/// Solver-neutral structure description of the IF-IN discrete-set test
+///
+/// 与 IF/极值采用同一模式：持有产生它的符号（`Arc`）与创建时固定的 Big-M，物化时回调手写路径
+/// 的同一个公式生成器并传入同一个 M，因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。结果列是
+/// 集合判定的二值列；每个候选值的指示列与 side 列都是本结构的辅助列，全部上报以免原生路径误判
+/// 可以省略。
+///
+/// Follows the same pattern as IF and the extrema: the structure holds the symbol that produced it
+/// (an `Arc`) together with the Big-M fixed at creation time and materializes through the very same
+/// formula generator as the handwritten eager path with that same M, so deferred materialization
+/// matches eager expansion row by row, including the M value. The result column is the binary
+/// set-membership column, while the indicator and side columns of every candidate value are helpers
+/// and are all reported so a native path cannot wrongly omit them.
+#[derive(Debug)]
+pub struct IfInStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<IfInFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 候选值的指示列与 side 列 / Indicator and side columns of the candidate values
+    helpers: Vec<crate::variable::VariableId>,
+    /// 创建时固定的 Big-M / Big-M fixed at creation time
+    big_m: f64,
+}
+
+impl<V> IfInStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<IfInFunction<V>>, big_m: f64) -> Self {
+        let result = symbol.result_variable().id();
+        let count = symbol.values.len();
+        let mut helpers = Vec::with_capacity(count * 2);
+        for index in 0..count {
+            helpers.push(symbol.value_indicator_variable(index).id());
+        }
+        for index in 0..count {
+            helpers.push(symbol.value_side_variable(count, index).id());
+        }
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            helpers,
+            big_m,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取辅助列 / Get the helper columns.
+    pub fn helpers(&self) -> &[crate::variable::VariableId] {
+        &self.helpers
+    }
+
+    /// 获取固定的 Big-M / Get the fixed Big-M.
+    pub fn big_m(&self) -> f64 {
+        self.big_m
+    }
+
+    /// 获取即时展开使用的输入多项式（只读；单项式用列下标表示）
+    /// Read-only access to the input polynomial used by the eager expansion (monomials use column
+    /// indices).
+    ///
+    /// 用途：原生 writer 必须把**同一份**输入关系写进 SDK 的一般约束，而不是在别处重新推导；
+    /// 本访问器只转发符号上的只读数据，不复制公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** input relation into the SDK's general
+    /// constraints instead of re-deriving it; this only forwards read-only data from the symbol, copies
+    /// no formula and exposes no mutable state.
+    pub fn input_polynomial(&self) -> &Linear<V> {
+        self.symbol.input_polynomial()
+    }
+
+    /// 获取离散值集合（只读）/ Read-only access to the discrete value set.
+    pub fn values(&self) -> &[V] {
+        self.symbol.values()
+    }
+
+    /// 获取每个候选值的指示列，顺序与 [`Self::values`] 一致
+    /// Read-only access to the per-candidate indicator columns, in [`Self::values`] order.
+    ///
+    /// 用途：原生 writer 要把每个候选值写成「指示列 = 1 ⇒ band 成立」的指示约束。
+    /// Purpose: a native writer turns every candidate into an "indicator = 1 ⇒ band holds" indicator
+    /// constraint.
+    pub fn indicator_columns(&self) -> Vec<crate::variable::VariableId> {
+        (0..self.symbol.values.len())
+            .map(|index| self.symbol.value_indicator_variable(index).id())
+            .collect()
+    }
+
+    /// 获取每个候选值的 side 列，顺序与 [`Self::values`] 一致
+    /// Read-only access to the per-candidate side columns, in [`Self::values`] order.
+    ///
+    /// 用途：原生 writer 用 side 列的取值分裂「在集合外」的两种情形（低于 / 高于候选值）。
+    /// Purpose: a native writer splits the two "outside the set" cases (below / above the candidate)
+    /// by the value of the side column.
+    pub fn side_columns(&self) -> Vec<crate::variable::VariableId> {
+        let count = self.symbol.values.len();
+        (0..count)
+            .map(|index| self.symbol.value_side_variable(count, index).id())
+            .collect()
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for IfInStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 候选值的指示列与 side 列都是本结构的辅助列，参与「是否被外部引用 / 是否可省略」的判定。
+        // The indicator and side columns of the candidate values are helpers of this structure and
+        // take part in the externally-referenced and omittable analysis.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            self.helpers.clone(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        // 全部辅助列与 Big-M 都进入指纹：任一语义字段变化都必须让旧记录失效。
+        // Every helper column and the Big-M are part of the fingerprint: any semantic change must
+        // invalidate old records.
+        let helpers = self
+            .helpers
+            .iter()
+            .map(|helper| helper.unique_id().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        Some(format!(
+            "if_in|{}|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            helpers,
+            crate::model::intermediate::fingerprint_float(self.big_m)
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器与同一个 Big-M，保证两条路径逐行一致。
+        // Reuse the eager path's generator and the same Big-M so both paths stay row-identical.
+        self.symbol
+            .build_mechanism_constraints(symbol_to_index, self.big_m)
+    }
 }
 
 impl<V> FunctionSymbol<V> for IfInFunction<V>
@@ -1286,13 +1586,38 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ConstraintRelation, LinearConstraint};
+    use crate::model::{ConstraintRelation, FunctionExpansionPolicy, LinearConstraint, MetaModel};
     use crate::symbol::functions::conditional::{
         ConditionBounds, ConditionRelation, ConditionalIfFunction,
     };
     use crate::token::{MutableTokenList, Token, TokenList, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableRange};
     use std::collections::HashMap;
+
+    fn token_index_map<V>(tokens: &[Token<V>]) -> HashMap<usize, usize>
+    where
+        V: Clone + Debug + Send + Sync + 'static,
+    {
+        tokens
+            .iter()
+            .enumerate()
+            .map(|(index, token)| (token.id().unique_id() as usize, index + 1))
+            .collect()
+    }
+
+    /// 逐行比较延迟物化与即时展开 / Compare deferred materialization with eager expansion row by row
+    fn assert_rows_match(eager: &[LinearConstraint<f64>], deferred: &[LinearConstraint<f64>]) {
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+    }
 
     fn constraint_lhs(constraint: &LinearConstraint<f64>, values: &HashMap<usize, f64>) -> f64 {
         let mut lhs = *constraint.inequality.polynomial.constant_term();
@@ -1325,6 +1650,215 @@ mod tests {
             ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-12,
             ConstraintRelation::GreaterEqual => lhs + 1e-12 >= constraint.inequality.rhs,
         }
+    }
+
+    /// 即时展开的一行在 `(b_i, side_i)` 取给定值时对 `s_i` 的投影：`(关系, 右端项)`
+    /// Project one eager row onto `s_i` for a given `(b_i, side_i)`: `(relation, right-hand side)`
+    ///
+    /// 行本身是 `Σ c_k x_k + shifted_constant + ind·b_i + side·side_i REL rhs`，而
+    /// `s_i = Σ c_k x_k + shifted_constant`，因此固定两个指示列后该行等价于
+    /// `s_i REL rhs - ind·b_i - side·side_i`。列号用**列下标**口径（与 `symbol_to_index` 一致）。
+    ///
+    /// The row is `Σ c_k x_k + shifted_constant + ind·b_i + side·side_i REL rhs` while
+    /// `s_i = Σ c_k x_k + shifted_constant`, so with both indicator columns fixed it is equivalent to
+    /// `s_i REL rhs - ind·b_i - side·side_i`. Column numbers use the **column index** convention (the
+    /// one `symbol_to_index` uses).
+    fn eager_value_projection(
+        constraint: &LinearConstraint<f64>,
+        indicator_column: usize,
+        side_column: usize,
+        indicator_value: f64,
+        side_value: f64,
+    ) -> (ConstraintRelation, f64) {
+        let coefficient_of = |column: usize| {
+            constraint
+                .inequality
+                .polynomial
+                .monomials()
+                .iter()
+                .find(|monomial| monomial.var_index() == column)
+                .map(|monomial| *monomial.coefficient())
+                .unwrap_or(0.0)
+        };
+        (
+            constraint.inequality.relation,
+            constraint.inequality.rhs
+                - coefficient_of(indicator_column) * indicator_value
+                - coefficient_of(side_column) * side_value,
+        )
+    }
+
+    /// IF-IN 的核心关系表必须与即时展开里「不含 Big-M 的那些行」逐位一致
+    /// The IF-IN core-relation table must agree bit for bit with the eager rows carrying no Big-M.
+    ///
+    /// 验证手法（与关系指示同一套）：用两个不同的 Big-M 生成同一候选值的四行即时展开，对每个
+    /// `(b_i, side_i)` 取值组合做投影。投影不随 M 变化的行就是核心行，必须与表逐位相等（含 band
+    /// 容差与严格边界）；投影随 M 线性变化的行必须给出表里登记的松弛右端，即
+    /// `s_i >= relaxed_lower_rhs - M` 与 `s_i <= M - relaxed_upper_rhs`。
+    ///
+    /// How it is verified (the same scheme as the relation indicator): two different Big-M values
+    /// generate the four eager rows of one candidate and each `(b_i, side_i)` assignment is projected.
+    /// A row whose projection does not move with M is a core row and must equal the table bit for bit
+    /// (including the band tolerance and the strict boundary), while a row whose projection moves
+    /// linearly with M must yield the tabulated relaxation right-hand sides, namely
+    /// `s_i >= relaxed_lower_rhs - M` and `s_i <= M - relaxed_upper_rhs`.
+    #[test]
+    fn if_in_core_relations_match_the_big_m_free_eager_rows() {
+        // 列号口径：结果 1，指示列 2 / 3，side 列 4 / 5（两个候选值）。
+        // Column numbering: result 1, indicator columns 2 / 3, side columns 4 / 5 (two candidates).
+        const RESULT_COLUMN: usize = 1;
+        const INDICATOR_COLUMNS: [usize; 2] = [2, 3];
+        const SIDE_COLUMNS: [usize; 2] = [4, 5];
+        let small_m = 8.0f64;
+        let large_m = 16.0f64;
+        let projection_tolerance = 1e-12;
+
+        let f: IfInFunction<f64> = IfInFunction::new(
+            9100,
+            "ifin_core_table",
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            vec![3.0, 5.0],
+            10.0,
+        );
+        let mut symbol_to_index = HashMap::new();
+        symbol_to_index.insert(f.result_variable().id().unique_id() as usize, RESULT_COLUMN);
+        for index in 0..2 {
+            symbol_to_index.insert(
+                f.value_indicator_variable(index).id().unique_id() as usize,
+                INDICATOR_COLUMNS[index],
+            );
+            symbol_to_index.insert(
+                f.value_side_variable(2, index).id().unique_id() as usize,
+                SIDE_COLUMNS[index],
+            );
+        }
+
+        let small_rows = f
+            .build_mechanism_constraints(&symbol_to_index, small_m)
+            .expect("eager rows with the smaller big-M");
+        let large_rows = f
+            .build_mechanism_constraints(&symbol_to_index, large_m)
+            .expect("eager rows with the larger big-M");
+        assert_eq!(small_rows.len(), large_rows.len());
+
+        let expected = if_in_value_core_relations();
+        assert_eq!(expected.band_tolerance, STEP_EPSILON);
+        assert_eq!(expected.relaxed_lower_rhs, STRICT_BOUNDARY);
+        assert_eq!(expected.relaxed_upper_rhs, STRICT_BOUNDARY);
+
+        // 只分析第一个候选值的四行（`{name}_pt0_*`），其余候选值形态完全相同。
+        // Only the first candidate's four rows (`{name}_pt0_*`) are analysed; every other candidate has
+        // the same shape.
+        let value_rows: Vec<usize> = small_rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.name.starts_with("ifin_core_table_pt0_"))
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(value_rows.len(), 4, "one candidate emits exactly four value rows");
+
+        let mut lower_rhs: Option<f64> = None;
+        let mut upper_rhs: Option<f64> = None;
+        for (indicator_value, side_value) in [
+            (1.0f64, 0.0f64),
+            (1.0f64, 1.0f64),
+            (0.0f64, 0.0f64),
+            (0.0f64, 1.0f64),
+        ] {
+            let mut core = Vec::new();
+            for index in &value_rows {
+                let small = eager_value_projection(
+                    &small_rows[*index],
+                    INDICATOR_COLUMNS[0],
+                    SIDE_COLUMNS[0],
+                    indicator_value,
+                    side_value,
+                );
+                let large = eager_value_projection(
+                    &large_rows[*index],
+                    INDICATOR_COLUMNS[0],
+                    SIDE_COLUMNS[0],
+                    indicator_value,
+                    side_value,
+                );
+                assert_eq!(small.0, large.0, "a row's relation must not depend on the big-M");
+                if (small.1 - large.1).abs() <= projection_tolerance {
+                    core.push(small);
+                } else {
+                    // 投影随 M 线性变化：`k` 是斜率大小（以 M 为单位），`c` 是松弛右端。上界行的
+                    // 斜率必须为正（`s_i <= k·M - c`），下界行的斜率必须为负（`s_i >= c - k·M`），
+                    // 也就是 Big-M 只会**放松**该行。
+                    // The projection moves linearly with M: `k` is the slope's magnitude in units of M
+                    // and `c` is the relaxation's right-hand side. An upper row's slope must be
+                    // positive (`s_i <= k·M - c`) and a lower row's negative (`s_i >= c - k·M`), that
+                    // is the Big-M can only **relax** the row.
+                    let slope = (large.1 - small.1) / (large_m - small_m);
+                    let k = slope.abs().round();
+                    assert!(
+                        (slope.abs() - k).abs() <= 1e-9 && (k == 1.0 || k == 2.0),
+                        "a relaxed row must be linear in M with slope magnitude 1 or 2, got {slope}"
+                    );
+                    let c = match small.0 {
+                        // `s_i <= k·M - c`
+                        ConstraintRelation::LessEqual => {
+                            assert!(slope > 0.0, "an upper relaxation must grow with the big-M");
+                            k * small_m - small.1
+                        }
+                        // `s_i >= c - k·M`
+                        ConstraintRelation::GreaterEqual => {
+                            assert!(slope < 0.0, "a lower relaxation must fall with the big-M");
+                            k * small_m + small.1
+                        }
+                        ConstraintRelation::Equal => panic!("if-in value rows are never equalities"),
+                    };
+                    match small.0 {
+                        ConstraintRelation::LessEqual => {
+                            upper_rhs = Some(upper_rhs.map_or(c, |current: f64| current.max(c)));
+                        }
+                        ConstraintRelation::GreaterEqual => {
+                            lower_rhs = Some(lower_rhs.map_or(c, |current: f64| current.max(c)));
+                        }
+                        ConstraintRelation::Equal => unreachable!(),
+                    }
+                }
+            }
+
+            let expected_core: Vec<(ConstraintRelation, f64)> = match (indicator_value, side_value) {
+                (1.0, _) => expected.when_indicator_true.clone(),
+                (0.0, 0.0) => vec![expected.when_side_false],
+                (0.0, _) => vec![expected.when_side_true],
+                _ => unreachable!(),
+            };
+            assert_eq!(
+                core.len(),
+                expected_core.len(),
+                "unexpected number of big-M-free rows at (b, side) = ({indicator_value}, {side_value})"
+            );
+            for (relation, rhs) in &expected_core {
+                assert!(
+                    core.iter().any(|(core_relation, core_rhs)| {
+                        core_relation == relation && (core_rhs - rhs).abs() <= projection_tolerance
+                    }),
+                    "core relation ({relation:?}, {rhs}) is missing from the eager rows at (b, side) = ({indicator_value}, {side_value}); eager cores are {core:?}"
+                );
+            }
+        }
+
+        // 全部斜率-1 松弛行给出的最大右端就是表里登记的证明目标。
+        // The largest right-hand side over all slope-1 relaxed rows is exactly the tabulated proof
+        // target.
+        assert!(
+            (lower_rhs.expect("a lower relaxation must exist") - expected.relaxed_lower_rhs).abs()
+                <= projection_tolerance,
+            "lower relaxation mismatch: eager {lower_rhs:?} vs table {}",
+            expected.relaxed_lower_rhs
+        );
+        assert!(
+            (upper_rhs.expect("an upper relaxation must exist") - expected.relaxed_upper_rhs).abs()
+                <= projection_tolerance,
+            "upper relaxation mismatch: eager {upper_rhs:?} vs table {}",
+            expected.relaxed_upper_rhs
+        );
     }
 
     #[test]
@@ -2338,5 +2872,169 @@ mod tests {
                 .iter()
                 .all(|token| token.solver_index == usize::MAX)
         );
+    }
+
+    #[test]
+    fn if_in_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(96_600),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        // input = 2x + 1：x ∈ [-2, 3] 上取值范围 [-3, 7]；候选 1 与 3 的最大偏差都是 6，
+        // 因此推断 M = 6 + 严格边界，而不是构造时配置的 100。
+        // input = 2x + 1 spans [-3, 7] over x ∈ [-2, 3]; both candidates 1 and 3 deviate by at most
+        // 6, so the inferred M is 6 + strict boundary instead of the configured 100.
+        let function: IfInFunction<f64> = IfInFunction::new(
+            96_601,
+            "if_in_deferred",
+            Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+            vec![1.0, 3.0],
+            100.0,
+        );
+
+        let mut auxiliary_tokens = Vec::new();
+        function
+            .register_tokens(&mut auxiliary_tokens)
+            .expect("if_in tokens should be registered");
+        let symbol_to_index = token_index_map(&auxiliary_tokens);
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        tokens.extend(auxiliary_tokens);
+
+        let structure = function
+            .deferred_structure_with_tokens(&tokens)
+            .expect("if_in should always expose a deferred structure");
+        assert_eq!(structure.function_name(), "if_in_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("if_in structure should expose a usage binding");
+        assert_eq!(binding.result, function.result_variable().id());
+        let mut expected_helpers = Vec::new();
+        for index in 0..2 {
+            expected_helpers.push(function.value_indicator_variable(index).id());
+        }
+        for index in 0..2 {
+            expected_helpers.push(function.value_side_variable(2, index).id());
+        }
+        assert_eq!(binding.helpers, expected_helpers);
+        assert!(structure.fingerprint().is_some());
+
+        let eager = function
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("eager if_in constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("if_in structure should materialize");
+        assert!(!eager.is_empty());
+        assert_rows_match(&eager, &deferred);
+
+        // 结构必须冻结即时路径推断出的 M：所有候选的最大偏差都是 6。
+        // The structure must freeze the M inferred by the eager path: every candidate deviates by 6.
+        let band_upper = deferred
+            .iter()
+            .find(|constraint| constraint.name == "if_in_deferred_pt0_band_ub")
+            .expect("pt0 upper-band row should exist");
+        let expected_m = 6.0 + STRICT_BOUNDARY;
+        assert!((band_upper.inequality.rhs - (expected_m + STEP_EPSILON)).abs() <= 1e-9);
+        let concrete = structure
+            .as_any()
+            .downcast_ref::<IfInStructure<f64>>()
+            .expect("if_in structure should downcast to the concrete structure");
+        assert!((concrete.big_m() - expected_m).abs() <= 1e-9);
+
+        // 没有令牌边界时回退到构造配置的 M，两条路径仍然逐行一致。
+        // Without token bounds the configured M is used and both paths still agree row by row.
+        let configured_structure = function
+            .deferred_structure_with_tokens(&[])
+            .expect("if_in should fall back to the configured big-M");
+        let eager_default = function
+            .mechanism_constraints_with_tokens(&symbol_to_index, &[])
+            .expect("eager if_in constraints should be generated");
+        let deferred_default = configured_structure
+            .materialize(&symbol_to_index)
+            .expect("if_in structure should materialize");
+        assert_rows_match(&eager_default, &deferred_default);
+        let configured_concrete = configured_structure
+            .as_any()
+            .downcast_ref::<IfInStructure<f64>>()
+            .expect("if_in structure should downcast to the concrete structure");
+        assert!((configured_concrete.big_m() - 100.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn if_in_structure_is_withheld_when_big_m_inference_fails() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(96_602),
+            "x",
+            VariableRange::bounded(0.0, f64::MAX),
+        );
+        let function: IfInFunction<f64> = IfInFunction::new(
+            96_603,
+            "if_in_without_big_m",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+            vec![0.0],
+            100.0,
+        );
+
+        // 令牌边界推出的 M 无法保持严格边界：必须留给 EAGER 路径报错。
+        // The M inferred from token bounds cannot preserve the strict boundary, so the error must be
+        // left to the eager path.
+        let tokens = vec![Token::from_generic(x, 0)];
+        assert!(function.deferred_structure_with_tokens(&tokens).is_none());
+        assert!(
+            function
+                .mechanism_constraints_with_tokens(&HashMap::new(), &tokens)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn if_in_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("if_in_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(96_700),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).expect("x should register");
+            let function: IfInFunction<f64> = IfInFunction::new(
+                96_701,
+                "if_in_pipeline",
+                Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                vec![1.0, 3.0],
+                100.0,
+            );
+            model
+                .add_symbol(Arc::new(function))
+                .expect("if_in symbol should register");
+
+            let mechanism = model
+                .try_into_mechanism_model()
+                .expect("mechanism model should build");
+            if policy.is_deferred() {
+                // 延迟策略下不写即时行，但保留结构描述。
+                // A deferred policy writes no eager row while keeping the structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "if_in_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty(), "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行，并使用同一个推断 Big-M。
+        // The deferred path must produce the same rows as eager expansion once materialized, using
+        // the same inferred Big-M.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
     }
 }

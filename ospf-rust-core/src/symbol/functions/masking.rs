@@ -1000,6 +1000,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
+    use crate::model::{FunctionExpansionPolicy, MetaModel};
     use crate::token::{MutableTokenList, Token, VecTokenList};
     use crate::variable::{ContinuousVariableItem, VariableRange};
 
@@ -1203,6 +1204,186 @@ mod tests {
 
         assert!((upper.inequality.rhs - DEFAULT_BIG_M).abs() <= 1e-9);
         assert!((*mask_term.coefficient() - DEFAULT_BIG_M).abs() <= 1e-9);
+    }
+
+    /// 读取结构描述里固定的 Big-M / Read the Big-M fixed in a structure description.
+    fn poly_mask_big_m(
+        structure: &Arc<dyn crate::model::intermediate::DeferredFunctionStructure<f64>>,
+    ) -> f64 {
+        structure
+            .as_any()
+            .downcast_ref::<MaskingWithPolyMaskStructure<f64>>()
+            .expect("structure should downcast to the polynomial masking structure")
+            .big_m()
+    }
+
+    /// 断言两条路径的行集合逐行一致 / Assert both paths agree row by row.
+    fn assert_poly_mask_rows_match(
+        eager: &[LinearConstraint<f64>],
+        deferred: &[LinearConstraint<f64>],
+    ) {
+        assert!(!eager.is_empty(), "eager rows must not be empty");
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+    }
+
+    /// 在给定符号上比对即时展开与延迟物化的行集合 / Compare eager and deferred rows on one symbol.
+    fn compare_poly_mask_paths(
+        function: &MaskingWithPolyMaskFunction<f64>,
+        inputs: Vec<Token<f64>>,
+    ) {
+        let structure = function
+            .deferred_structure_with_tokens(&[])
+            .expect("polynomial masking should always expose a deferred structure");
+        assert_eq!(structure.function_name(), function.name());
+        let binding = structure
+            .usage_binding()
+            .expect("polynomial masking structure should expose a usage binding");
+        assert_eq!(binding.result, function.result_variable().id());
+        assert_eq!(binding.helpers, vec![function.mask_bridge_variable().id()]);
+        assert!(structure.fingerprint().is_some());
+        let concrete = structure
+            .as_any()
+            .downcast_ref::<MaskingWithPolyMaskStructure<f64>>()
+            .expect("structure should downcast to the polynomial masking structure");
+        assert_eq!(*concrete.result(), function.result_variable().id());
+        assert_eq!(*concrete.bridge(), function.mask_bridge_variable().id());
+
+        let mut symbol_to_index = HashMap::new();
+        for (offset, token) in inputs.iter().enumerate() {
+            symbol_to_index.insert(token.id().unique_id() as usize, offset);
+        }
+        let next = inputs.len();
+        symbol_to_index.insert(binding.helpers[0].unique_id() as usize, next);
+        symbol_to_index.insert(binding.result.unique_id() as usize, next + 1);
+
+        let eager = function
+            .mechanism_constraints_with_tokens(&symbol_to_index, &inputs)
+            .expect("eager polynomial masking constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("polynomial masking structure should materialize");
+        // 桥接等式 + 4 条二值掩码松弛行。
+        // The bridge equality plus the four binary-masking relaxation rows.
+        assert_eq!(eager.len(), 5);
+        assert_poly_mask_rows_match(&eager, &deferred);
+    }
+
+    #[test]
+    fn masking_poly_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(10_200),
+            "x",
+            VariableRange::bounded(-2.0, 3.0),
+        );
+        let mask = BinaryVariableItem::create(VariableId::standalone(10_201), "m");
+        let input = Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0);
+        let mask_poly = Linear::new(vec![LinearMonomial::new(1.0, 1)], 0.0);
+
+        // 第一种 Big-M 来源：构造函数写入的共享默认值。
+        // First Big-M source: the shared default written by the constructor.
+        let default_m: MaskingWithPolyMaskFunction<f64> = MaskingWithPolyMaskFunction::new(
+            2202,
+            "masking_poly_default",
+            input.clone(),
+            mask_poly.clone(),
+        );
+        let structure = default_m
+            .deferred_structure_with_tokens(&[])
+            .expect("polynomial masking should expose a deferred structure");
+        assert_eq!(structure.function_name(), "masking_poly_default");
+        assert!((poly_mask_big_m(&structure) - DEFAULT_BIG_M).abs() <= 1e-9);
+        compare_poly_mask_paths(
+            &default_m,
+            vec![
+                Token::from_generic(x.clone(), 0),
+                Token::from_generic(mask.clone(), 1),
+            ],
+        );
+
+        // 第二种 Big-M 来源：显式配置值原样进入结构与即时展开。
+        // Second Big-M source: an explicit configured value enters both the structure and eager
+        // expansion verbatim.
+        let explicit_m: MaskingWithPolyMaskFunction<f64> = MaskingWithPolyMaskFunction::with_big_m(
+            2203,
+            "masking_poly_explicit",
+            input,
+            mask_poly,
+            7.0,
+        );
+        let structure = explicit_m
+            .deferred_structure_with_tokens(&[])
+            .expect("polynomial masking should expose a deferred structure");
+        assert_eq!(structure.function_name(), "masking_poly_explicit");
+        assert!((poly_mask_big_m(&structure) - 7.0).abs() <= 1e-9);
+        compare_poly_mask_paths(
+            &explicit_m,
+            vec![
+                Token::from_generic(x, 0),
+                Token::from_generic(mask, 1),
+            ],
+        );
+    }
+
+    #[test]
+    fn masking_poly_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("masking_poly_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(95_820),
+                "x",
+                VariableRange::bounded(-2.0, 3.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let mask = BinaryVariableItem::create(VariableId::standalone(95_821), "m");
+            let mask_index = model.register_variable(mask).unwrap();
+            let masking_poly: MaskingWithPolyMaskFunction<f64> =
+                MaskingWithPolyMaskFunction::with_big_m(
+                    992,
+                    "masking_poly_pipeline",
+                    Linear::new(vec![LinearMonomial::new(2.0, x_index)], 1.0),
+                    Linear::new(vec![LinearMonomial::new(1.0, mask_index)], 0.0),
+                    100.0,
+                );
+            model.add_symbol(Arc::new(masking_poly)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // 多项式掩码在延迟策略下不写即时行，但保留结构描述。
+                // Polynomial masking writes no eager row under a deferred policy while keeping its
+                // structure description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "masking_poly_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        // 桥接等式在中间模型转换里会拆成 `>=` 与 `<=` 两行，加上 4 条松弛行。
+        // The bridge equality is split into a `>=` and a `<=` row by the intermediate-model
+        // conversion, on top of the four relaxation rows.
+        assert!(eager.len() >= 5, "eager rows: {eager:?}");
+        // 延迟路径经物化后必须与 EAGER 得到同一批行，并使用同一个配置 Big-M。
+        // The deferred path must produce the same rows as eager expansion once materialized, using
+        // the same configured Big-M.
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
     }
 }
 
@@ -1595,6 +1776,156 @@ where
 
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("masking_poly({})", self.id.name)
+    }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // 多项式掩码的机制约束只依赖 `symbol_to_index` 与配置 Big-M，不依赖令牌边界
+        // （同文件的即时路径也忽略 `tokens`），因此这里总是可以给出结构；只有配置值本身非法
+        // 时不提供结构，让即时展开照旧报出配置错误，而不是把错误推迟到物化阶段。
+        // Polynomial masking's mechanism constraints depend only on `symbol_to_index` and the
+        // configured Big-M, never on token bounds (the eager path in this same file ignores `tokens`
+        // too), so a structure is always available; only an invalid configured value withholds it so
+        // eager expansion keeps reporting the configuration error instead of deferring it to
+        // materialization.
+        let big_m = self.configured_big_m().ok()?;
+        Some(Arc::new(MaskingWithPolyMaskStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+            big_m,
+        )))
+    }
+}
+
+/// 多项式掩码的求解器无关结构描述 / Solver-neutral structure description of polynomial masking
+///
+/// 与二值掩码采用同一模式：持有产生它的符号与创建时固定的 Big-M，物化时回调手写路径的同一个
+/// 公式生成器并传入同一个 M，因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。与二值掩码不同，
+/// 掩码侧是线性表达式，公式里多一条「桥接列等于掩码多项式」的等式，桥接列因此是本结构的辅助列。
+///
+/// Follows the same pattern as binary masking: the structure holds the symbol that produced it and the
+/// Big-M fixed at creation time, materializing through the very same formula generator as the
+/// handwritten eager path with that same M, so deferred materialization matches eager expansion row by
+/// row, including the M value. Unlike binary masking the mask side is a linear expression, so the
+/// formula carries an extra "bridge column equals the mask polynomial" equality and the bridge column
+/// is therefore a helper of this structure.
+#[derive(Debug)]
+pub struct MaskingWithPolyMaskStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<MaskingWithPolyMaskFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 掩码桥接辅助列 / Mask bridge helper column
+    bridge: crate::variable::VariableId,
+    /// 创建时固定的 Big-M / Big-M fixed at creation time
+    big_m: f64,
+}
+
+impl<V> MaskingWithPolyMaskStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(
+        name: impl Into<String>,
+        symbol: Arc<MaskingWithPolyMaskFunction<V>>,
+        big_m: f64,
+    ) -> Self {
+        let result = symbol.result_variable().id();
+        let bridge = symbol.mask_bridge_variable().id();
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            bridge,
+            big_m,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取掩码桥接辅助列 / Get the mask bridge helper column.
+    pub fn bridge(&self) -> &crate::variable::VariableId {
+        &self.bridge
+    }
+
+    /// 获取创建时固定的 Big-M / Get the Big-M fixed at creation time.
+    pub fn big_m(&self) -> f64 {
+        self.big_m
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V>
+    for MaskingWithPolyMaskStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 桥接列是本结构的辅助列：它承载掩码多项式的取值，参与「是否被外部引用 / 是否可省略」
+        // 的判定。
+        // The bridge column is a helper of this structure: it carries the mask polynomial value and
+        // takes part in the externally-referenced and omittable analysis.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            vec![self.bridge.clone()],
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        // Big-M 进入指纹：M 的取值变化同样必须让旧记录失效。
+        // The Big-M is part of the fingerprint: a change in M must invalidate old records too.
+        Some(format!(
+            "masking_poly|{}|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            self.bridge.unique_id(),
+            crate::model::intermediate::fingerprint_float(self.big_m)
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器与同一个 Big-M，保证两条路径逐行一致。
+        // Reuse the eager path's generator and the same Big-M so both paths stay row-identical.
+        self.symbol
+            .build_mechanism_constraints(symbol_to_index, self.big_m)
     }
 }
 

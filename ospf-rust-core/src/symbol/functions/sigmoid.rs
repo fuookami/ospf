@@ -928,6 +928,46 @@ where
     pub fn helpers(&self) -> &[crate::variable::VariableId] {
         &self.helpers
     }
+
+    /// 获取输入多项式（只读）/ Get the input polynomial (read-only).
+    ///
+    /// 只暴露不可变引用，不让调用方改写结构内部状态；原生写入的准入判定需要它来判断输入是否
+    /// 恰好是「系数为 1 的单个单项式、常数项为 0」的列。
+    ///
+    /// Only an immutable reference is exposed so callers cannot mutate the structure's internal
+    /// state; native-write admission needs it to decide whether the input is exactly a single
+    /// unit-coefficient, zero-constant monomial over one column.
+    pub fn input_polynomial(&self) -> &Linear<V> {
+        &self.symbol.input
+    }
+
+    /// 获取分段线性点表（只读）/ Get the piecewise point table (read-only).
+    ///
+    /// 点表就是即时展开所用的同一份采样点（`UnivariateLinearPiecewiseFunction::points`），因此
+    /// 原生写入与 EAGER 展开描述同一条分段线性函数，不存在第二份公式。
+    ///
+    /// 无法转换为 `f64` 的坐标以 `NaN` 表示，并由原生准入的统一校验（有限性 + x 严格递增）
+    /// 整体拒绝——调用方绝不会拿到"被截断的点表"，从而不会把语义不完整的点表写进模型。
+    ///
+    /// The table is exactly the sampling points the eager path uses
+    /// (`UnivariateLinearPiecewiseFunction::points`), so a native write and eager expansion describe
+    /// the same piecewise-linear function with no second copy of the formula.
+    ///
+    /// Coordinates that cannot be converted to `f64` become `NaN` and are rejected wholesale by the
+    /// native admission's uniform validation (finiteness plus strictly increasing x), so a caller
+    /// never receives a truncated table and an incomplete point set is never written to the model.
+    pub fn points(&self) -> Vec<(f64, f64)> {
+        self.symbol
+            .points()
+            .iter()
+            .map(|point| {
+                (
+                    to_f64(&point.x).unwrap_or(f64::NAN),
+                    to_f64(&point.y).unwrap_or(f64::NAN),
+                )
+            })
+            .collect()
+    }
 }
 
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for SigmoidStructure<V>

@@ -621,6 +621,178 @@ where
     fn to_raw_string(&self, _unfold: u64) -> String {
         format!("sin({})", self.id.name)
     }
+
+    fn deferred_structure_with_tokens(
+        &self,
+        _tokens: &[Token<V>],
+    ) -> Option<Arc<dyn crate::model::intermediate::DeferredFunctionStructure<V>>> {
+        // Sin 的分段点、偏移权重与选择器都固定在符号自身，机制约束只依赖 `symbol_to_index`
+        // 而不依赖令牌边界，因此总是提供结构；物化复用同一套 PWL 生成器。
+        // Sin's breakpoints, offset weights and selectors are intrinsic to the symbol and its
+        // mechanism constraints depend on `symbol_to_index` rather than token bounds, so a structure
+        // is always offered and materialization reuses the very same PWL generator.
+        Some(Arc::new(SinStructure::new(
+            self.id.name.clone(),
+            Arc::new(self.clone()),
+        )))
+    }
+}
+
+/// SIN 的求解器无关结构描述 / Solver-neutral structure description of SIN
+///
+/// 与 Sigmoid 采用同一模式：持有产生它的符号（`Arc`），物化时通过 `IntermediateSymbol` 的同一份
+/// 机制约束生成器产出全部行——该生成器内部就是共享的 PWL 构造（`build_piecewise_constraints`），
+/// 因此延迟物化与 EAGER 展开逐行一致，且**不存在第二份分段公式**。分段偏移列与选择器列都是本
+/// 结构的辅助列，必须一并上报，否则原生路径会误判它们可以省略。
+///
+/// Follows the same pattern as Sigmoid: the structure holds the symbol that produced it (an `Arc`) and
+/// materializes through the very same mechanism-constraint generator, which is itself the shared PWL
+/// construction (`build_piecewise_constraints`); deferred materialization is therefore row-identical
+/// to eager expansion with **no second copy of the piecewise formula**. Both the piecewise offset
+/// columns and the selector columns are helpers of this structure and must be reported together;
+/// otherwise a native path would wrongly consider them omittable.
+#[derive(Debug)]
+pub struct SinStructure<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 函数名称 / Function name
+    name: String,
+    /// 产生本结构的符号 / Symbol that produced this structure
+    symbol: Arc<SinFunction<V>>,
+    /// 结果列 / Result column
+    result: crate::variable::VariableId,
+    /// 辅助列（分段偏移列 + 选择器列）/ Helper columns (piecewise offsets + selectors)
+    helpers: Vec<crate::variable::VariableId>,
+}
+
+impl<V> SinStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 创建结构描述 / Create a structure description.
+    pub fn new(name: impl Into<String>, symbol: Arc<SinFunction<V>>) -> Self {
+        let result = symbol.result_variable().id();
+        let mut helpers: Vec<crate::variable::VariableId> = symbol
+            .offset_vars
+            .iter()
+            .map(|offset| offset.id())
+            .collect();
+        helpers.extend(symbol.selector_vars.iter().map(|selector| selector.id()));
+        Self {
+            name: name.into(),
+            symbol,
+            result,
+            helpers,
+        }
+    }
+
+    /// 获取函数名称 / Get the function name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// 获取结果列 / Get the result column.
+    pub fn result(&self) -> &crate::variable::VariableId {
+        &self.result
+    }
+
+    /// 获取辅助列 / Get the helper columns.
+    pub fn helpers(&self) -> &[crate::variable::VariableId] {
+        &self.helpers
+    }
+
+    /// 获取输入多项式（只读）/ Get the input polynomial (read-only).
+    ///
+    /// 只暴露不可变引用，不让调用方改写结构内部状态；原生写入的准入判定需要它来判断输入是否
+    /// 恰好是「系数为 1 的单个单项式、常数项为 0」的列。
+    ///
+    /// Only an immutable reference is exposed so callers cannot mutate the structure's internal
+    /// state; native-write admission needs it to decide whether the input is exactly a single
+    /// unit-coefficient, zero-constant monomial over one column.
+    pub fn input_polynomial(&self) -> &Linear<V> {
+        self.symbol.input_polynomial()
+    }
+
+    /// 获取分段线性点表 `(x_i, sin(x_i))`（只读）/ Get the piecewise point table `(x_i, sin(x_i))`.
+    ///
+    /// 点表与即时展开使用的是**同一份**断点：`build_breakpoints()` 生成的 `[-π, π]` 等距点，
+    /// 函数值就是 `x.sin()`（即时路径的 `function_values`）。原生写入必须用同一份点表，否则
+    /// 两条路径的分段线性函数会不一致。
+    ///
+    /// The table uses the **very same** breakpoints as eager expansion: the equidistant `[-π, π]`
+    /// points from `build_breakpoints()` with `x.sin()` as the value (the eager path's
+    /// `function_values`). A native write must use the same table, otherwise the two paths would
+    /// describe different piecewise-linear functions.
+    pub fn points(&self) -> Vec<(f64, f64)> {
+        self.symbol
+            .breakpoints
+            .iter()
+            .map(|x| (*x, x.sin()))
+            .collect()
+    }
+}
+
+impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for SinStructure<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn function_name(&self) -> &str {
+        &self.name
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn usage_binding(&self) -> Option<crate::model::intermediate::StructureUsageBinding> {
+        // 分段偏移列与选择器列都属于本结构的辅助列。
+        // Both the piecewise offsets and the selectors are helpers of this structure.
+        Some(crate::model::intermediate::StructureUsageBinding::new(
+            self.symbol.id.id,
+            self.result.clone(),
+            self.helpers.clone(),
+        ))
+    }
+
+    fn fingerprint(&self) -> Option<String> {
+        let helpers = self
+            .helpers
+            .iter()
+            .map(|helper| helper.unique_id().to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        Some(format!(
+            "sin|{}|{}|{}|{}",
+            self.name,
+            self.symbol.id.id,
+            self.result.unique_id(),
+            helpers
+        ))
+    }
+
+    fn materialize(
+        &self,
+        symbol_to_index: &std::collections::HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 复用即时展开的同一份生成器（内部即共享 PWL），保证两条路径逐行一致。
+        // Reuse the eager path's generator (which is the shared PWL construction) so both paths stay
+        // row-identical.
+        <SinFunction<V> as IntermediateSymbol<V>>::mechanism_constraints(
+            &self.symbol,
+            symbol_to_index,
+        )
+    }
 }
 
 impl<V> FunctionSymbol<V> for SinFunction<V>
@@ -682,5 +854,118 @@ where
 
     fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+#[cfg(test)]
+mod deferred_structure_tests {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use super::*;
+    use crate::model::{FunctionExpansionPolicy, MetaModel};
+    use crate::variable::{ContinuousVariableItem, VariableRange};
+
+    #[test]
+    fn sin_structure_materializes_the_same_rows_as_eager_expansion() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(97_000),
+            "x",
+            VariableRange::bounded(-3.0, 3.0),
+        );
+        let f: SinFunction<f64> = SinFunction::new(
+            9_000,
+            "sin_deferred",
+            Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0),
+        );
+
+        let mut tokens = vec![Token::from_generic(x, 0)];
+        let mut auxiliary = Vec::new();
+        <SinFunction<f64> as IntermediateSymbol<f64>>::register_auxiliary_tokens(
+            &f,
+            &mut auxiliary,
+        )
+        .expect("sin auxiliary tokens should register");
+        let mut symbol_to_index = HashMap::new();
+        for token in &auxiliary {
+            symbol_to_index.insert(token.id().unique_id() as usize, tokens.len());
+            tokens.push(token.clone());
+        }
+
+        let structure = f
+            .deferred_structure_with_tokens(&tokens)
+            .expect("sin should always expose a deferred structure");
+        assert_eq!(structure.function_name(), "sin_deferred");
+        let binding = structure
+            .usage_binding()
+            .expect("sin structure should expose a usage binding");
+        assert_eq!(binding.result, f.result_variable().id());
+        // 分段偏移列与选择器列都必须上报。
+        assert!(!binding.helpers.is_empty());
+        assert!(structure.fingerprint().is_some());
+
+        let eager = <SinFunction<f64> as IntermediateSymbol<f64>>::mechanism_constraints(
+            &f,
+            &symbol_to_index,
+        )
+        .expect("eager sin constraints should be generated");
+        let deferred = structure
+            .materialize(&symbol_to_index)
+            .expect("sin structure should materialize");
+        assert!(!eager.is_empty());
+        assert_eq!(eager.len(), deferred.len());
+        for (eager_row, deferred_row) in eager.iter().zip(deferred.iter()) {
+            assert_eq!(eager_row.name, deferred_row.name);
+            assert_eq!(eager_row.inequality.relation, deferred_row.inequality.relation);
+            assert_eq!(eager_row.inequality.rhs, deferred_row.inequality.rhs);
+            assert_eq!(
+                eager_row.inequality.polynomial.constant_term(),
+                deferred_row.inequality.polynomial.constant_term()
+            );
+        }
+    }
+
+    #[test]
+    fn sin_defers_through_the_model_pipeline() {
+        fn rows(policy: FunctionExpansionPolicy) -> Vec<String> {
+            let mut model = MetaModel::<f64>::new("sin_deferred_pipeline");
+            model.set_function_expansion_policy(policy);
+            let x = ContinuousVariableItem::with_range(
+                VariableId::standalone(97_100),
+                "x",
+                VariableRange::bounded(-3.0, 3.0),
+            );
+            let x_index = model.register_variable(x).unwrap();
+            let sin_fn = SinFunction::new(
+                9_001,
+                "sin_pipeline",
+                Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            );
+            model.add_symbol(Arc::new(sin_fn)).unwrap();
+
+            let mechanism = model.try_into_mechanism_model().unwrap();
+            if policy.is_deferred() {
+                // Sin 在延迟策略下不写即时行，但保留结构描述。
+                // Sin writes no eager row under a deferred policy while keeping its description.
+                assert!(mechanism.as_basic().constraints().is_empty());
+                assert_eq!(mechanism.as_basic().deferred_functions().len(), 1);
+                assert_eq!(
+                    mechanism.as_basic().deferred_functions()[0].function_name(),
+                    "sin_pipeline"
+                );
+            }
+
+            let linear = mechanism.into_linear_triad_model();
+            let mut names = linear.basic.constraint_names.clone();
+            names.sort();
+            names
+        }
+
+        let eager = rows(FunctionExpansionPolicy::Eager);
+        assert!(!eager.is_empty());
+        // 延迟路径经物化后必须与 EAGER 得到同一批行（同一套共享 PWL 生成器）。
+        // The deferred path must produce the same rows as eager expansion once materialized (the same
+        // shared PWL generator).
+        assert_eq!(eager, rows(FunctionExpansionPolicy::DeferredNativeFirst));
     }
 }

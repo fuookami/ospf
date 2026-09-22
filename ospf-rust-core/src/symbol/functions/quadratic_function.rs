@@ -36,14 +36,15 @@ use super::super::{
 use super::big_m::{
     infer_big_m_for_quadratic_polynomials, infer_quadratic_abs_bound_from_tokens,
     infer_quadratic_bounds_from_tokens, infer_quadratic_difference_abs_bound_from_tokens,
-    infer_quadratic_shifted_abs_bound_from_tokens,
+    infer_quadratic_shifted_abs_bound_from_tokens, tighten_token_range,
 };
 use super::quadratic_linear::*;
 use super::{
-    BinaryzationFunction, BinaryzationMethod, BivariateLinearPiecewiseFunction, CosFunction,
-    InequalityFunction, InequalityKind, MaskingFunction, MaxFunction, ModFunction, Point2,
-    RoundingFunction, RoundingKind, SigmoidFunction, SigmoidPrecision, SinFunction, SlackFunction,
-    SlackRangeFunction, Triangle3, UnivariateLinearPiecewiseFunction,
+    AbsBranchBigM, AbsFunction, BinaryzationFunction, BinaryzationMethod,
+    BivariateLinearPiecewiseFunction, CosFunction, InequalityFunction, InequalityKind,
+    MaskingFunction, MaxFunction, ModFunction, Point2, RoundingFunction, RoundingKind,
+    SigmoidFunction, SigmoidPrecision, SinFunction, SlackFunction, SlackRangeFunction, Triangle3,
+    UnivariateLinearPiecewiseFunction,
 };
 
 /// 二次输入的二值化函数符号 / Quadratic-input binaryzation function symbol
@@ -4047,6 +4048,563 @@ where
     fn to_quadratic_polynomial(&self) -> Quadratic<V> {
         Quadratic::from_linear(&self.to_linear_polynomial())
     }
+}
+
+/// 二次输入的绝对值函数符号（|q|）/ Quadratic-input absolute-value function symbol (|q|)
+///
+/// 数学形式 / Mathematical form: `result = |q|`，`q` 为二次多项式。
+/// Mathematical form: `result = |q|` where `q` is a quadratic polynomial.
+///
+/// 组合契约 / Composition contract:
+/// - 真正的二次输入先经 [`QuadraticLinearFunction`] 桥接为标量列，产生恰好一条二次等式
+///   `q - bridge = 0`，再对该标量列施加线性 [`AbsFunction`] 的四条分支行；
+/// - 纯线性（经 [`lift_linear_input`] 提升）输入直接退化：不注册桥接列、不产生二次约束，
+///   只保留结果列与分支指示列；
+/// - 桥接列只以一次项参与组合，因此组合次数恒不超过二次。
+///
+/// A genuine quadratic input is bridged into a scalar column by [`QuadraticLinearFunction`],
+/// producing exactly one quadratic equality `q - bridge = 0`, after which the four branch rows of
+/// the linear [`AbsFunction`] apply to that column; a purely linear (lifted) input degenerates
+/// without a bridge column or quadratic constraint. The bridge column only takes part as a linear
+/// term, so composition never exceeds degree two.
+#[derive(Debug, Clone)]
+pub struct QuadraticAbsFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    /// 符号 ID / Symbol ID
+    id: IntermediateSymbolId,
+    /// 原始二次输入 / Original quadratic input
+    input: Quadratic<V>,
+    /// 二次输入桥接 / Quadratic-input bridge
+    bridge: QuadraticLinearFunction<V>,
+    /// 线性 ABS 分支载体（持有结果列与分支指示列）/ Linear ABS carrier (owns result and side columns)
+    inner: AbsFunction<V>,
+    /// 显式分支 Big-M / Explicit branch Big-M
+    explicit_big_m: Option<AbsBranchBigM>,
+    /// 声明的依赖 ID / Declared dependency IDs
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> QuadraticAbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
+{
+    /// 创建新的二次输入绝对值函数。
+    ///
+    /// 未提供显式 Big-M 时，约束生成先从令牌边界推断非对称分支 Big-M，无法推断时回退到
+    /// [`AbsBranchBigM::fallback`]。
+    ///
+    /// Create a new quadratic-input absolute-value function.
+    ///
+    /// Without an explicit Big-M, constraint generation first infers the asymmetric branch pair
+    /// from the token bounds and falls back to [`AbsBranchBigM::fallback`] when inference fails.
+    pub fn new(id: u64, name: &str, input: Quadratic<V>) -> Self {
+        Self::with_optional_big_m(id, name, input, None)
+    }
+
+    /// 由线性输入创建：先经共享适配 [`lift_linear_input`] 提升为退化的二次输入。
+    ///
+    /// 提升不新增任何 helper 列或 token，因此纯线性输入包装后只有结果列与分支指示列。
+    ///
+    /// Create from a linear input by lifting it through the shared adapter
+    /// [`lift_linear_input`] into a degenerate quadratic input.
+    ///
+    /// The lift adds no helper column or token, so wrapping a purely linear input yields only the
+    /// result column and the branch indicator column.
+    pub fn from_linear(id: u64, name: &str, input: Linear<V>) -> Self {
+        Self::new(id, name, lift_linear_input(&input))
+    }
+
+    /// 使用显式对称分支 Big-M 创建（两条分支行取同一取值）。
+    ///
+    /// Big-M 的合法性在约束生成阶段校验：非有限值或非正值返回
+    /// [`ModelError::InvalidConstraint`]。
+    ///
+    /// Create with an explicit symmetric branch Big-M (both branch rows share one value).
+    ///
+    /// The value is validated during constraint generation: a non-finite or non-positive Big-M
+    /// returns [`ModelError::InvalidConstraint`].
+    pub fn with_big_m(id: u64, name: &str, input: Quadratic<V>, big_m: V) -> Self {
+        let value = to_f64(&big_m).unwrap_or(f64::NAN);
+        Self::with_optional_big_m(
+            id,
+            name,
+            input,
+            Some(AbsBranchBigM {
+                positive_branch: value,
+                negative_branch: value,
+            }),
+        )
+    }
+
+    /// 使用显式非对称分支 Big-M 创建。
+    ///
+    /// 正分支行 `y - bridge + M_pos * b <= M_pos` 与负分支行 `y + bridge - M_neg * b <= 0`
+    /// 各自只在另一侧生效，因此两个取值可以不同；候选输入取值跨正负时非对称取值明显更紧。
+    ///
+    /// Create with an explicit asymmetric branch Big-M pair.
+    ///
+    /// The positive branch row `y - bridge + M_pos * b <= M_pos` and the negative branch row
+    /// `y + bridge - M_neg * b <= 0` each relax only on the other side, so the two values may
+    /// differ; the pair is clearly tighter when the candidate input spans both signs.
+    pub fn with_branch_big_m(
+        id: u64,
+        name: &str,
+        input: Quadratic<V>,
+        big_m: AbsBranchBigM,
+    ) -> Self {
+        Self::with_optional_big_m(id, name, input, Some(big_m))
+    }
+
+    fn with_optional_big_m(
+        id: u64,
+        name: &str,
+        input: Quadratic<V>,
+        explicit_big_m: Option<AbsBranchBigM>,
+    ) -> Self {
+        let bridge = QuadraticLinearFunction::new(
+            auxiliary_id(id, 1451),
+            &format!("{}_bridge", name),
+            input.clone(),
+        );
+        // 纯线性输入没有桥接列：内层 ABS 直接作用于原始线性表达式（退化路径）。
+        // A purely linear input has no bridge column: the inner ABS applies to the original
+        // linear expression directly (the degenerate path).
+        let bridge_input = bridge.input_linear_polynomial().unwrap_or_else(|| {
+            Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge.result_variable().index(),
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            )
+        });
+        let inner = AbsFunction::new(id, name, bridge_input);
+        Self {
+            id: IntermediateSymbolId::new(id, name),
+            input,
+            bridge,
+            inner,
+            explicit_big_m,
+            declared_dependency_ids: Vec::new(),
+        }
+    }
+
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &ContinuousVariableItem {
+        self.inner.result_variable()
+    }
+
+    /// 获取分支指示列（选择器）/ Get the branch indicator (selector) column
+    pub fn side_variable(&self) -> &BinaryVariableItem {
+        self.inner.side_variable()
+    }
+
+    /// 返回原始二次输入 / Return the original quadratic input
+    pub fn input_polynomial(&self) -> &Quadratic<V> {
+        &self.input
+    }
+
+    /// 输入是否含真正的二次项 / Whether the input carries a genuine quadratic monomial
+    pub fn has_quadratic_input(&self) -> bool {
+        self.bridge.has_quadratic_terms()
+    }
+
+    /// 返回桥接列；仅当 [`Self::has_quadratic_input`] 为真时该列才会注册进模型。
+    /// Return the bridge column; it is registered only when [`Self::has_quadratic_input`] holds.
+    pub fn bridge_variable(&self) -> &ContinuousVariableItem {
+        self.bridge.result_variable()
+    }
+
+    /// 返回显式分支 Big-M；`None` 表示从令牌边界推断或回退到策略值。
+    /// Return the explicit branch Big-M; `None` means inference from token bounds or policy fallback.
+    pub fn big_m(&self) -> Option<AbsBranchBigM> {
+        self.explicit_big_m
+    }
+}
+
+impl<V> Display for QuadraticAbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "quadratic_abs({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for QuadraticAbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for QuadraticAbsFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> QuadraticAbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    /// 把二次输入映射到约束列空间：纯线性输入直接返回自身，真正的二次输入返回桥接列。
+    ///
+    /// Map the quadratic input into the constraint column space: a purely linear input is
+    /// returned as is, while a genuine quadratic input maps to its bridge column.
+    fn mapped_input(&self, symbol_to_index: &HashMap<usize, usize>) -> Result<Linear<V>> {
+        if let Some(input) = self.bridge.input_linear_polynomial() {
+            return Ok(input);
+        }
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic abs bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        Ok(Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        ))
+    }
+
+    /// 从令牌边界推断非对称分支 Big-M：`bridge ∈ [lower, upper]` 时，正分支行只需覆盖
+    /// `max(0, -2 * lower)`，负分支行只需覆盖 `max(0, 2 * upper)`，因此取值跨正负时两条
+    /// 分支的松弛可以明显不同。
+    ///
+    /// Infer the asymmetric branch Big-M pair from token bounds: for `bridge ∈ [lower, upper]`
+    /// the positive branch row only has to cover `max(0, -2 * lower)` and the negative branch row
+    /// `max(0, 2 * upper)`, so the two relaxations can differ clearly across both signs.
+    fn inferred_branch_big_m(&self, tokens: &[Token<V>]) -> Option<AbsBranchBigM> {
+        let (lower, upper) = infer_quadratic_bounds_from_tokens(&self.input, tokens)?;
+        AbsBranchBigM::from_input_bounds(lower, upper)
+    }
+
+    /// 解析本次约束生成使用的分支 Big-M：显式配置优先（并校验），否则从令牌边界推断，
+    /// 最后回退到策略取值。
+    ///
+    /// Resolve the branch Big-M used by this constraint generation: the explicit configuration
+    /// wins (and is validated), then token-bound inference applies, and the policy fallback is
+    /// the last resort.
+    fn resolved_branch_big_m(&self, tokens: Option<&[Token<V>]>) -> Result<AbsBranchBigM> {
+        if let Some(explicit) = self.explicit_big_m {
+            for (branch, value) in [
+                ("positive", explicit.positive_branch),
+                ("negative", explicit.negative_branch),
+            ] {
+                if !value.is_finite() || value <= 0.0 {
+                    return Err(ModelError::InvalidConstraint(format!(
+                        "quadratic abs `{}` requires a positive finite {branch}-branch Big-M, got {value}",
+                        self.id.name
+                    ))
+                    .into());
+                }
+            }
+            return Ok(explicit);
+        }
+        Ok(tokens
+            .and_then(|tokens| self.inferred_branch_big_m(tokens))
+            .unwrap_or_else(AbsBranchBigM::fallback))
+    }
+
+    /// 生成线性 ABS 的四条分支行，输入已映射到约束列空间。
+    ///
+    /// Build the four linear ABS branch rows on the column-space mapped input.
+    fn build_abs_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        big_m: AbsBranchBigM,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mapped_input = self.mapped_input(symbol_to_index)?;
+        let result_index = symbol_to_index
+            .get(&(self.inner.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic abs result variable id {}",
+                    self.inner.result_variable().id().unique_id()
+                ))
+            })?;
+        let side_index = symbol_to_index
+            .get(&(self.inner.side_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic abs side variable id {}",
+                    self.inner.side_variable().id().unique_id()
+                ))
+            })?;
+        super::abs::generate_abs_constraints(
+            &self.id.name,
+            &mapped_input,
+            result_index,
+            side_index,
+            big_m,
+            Arc::new(self.clone()),
+        )
+    }
+
+    /// 生成桥接行的线性部分（当前桥接不写独立线性行，保留调用点以便与即时展开对齐）。
+    ///
+    /// Build the linear part of the bridge rows (the bridge currently writes no standalone linear
+    /// row; the call site is kept so the wrapper mirrors eager expansion).
+    fn bridge_linear_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        if self.bridge.has_quadratic_terms() {
+            self.bridge.mechanism_constraints(symbol_to_index)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+}
+
+impl<V> IntermediateSymbol<V> for QuadraticAbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn operation_category(&self) -> Category {
+        Category::Quadratic
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn refine_auxiliary_tokens(
+        &self,
+        auxiliary: &mut [Token<V>],
+        tokens: &[Token<V>],
+    ) -> Result<()> {
+        // 输入域有限时把 `0 <= y <= max(|lower|, |upper|)` 传播到结果列，只收紧不放宽。
+        // Propagate `0 <= y <= max(|lower|, |upper|)` to the result column when the input domain
+        // is finite; bounds are only tightened, never widened.
+        let Some((lower, upper)) = infer_quadratic_bounds_from_tokens(&self.input, tokens) else {
+            return Ok(());
+        };
+        let abs_bound = lower.abs().max(upper.abs());
+        if !abs_bound.is_finite() {
+            return Ok(());
+        }
+        for token in auxiliary.iter_mut() {
+            if token.id() != self.inner.result_variable().id() {
+                continue;
+            }
+            return tighten_token_range(token, 0.0, abs_bound);
+        }
+        Ok(())
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge_linear_constraints(symbol_to_index)?;
+        let big_m = self.resolved_branch_big_m(None)?;
+        constraints.extend(self.build_abs_constraints(symbol_to_index, big_m)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge_linear_constraints(symbol_to_index)?;
+        let big_m = self.resolved_branch_big_m(Some(tokens))?;
+        constraints.extend(self.build_abs_constraints(symbol_to_index, big_m)?);
+        Ok(constraints)
+    }
+
+    fn quadratic_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<QuadraticConstraint<V>>> {
+        if !self.bridge.has_quadratic_terms() {
+            return Ok(Vec::new());
+        }
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic abs bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        let rows = self.bridge.quadratic_mechanism_constraints(symbol_to_index)?;
+        // 组合入口显式校验次数不变式：桥接列必须以一次项进入桥接等式，否则代入桥接等式后该项
+        // 次数会升到三次或更高，二次模型无法表达。
+        // The composition entry point explicitly checks the degree invariant: the bridge column
+        // must enter the bridge equality as a linear term, otherwise substituting the bridge
+        // equality raises the term to degree 3 or higher, which a quadratic model cannot express.
+        for row in &rows {
+            guard_quadratic_composition_degree(
+                &row.inequality.polynomial,
+                &HashSet::from([bridge_index]),
+                &self.id.name,
+            )?;
+        }
+        Ok(rows)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        let value = to_f64(&evaluate_quadratic_from_values(&self.input, values)?)?;
+        from_f64(value.abs())
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("quadratic_abs({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for QuadraticAbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        // 只有真正的二次输入才注册桥接列；纯线性输入不产生额外 helper 列。
+        // Only a genuine quadratic input registers the bridge column; a purely linear input adds
+        // no helper column at all.
+        if self.bridge.has_quadratic_terms() {
+            self.bridge.register_tokens(tokens)?;
+        }
+        self.inner.register_tokens(tokens)
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let value = to_f64(&evaluate_quadratic(&self.input, token_table, zero_if_none)?)?;
+        from_f64(value.abs())
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for QuadraticAbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.inner.to_linear_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+impl<V> QuadraticFunctionSymbol<V> for QuadraticAbsFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
 }
 
 /// 二次输入的 Sigmoid 函数符号 / Quadratic-input sigmoid function symbol

@@ -71,6 +71,22 @@ where
     })
 }
 
+/// 二值化即时展开的严格边界 ε / Strict boundary ε of the binaryzation eager expansion
+///
+/// 即时展开的两行把平移量 `s = input - threshold` 与结果二值列 `y` 耦合起来，
+/// `s - M·y` 的右端项按编码方式取 `-M` / `-ε`（Threshold）或 `ε - M` / `0`（Big-M）；也就是
+/// 「取真一侧」与「取假一侧」之间刻意留出的间隙宽度就是本常量（`16·f64::EPSILON`，量级 1e-15）。
+/// 原生 writer **必须**复用本常量：两条路径的可行域差异只有这个量级，另取一个 ε 会静默改变可行解
+/// 集合，而求解器自身的可行性容差远大于它，端到端测试无法察觉。
+///
+/// The two eager rows couple the shift `s = input - threshold` with the binary result column `y`: the
+/// right-hand side of `s - M·y` is `-M` / `-ε` (Threshold) or `ε - M` / `0` (Big-M), so the deliberately
+/// left-open gap between the "true" side and the "false" side is exactly this constant
+/// (`16·f64::EPSILON`, order 1e-15). A native writer **must** reuse it: the two paths' feasible sets
+/// differ only at that scale, another ε would silently change them, and a solver's own feasibility
+/// tolerance is far coarser, which makes the difference invisible to an end-to-end test.
+pub const BINARYZATION_STRICT_EPSILON: f64 = f64::EPSILON * 16.0;
+
 /// 二值化约束的编码方式 / Encoding method for binaryization constraints.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryzationMethod {
@@ -100,6 +116,70 @@ impl BinaryzationMethod {
     /// Returns whether caller requested a native solver feature.
     pub const fn requests_native_solver_feature(self) -> bool {
         matches!(self, Self::Indicator | Self::SOS1)
+    }
+}
+
+/// 二值化即时展开在 `s = input - threshold` 上的核心关系与 Big-M 松弛量
+/// Core relations and Big-M relaxations of the binaryzation eager expansion on
+/// `s = input - threshold`
+///
+/// 即时展开只有两行：`s - M·y ≥ lower_rhs` 与 `s - M·y ≤ upper_rhs`。把指示列固定为 1 / 0 后，每行
+/// 对 `s` 的投影是 `s REL rhs`；其中**不含 M** 的那两条就是核心关系，另一条只剩 Big-M 松弛
+/// （`s ≥ relaxed_lower_rhs - M` 或 `s ≤ M - relaxed_upper_rhs`）。原生 writer 只写核心关系，因此必须
+/// 证明松弛行在输入盒上成立，证明所需的 ε 就是本结构里的值。
+///
+/// The eager expansion has exactly two rows: `s - M·y ≥ lower_rhs` and `s - M·y ≤ upper_rhs`. Fixing the
+/// indicator column to 1 / 0 projects each row onto `s` as `s REL rhs`; the **M-free** ones are the core
+/// relations while the other reduces to a Big-M relaxation (`s ≥ relaxed_lower_rhs - M` or
+/// `s ≤ M - relaxed_upper_rhs`). A native writer writes only the core relations, so it must prove the
+/// relaxed rows on the input box, and the ε the proof needs comes from this structure.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BinaryzationCoreRelations {
+    /// 结果列取真（`y = 1`）时的核心关系 `s REL rhs` / Core relation `s REL rhs` for `y = 1`
+    pub when_true: (ConstraintRelation, f64),
+    /// 结果列取假（`y = 0`）时的核心关系 `s REL rhs` / Core relation `s REL rhs` for `y = 0`
+    pub when_false: (ConstraintRelation, f64),
+    /// 需要证明的下侧松弛 `M + s_min >= relaxed_lower_rhs`
+    /// Lower relaxation to prove: `M + s_min >= relaxed_lower_rhs`
+    pub relaxed_lower_rhs: f64,
+    /// 需要证明的上侧松弛 `M - s_max >= relaxed_upper_rhs`
+    /// Upper relaxation to prove: `M - s_max >= relaxed_upper_rhs`
+    pub relaxed_upper_rhs: f64,
+}
+
+/// 返回机制等价变体的核心关系与 Big-M 松弛量 / Core relations and Big-M relaxations of the
+/// mechanism-equivalent variant
+///
+/// `Indicator` / `SOS1` 只是调用方请求求解器原生能力，机制层由 [`BinaryzationMethod::mechanism_equivalent`]
+/// 归一到 `BigM`，因此这里与 `BigM` 共用同一张表（用同一个 match 臂而不是 `unreachable!()`，避免
+/// 上游改归一规则时变成 panic）。
+///
+/// `Indicator` / `SOS1` only request a native solver feature and the mechanism layer normalises them to
+/// `BigM` through [`BinaryzationMethod::mechanism_equivalent`], so they share the `BigM` table here (the
+/// same match arm rather than `unreachable!()`, so an upstream change to the normalisation cannot become a
+/// panic).
+pub fn binaryzation_core_relations(method: BinaryzationMethod) -> BinaryzationCoreRelations {
+    match method.mechanism_equivalent() {
+        // 阈值编码：`y = 1 ⇒ s >= 0`，`y = 0 ⇒ s <= -ε`；松弛行是 `s <= M - ε` 与 `s >= -M`。
+        // Threshold encoding: `y = 1 ⇒ s >= 0` and `y = 0 ⇒ s <= -ε`; the relaxed rows are
+        // `s <= M - ε` and `s >= -M`.
+        BinaryzationMethod::Threshold => BinaryzationCoreRelations {
+            when_true: (ConstraintRelation::GreaterEqual, 0.0),
+            when_false: (ConstraintRelation::LessEqual, -BINARYZATION_STRICT_EPSILON),
+            relaxed_lower_rhs: 0.0,
+            relaxed_upper_rhs: BINARYZATION_STRICT_EPSILON,
+        },
+        // Big-M 编码：`y = 1 ⇒ s >= ε`，`y = 0 ⇒ s <= 0`；松弛行是 `s <= M` 与 `s >= ε - M`。
+        // Big-M encoding: `y = 1 ⇒ s >= ε` and `y = 0 ⇒ s <= 0`; the relaxed rows are `s <= M` and
+        // `s >= ε - M`.
+        BinaryzationMethod::BigM
+        | BinaryzationMethod::Indicator
+        | BinaryzationMethod::SOS1 => BinaryzationCoreRelations {
+            when_true: (ConstraintRelation::GreaterEqual, BINARYZATION_STRICT_EPSILON),
+            when_false: (ConstraintRelation::LessEqual, 0.0),
+            relaxed_lower_rhs: BINARYZATION_STRICT_EPSILON,
+            relaxed_upper_rhs: 0.0,
+        },
     }
 }
 
@@ -338,7 +418,7 @@ where
             ))
         })?;
 
-        let strict_eps = f64::EPSILON * 16.0;
+        let strict_eps = BINARYZATION_STRICT_EPSILON;
         let (lower_rhs, upper_rhs) = match self.method.mechanism_equivalent() {
             BinaryzationMethod::Threshold => (-big_m, -strict_eps),
             BinaryzationMethod::BigM => (strict_eps - big_m, 0.0),
@@ -596,6 +676,33 @@ where
     /// 获取固定的 Big-M / Get the fixed Big-M.
     pub fn big_m(&self) -> f64 {
         self.big_m
+    }
+
+    /// 获取即时展开使用的输入多项式（只读；单项式用列下标表示）
+    /// Read-only access to the input polynomial used by the eager expansion (monomials use column
+    /// indices).
+    ///
+    /// 用途：原生 writer 必须把**同一份**输入关系写进 SDK 的一般约束，而不是在别处重新推导；本访问器
+    /// 只转发符号上的只读数据，不复制公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** input relation into the SDK's general constraint
+    /// instead of re-deriving it; this only forwards read-only data from the symbol, copies no formula and
+    /// exposes no mutable state.
+    pub fn input_polynomial(&self) -> &Linear<V> {
+        self.symbol.input_polynomial()
+    }
+
+    /// 获取阈值（只读；即时展开的平移量是 `input - threshold`）
+    /// Read-only access to the threshold (the eager shift is `input - threshold`).
+    pub fn threshold(&self) -> &V {
+        self.symbol.threshold()
+    }
+
+    /// 获取二值化方法（只读；原生 writer 用 [`BinaryzationMethod::mechanism_equivalent`] 归一后的变体）
+    /// Read-only access to the binaryzation method (a native writer uses the variant normalised by
+    /// [`BinaryzationMethod::mechanism_equivalent`]).
+    pub fn method(&self) -> BinaryzationMethod {
+        self.symbol.method()
     }
 }
 
@@ -883,5 +990,147 @@ mod tests {
         assert!(BinaryzationMethod::SOS1.requests_native_solver_feature());
         assert!(!BinaryzationMethod::BigM.requests_native_solver_feature());
         assert!(!BinaryzationMethod::Threshold.requests_native_solver_feature());
+    }
+
+    /// 即时展开的一行在指示列取 `indicator_value` 时对 `s = input - threshold` 的投影：`(关系, 右端项)`
+    /// Project one eager row onto `s = input - threshold` for a given indicator value:
+    /// `(relation, right-hand side)`
+    ///
+    /// 行是 `s - M·y REL rhs`，因此固定 `y` 后等价于 `s REL rhs + M·y`。列号用**列下标**口径（与
+    /// `symbol_to_index` 一致），不是 `VariableId::unique_id()`。
+    ///
+    /// The row is `s - M·y REL rhs`, so with `y` fixed it is equivalent to `s REL rhs + M·y`. Column
+    /// numbers use the **column index** convention (the one `symbol_to_index` uses), not
+    /// `VariableId::unique_id()`.
+    fn eager_binaryzation_projection(
+        constraint: &LinearConstraint<f64>,
+        indicator_column: usize,
+        indicator_value: f64,
+    ) -> (ConstraintRelation, f64) {
+        let y_coefficient = constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == indicator_column)
+            .map(|monomial| *monomial.coefficient())
+            .unwrap_or(0.0);
+        (
+            constraint.inequality.relation,
+            constraint.inequality.rhs - y_coefficient * indicator_value,
+        )
+    }
+
+    /// 二值化的核心关系表必须与即时展开里「不含 Big-M 的那条行」逐位一致
+    /// The binaryzation core-relation table must agree bit for bit with the eager row carrying no Big-M.
+    ///
+    /// 用两个不同的 Big-M 生成同一方法的即时两行：核心行的投影不随 M 变化，松弛行的投影按 M 线性变化；
+    /// 原生 writer 只写核心行，因此它必须逐位复现「M-不变」的那一条（含严格边界 ε），并把「M-变化」
+    /// 的那一条当作需要在输入盒上证明的松弛。容差 1e-13 用于吸收 `(ε - M) + M` 这类 M 量级的浮点
+    /// 舍入，仍远小于 ε 与 M 之间的差异。
+    ///
+    /// Two different Big-M values generate the same method's two eager rows: a core row's projection does
+    /// not move with M while a relaxed row's moves linearly with it; a native writer writes only the core
+    /// row, so it must reproduce the M-invariant one bit for bit (including the strict boundary ε) and
+    /// treat the M-dependent one as a relaxation to prove on the input box. The 1e-13 tolerance absorbs
+    /// the M-scale floating-point rounding of `(ε - M) + M` and stays far below the difference between ε
+    /// and M.
+    #[test]
+    fn binaryzation_core_relations_match_the_big_m_free_eager_rows() {
+        const INDICATOR_COLUMN: usize = 1;
+        let small_m = 8.0f64;
+        let large_m = 16.0f64;
+        let projection_tolerance = 1e-13;
+
+        for method in [
+            BinaryzationMethod::Threshold,
+            BinaryzationMethod::BigM,
+            BinaryzationMethod::Indicator,
+            BinaryzationMethod::SOS1,
+        ] {
+            let f: BinaryzationFunction<f64> = BinaryzationFunction::new(
+                9200,
+                "bin_core_table",
+                Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+                3.0,
+                small_m,
+                method,
+            );
+            let result_id = f.result_variable().id().unique_id() as usize;
+            let symbol_to_index = HashMap::from([(result_id, INDICATOR_COLUMN)]);
+
+            let small_rows = f
+                .build_mechanism_constraints(&symbol_to_index, small_m)
+                .expect("the eager expansion must emit its two rows");
+            let large_rows = f
+                .build_mechanism_constraints(&symbol_to_index, large_m)
+                .expect("the eager expansion must emit its two rows with another big-M");
+            assert_eq!(small_rows.len(), 2, "binaryzation emits exactly two rows");
+
+            let expected = binaryzation_core_relations(method);
+            for (indicator_value, core_expected) in
+                [(1.0f64, expected.when_true), (0.0f64, expected.when_false)]
+            {
+                let mut cores = Vec::new();
+                let mut relaxations = Vec::new();
+                for (small_row, large_row) in small_rows.iter().zip(large_rows.iter()) {
+                    let small = eager_binaryzation_projection(
+                        small_row,
+                        INDICATOR_COLUMN,
+                        indicator_value,
+                    );
+                    let large = eager_binaryzation_projection(
+                        large_row,
+                        INDICATOR_COLUMN,
+                        indicator_value,
+                    );
+                    assert_eq!(
+                        small.0, large.0,
+                        "a row's relation must not depend on the big-M"
+                    );
+                    if (small.1 - large.1).abs() <= projection_tolerance {
+                        cores.push(small);
+                    } else {
+                        relaxations.push(small);
+                    }
+                }
+
+                assert_eq!(
+                    cores.len(),
+                    1,
+                    "exactly one eager row per indicator value must be free of the big-M ({method:?})"
+                );
+                assert_eq!(cores[0].0, core_expected.0, "{method:?} at y = {indicator_value}");
+                assert!(
+                    (cores[0].1 - core_expected.1).abs() <= projection_tolerance,
+                    "{method:?} at y = {indicator_value}: eager {} vs table {}",
+                    cores[0].1,
+                    core_expected.1
+                );
+
+                // 另一条行必须恰好是表里登记的松弛：`s >= relaxed_lower_rhs - M` 或
+                // `s <= M - relaxed_upper_rhs`。
+                // The other row must be exactly the tabulated relaxation:
+                // `s >= relaxed_lower_rhs - M` or `s <= M - relaxed_upper_rhs`.
+                assert_eq!(relaxations.len(), 1);
+                match relaxations[0].0 {
+                    ConstraintRelation::GreaterEqual => assert!(
+                        (relaxations[0].1 + small_m - expected.relaxed_lower_rhs).abs()
+                            <= projection_tolerance,
+                        "{method:?} lower relaxation mismatch: {} vs {}",
+                        relaxations[0].1 + small_m,
+                        expected.relaxed_lower_rhs
+                    ),
+                    ConstraintRelation::LessEqual => assert!(
+                        (relaxations[0].1 - small_m + expected.relaxed_upper_rhs).abs()
+                            <= projection_tolerance,
+                        "{method:?} upper relaxation mismatch: {} vs -{}",
+                        relaxations[0].1 - small_m,
+                        expected.relaxed_upper_rhs
+                    ),
+                    ConstraintRelation::Equal => panic!("binaryzation rows are never equalities"),
+                }
+            }
+        }
     }
 }

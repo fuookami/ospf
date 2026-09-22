@@ -19,7 +19,30 @@ use std::ops::{Add, Mul};
 use std::sync::Arc;
 
 const MIN_BIG_M: f64 = 1.0;
-const INDICATOR_TOLERANCE: f64 = 1.0e-10;
+
+/// 关系指示即时展开的容差 ε / Tolerance ε of the relation indicator's eager expansion
+///
+/// 该常量在即时展开里承担两件事：
+///
+/// 1. **严格性扩张**：`<` / `>` 被写成非严格形式时，取真侧按 ε 内缩（`s <= -ε` / `s >= ε`）；
+/// 2. **否定侧右端**：`<=` / `>=` 的取假侧按 ε 外扩（`s >= right + ε` / `s <= right - ε`）。
+///
+/// 原生 writer **必须**复用本常量，绝不能另取一个 ε：两条路径的可行域差异只有 1e-10 量级，
+/// 取错会静默改变可行解集合，而求解器自身的可行性容差远大于该量级，端到端测试无法察觉。
+///
+/// The constant serves two purposes in the eager expansion:
+///
+/// 1. **Strictness expansion**: when `<` / `>` is written in non-strict form, the true side shrinks
+///    by ε (`s <= -ε` / `s >= ε`);
+/// 2. **Negated side right-hand side**: the false side of `<=` / `>=` grows by ε
+///    (`s >= right + ε` / `s <= right - ε`).
+///
+/// A native writer **must** reuse this very constant and must never pick another ε: the two paths'
+/// feasible sets differ only at the 1e-10 scale, so a different ε silently changes them, and a
+/// solver's own feasibility tolerance is far coarser than that scale, which makes the difference
+/// invisible to an end-to-end test.
+pub const INDICATOR_TOLERANCE: f64 = 1.0e-10;
+
 const INDICATOR_STRICT_BOUNDARY: f64 = INDICATOR_TOLERANCE * 16.0 + f64::EPSILON * 16.0;
 
 fn evaluate_linear<V>(
@@ -88,6 +111,97 @@ pub enum InequalityKind {
     Equal,
     /// 不等于 / Not equal
     NotEqual,
+}
+
+/// 关系指示即时展开在 `s = Σ c_k x_k + (left_constant - right)` 上的核心关系与 Big-M 松弛量
+/// Core relations and Big-M relaxations of the relation indicator's eager expansion, expressed on
+/// `s = Σ c_k x_k + (left_constant - right)`.
+///
+/// 「核心关系」是即时展开里**不含 Big-M 项**的那条行（指示列每取一个值恰好一条）；「松弛量」是
+/// 另一条行在取该指示值时对 `s` 只剩下 Big-M 的形状：`s >= relaxed_lower_rhs - M` 或
+/// `s <= M - relaxed_upper_rhs`。原生 writer 只写两条 indicator，因此必须证明这两条松弛行在条件
+/// 变量的实际盒上成立（否则原生可行域会比即时展开更大），证明所需的两个 ε 就取自本结构。
+///
+/// The "core relation" is the eager row that carries **no Big-M term** (exactly one per indicator
+/// value); the "relaxation" is what the other row reduces to for that value, namely
+/// `s >= relaxed_lower_rhs - M` or `s <= M - relaxed_upper_rhs`. A native writer writes only the two
+/// indicator constraints, so it must prove those relaxations hold on the condition variables' actual
+/// box (otherwise its feasible set would be larger than eager expansion's); the two ε values the
+/// proof needs come from this structure.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct IndicatorCoreRelations {
+    /// 指示列取真（`= 1`）时的核心关系 `s REL rhs` / Core relation `s REL rhs` for `indicator = 1`
+    pub when_true: (ConstraintRelation, f64),
+    /// 指示列取假（`= 0`）时的核心关系 `s REL rhs` / Core relation `s REL rhs` for `indicator = 0`
+    pub when_false: (ConstraintRelation, f64),
+    /// 指示列取真时的下侧松弛 `s >= relaxed_lower_rhs - M`
+    /// Lower relaxation `s >= relaxed_lower_rhs - M` for `indicator = 1`
+    pub relaxed_lower_rhs: f64,
+    /// 指示列取假时的上侧松弛 `s <= M - relaxed_upper_rhs`
+    /// Upper relaxation `s <= M - relaxed_upper_rhs` for `indicator = 0`
+    pub relaxed_upper_rhs: f64,
+}
+
+/// 返回关系指示即时展开的核心关系与 Big-M 松弛量 / Core relations and Big-M relaxations of the eager expansion
+///
+/// 逐条对应 `build_mechanism_constraints` 的两种取值：例如 `LessEqual` 的 `ineq_ub` 在 `y = 1` 时
+/// 给出 `s <= 0`（核心），`ineq_lb` 在 `y = 0` 时给出 `s >= INDICATOR_TOLERANCE`（核心），而
+/// `ineq_lb` 在 `y = 1` 时只剩 `s >= INDICATOR_TOLERANCE - M`、`ineq_ub` 在 `y = 0` 时只剩
+/// `s <= M`，即上表里的两个松弛量。
+///
+/// `=` / `!=` 返回 `None`：它们没有辅助列之外的写法，取假侧是**析取**
+/// （`s <= -strict_boundary` 或 `s >= strict_boundary`），由辅助 side 列做情形分裂，两条
+/// indicator 无法表达。
+///
+/// Each arm mirrors one of `build_mechanism_constraints`' two indicator values: for `LessEqual`,
+/// `ineq_ub` at `y = 1` gives `s <= 0` (core) and `ineq_lb` at `y = 0` gives
+/// `s >= INDICATOR_TOLERANCE` (core), while `ineq_lb` at `y = 1` reduces to
+/// `s >= INDICATOR_TOLERANCE - M` and `ineq_ub` at `y = 0` reduces to `s <= M` — the two relaxations
+/// above.
+///
+/// `=` / `!=` return `None`: their false side is a **disjunction**
+/// (`s <= -strict_boundary` or `s >= strict_boundary`) split by the auxiliary side column, which two
+/// indicator constraints cannot express.
+pub fn indicator_core_relations(kind: InequalityKind) -> Option<IndicatorCoreRelations> {
+    match kind {
+        // 非严格 `L <= right`：取真侧 `s <= 0`，取假侧外扩 ε 得 `s >= ε`。
+        // Non-strict `L <= right`: the true side is `s <= 0`, the false side grows by ε to
+        // `s >= ε`.
+        InequalityKind::LessEqual => Some(IndicatorCoreRelations {
+            when_true: (ConstraintRelation::LessEqual, 0.0),
+            when_false: (ConstraintRelation::GreaterEqual, INDICATOR_TOLERANCE),
+            relaxed_lower_rhs: INDICATOR_TOLERANCE,
+            relaxed_upper_rhs: 0.0,
+        }),
+        // 非严格 `L >= right`：取真侧 `s >= 0`，取假侧外扩 ε 得 `s <= -ε`。
+        // Non-strict `L >= right`: the true side is `s >= 0`, the false side grows by ε to
+        // `s <= -ε`.
+        InequalityKind::GreaterEqual => Some(IndicatorCoreRelations {
+            when_true: (ConstraintRelation::GreaterEqual, 0.0),
+            when_false: (ConstraintRelation::LessEqual, -INDICATOR_TOLERANCE),
+            relaxed_lower_rhs: 0.0,
+            relaxed_upper_rhs: INDICATOR_TOLERANCE,
+        }),
+        // 严格 `L < right`：取真侧内缩 ε 得 `s <= -ε`（严格性扩张），取假侧为非严格 `s >= 0`。
+        // Strict `L < right`: the true side shrinks by ε to `s <= -ε` (strictness expansion) while
+        // the false side is the non-strict `s >= 0`.
+        InequalityKind::Less => Some(IndicatorCoreRelations {
+            when_true: (ConstraintRelation::LessEqual, -INDICATOR_TOLERANCE),
+            when_false: (ConstraintRelation::GreaterEqual, 0.0),
+            relaxed_lower_rhs: 0.0,
+            relaxed_upper_rhs: INDICATOR_TOLERANCE,
+        }),
+        // 严格 `L > right`：取真侧内缩 ε 得 `s >= ε`，取假侧为非严格 `s <= 0`。
+        // Strict `L > right`: the true side shrinks by ε to `s >= ε` while the false side is the
+        // non-strict `s <= 0`.
+        InequalityKind::Greater => Some(IndicatorCoreRelations {
+            when_true: (ConstraintRelation::GreaterEqual, INDICATOR_TOLERANCE),
+            when_false: (ConstraintRelation::LessEqual, 0.0),
+            relaxed_lower_rhs: INDICATOR_TOLERANCE,
+            relaxed_upper_rhs: 0.0,
+        }),
+        InequalityKind::Equal | InequalityKind::NotEqual => None,
+    }
 }
 
 /// 不等式指示函数，返回 0 或 1。
@@ -715,6 +829,30 @@ where
     pub fn big_m(&self) -> f64 {
         self.big_m
     }
+
+    /// 获取即时展开使用的左侧多项式（只读；单项式用列下标表示）
+    /// Read-only access to the left-hand polynomial used by the eager expansion (monomials use
+    /// column indices).
+    ///
+    /// 用途：原生 writer 必须把**同一份**线性关系写进 SDK 的一般约束，而不是在别处重新推导。
+    /// 这里只转发符号上的只读数据，不复制任何公式，也不暴露可变状态。
+    ///
+    /// Purpose: a native writer must write this **very** linear relation into the SDK's general
+    /// constraint instead of re-deriving it elsewhere. This only forwards read-only data from the
+    /// symbol; it copies no formula and exposes no mutable state.
+    pub fn left_polynomial(&self) -> &Linear<V> {
+        self.symbol.left_polynomial()
+    }
+
+    /// 获取即时展开使用的右侧值（只读）/ Read-only access to the right-hand side value.
+    pub fn right_value(&self) -> &V {
+        self.symbol.right_value()
+    }
+
+    /// 获取关系类型（只读）/ Read-only access to the inequality kind.
+    pub fn inequality_kind(&self) -> InequalityKind {
+        self.symbol.inequality_kind()
+    }
 }
 
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for InequalityStructure<V>
@@ -869,6 +1007,178 @@ mod tests {
             ConstraintRelation::Equal => (lhs - constraint.inequality.rhs).abs() <= 1e-9,
             ConstraintRelation::GreaterEqual => lhs + 1e-9 >= constraint.inequality.rhs,
         }
+    }
+
+    /// 即时展开的一行在指示列取 `indicator_value` 时对 `s` 的投影：`(关系, 右端项)`
+    /// Project one eager row onto `s` for a given indicator value: `(relation, right-hand side)`
+    ///
+    /// 行本身是 `Σ c_k x_k + shifted_constant + y_coeff · y [+ side_coeff · side] REL rhs`，而
+    /// `s = Σ c_k x_k + shifted_constant`，因此在固定 `y`（其余辅助列固定为 0）后该行等价于
+    /// `s REL rhs - y_coeff · y`。带 `M` 的行投影后仍带 `M`，不含 `M` 的行投影后与 `M` 无关。
+    ///
+    /// 注意 `result_column` 是**列下标**而不是变量 ID：行里单项式的 `var_index()` 与
+    /// `symbol_to_index` 同口径（都是最终列序号），而 `VariableId::unique_id()` 是另一套编号。
+    ///
+    /// The row is `Σ c_k x_k + shifted_constant + y_coeff · y [+ side_coeff · side] REL rhs` while
+    /// `s = Σ c_k x_k + shifted_constant`, so with `y` fixed (other helpers pinned to zero) it is
+    /// equivalent to `s REL rhs - y_coeff · y`. A row carrying `M` still carries it after the
+    /// projection, while an `M`-free row projects to something independent of `M`.
+    ///
+    /// Note that `result_column` is a **column index**, not a variable ID: a row monomial's
+    /// `var_index()` uses the same convention as `symbol_to_index` (final column numbers), while
+    /// `VariableId::unique_id()` is a different numbering.
+    fn eager_row_projection(
+        constraint: &LinearConstraint<f64>,
+        result_column: usize,
+        indicator_value: f64,
+    ) -> (ConstraintRelation, f64) {
+        let y_coefficient = constraint
+            .inequality
+            .polynomial
+            .monomials()
+            .iter()
+            .find(|monomial| monomial.var_index() == result_column)
+            .map(|monomial| *monomial.coefficient())
+            .unwrap_or(0.0);
+        (
+            constraint.inequality.relation,
+            constraint.inequality.rhs - y_coefficient * indicator_value,
+        )
+    }
+
+    /// 关系指示的核心关系表必须与即时展开里「不含 Big-M 的那条行」逐位一致
+    /// The core-relation table must agree bit for bit with the eager row that carries no Big-M.
+    ///
+    /// 验证手法：用两个不同的 Big-M 生成同一关系的即时展开。核心行的投影不随 M 变化，
+    /// 松弛行的投影按 M 线性变化；原生 writer 只写核心行，因此它必须复现「M-不变」的那一条
+    /// （包括严格性 ε），并把「M-变化」的那一条当作需要在条件变量盒上证明的松弛。
+    /// 容差 1e-13 用于吸收 `(ε - M) + M` 这种 M 量级的浮点舍入，仍比 ε = 1e-10 小三个数量级。
+    ///
+    /// How it is verified: two different Big-M values generate the same relation's eager expansion.
+    /// A core row's projection does not move with M while a relaxed row's moves linearly with it;
+    /// a native writer writes only the core row, so it must reproduce the M-invariant one (including
+    /// the strictness ε) and treat the M-dependent one as a relaxation it has to prove on the
+    /// condition variables' box. The 1e-13 tolerance absorbs the M-scale floating-point rounding of
+    /// `(ε - M) + M` and is still three orders of magnitude below ε = 1e-10.
+    #[test]
+    fn indicator_core_relations_match_the_big_m_free_eager_rows() {
+        // 两个 M 都取 2 的幂，使 `(ε - M) + M` 的舍入保持在 ulp 量级。
+        // Both M values are powers of two so that `(ε - M) + M` rounds at the ulp scale.
+        let small_m = 8.0f64;
+        let large_m = 16.0f64;
+        let projection_tolerance = 1e-13;
+
+        for kind in [
+            InequalityKind::LessEqual,
+            InequalityKind::GreaterEqual,
+            InequalityKind::Less,
+            InequalityKind::Greater,
+        ] {
+            let f: InequalityFunction<f64> = InequalityFunction::new(
+                6100,
+                "ineq_core_table",
+                Linear::new(vec![LinearMonomial::new(2.0, 0)], 1.0),
+                0.5,
+                kind,
+                10.0,
+            );
+            let result_id = f.result_variable().id().unique_id() as usize;
+            // 行里单项式的 `var_index()` 是**列下标**口径，因此投影要按 `symbol_to_index` 给出的
+            // 列号（此处为 1）寻找指示列，而不是按变量 ID。
+            // A row monomial's `var_index()` uses the **column index** convention, so the projection
+            // must look the indicator up by the column number `symbol_to_index` assigns (1 here)
+            // rather than by the variable ID.
+            let result_column = 1usize;
+            let mut symbol_to_index = HashMap::from([(result_id, result_column)]);
+            if let Some(side) = &f.side_var {
+                symbol_to_index.insert(side.id().unique_id() as usize, 2usize);
+            }
+
+            let small_rows = f
+                .build_mechanism_constraints(&symbol_to_index, small_m)
+                .expect("eager rows with the smaller big-M");
+            let large_rows = f
+                .build_mechanism_constraints(&symbol_to_index, large_m)
+                .expect("eager rows with the larger big-M");
+            assert_eq!(small_rows.len(), large_rows.len());
+
+            let expected = indicator_core_relations(kind)
+                .expect("non-strict and strict kinds expose core relations");
+
+            for indicator_value in [1.0f64, 0.0f64] {
+                let mut core = Vec::new();
+                let mut relaxations = Vec::new();
+                for (small_row, large_row) in small_rows.iter().zip(large_rows.iter()) {
+                    let small =
+                        eager_row_projection(small_row, result_column, indicator_value);
+                    let large =
+                        eager_row_projection(large_row, result_column, indicator_value);
+                    assert_eq!(
+                        small.0, large.0,
+                        "a row's relation must not depend on the big-M"
+                    );
+                    if (small.1 - large.1).abs() <= projection_tolerance {
+                        core.push(small);
+                    } else {
+                        relaxations.push((small, large));
+                    }
+                }
+
+                let core_expected = if indicator_value == 1.0 {
+                    expected.when_true
+                } else {
+                    expected.when_false
+                };
+                assert_eq!(
+                    core.len(),
+                    1,
+                    "exactly one eager row per indicator value must be free of the big-M"
+                );
+                assert_eq!(core[0].0, core_expected.0);
+                assert!(
+                    (core[0].1 - core_expected.1).abs() <= projection_tolerance,
+                    "core relation mismatch for {kind:?} at indicator {indicator_value}: eager {} vs table {}",
+                    core[0].1,
+                    core_expected.1
+                );
+
+                // 另一条行必须恰好是表里登记的松弛：`s >= ε - M` 或 `s <= M - ε`。
+                // The other row must be exactly the tabulated relaxation: `s >= ε - M` or
+                // `s <= M - ε`.
+                assert_eq!(
+                    relaxations.len(),
+                    1,
+                    "exactly one eager row per indicator value must carry the big-M"
+                );
+                for (small, _large) in &relaxations {
+                    match small.0 {
+                        ConstraintRelation::GreaterEqual => assert!(
+                            (small.1 + small_m - expected.relaxed_lower_rhs).abs()
+                                <= projection_tolerance,
+                            "{kind:?} lower relaxation mismatch: {} vs {}",
+                            small.1 + small_m,
+                            expected.relaxed_lower_rhs
+                        ),
+                        ConstraintRelation::LessEqual => assert!(
+                            (small.1 - small_m + expected.relaxed_upper_rhs).abs()
+                                <= projection_tolerance,
+                            "{kind:?} upper relaxation mismatch: {} vs -{}",
+                            small.1 - small_m,
+                            expected.relaxed_upper_rhs
+                        ),
+                        ConstraintRelation::Equal => {
+                            panic!("indicator rows must not be equalities")
+                        }
+                    }
+                }
+            }
+        }
+
+        // `=` / `!=` 的取假侧是析取，需要辅助 side 列做情形分裂，没有「两条 indicator」的形式。
+        // The false side of `=` / `!=` is a disjunction split by the auxiliary side column and has no
+        // two-indicator form.
+        assert!(indicator_core_relations(InequalityKind::Equal).is_none());
+        assert!(indicator_core_relations(InequalityKind::NotEqual).is_none());
     }
 
     #[test]

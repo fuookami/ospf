@@ -25,7 +25,18 @@ pub use config::{
     GurobiNumericDiagnosticsCallback, GurobiNumericProfile, GurobiStage, GurobiStageCallback,
     GurobiStageStatus, GurobiTelemetryCallback, GurobiTelemetryStatus,
 };
-pub use native::{AbsNativePlan, GUROBI_ABS_SCHEMA, GurobiAbsWriter, GurobiNativeContainer};
+pub use native::{
+    AbsNativePlan, BinaryzationNativePlan, ExtremumNativePlan, GUROBI_ABS_SCHEMA,
+    GUROBI_AND_SCHEMA, GUROBI_BINARYZATION_BIG_M_TOLERANCE, GUROBI_BINARYZATION_SCHEMA,
+    GUROBI_IF_IN_BIG_M_TOLERANCE, GUROBI_IF_IN_SCHEMA, GUROBI_IMPLY_SCHEMA,
+    GUROBI_INDICATOR_BIG_M_TOLERANCE, GUROBI_INDICATOR_SCHEMA, GUROBI_MAX_SCHEMA, GUROBI_MIN_SCHEMA,
+    GUROBI_OR_SCHEMA, GurobiAbsWriter, GurobiBinaryzationWriter, GurobiExtremumWriter,
+    GurobiIfInWriter, GurobiImplyWriter, GurobiIndicatorWriter, GurobiLogicalWriter,
+    GurobiNativeContainer, IfInNativePlan, ImplyNativePlan, IndicatorNativePlan, LogicalNativePlan,
+    plan_abs_native, plan_and_native, plan_binaryzation_native, plan_if_in_native,
+    plan_imply_native, plan_indicator_from_parts, plan_indicator_native, plan_max_native,
+    plan_min_native, plan_or_native,
+};
 pub use solver::GurobiSolver;
 
 #[cfg(test)]

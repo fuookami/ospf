@@ -100,6 +100,136 @@ where
     Some(Linear::new(monomials, poly.constant().clone()))
 }
 
+// ============================================================================
+// 共享输入提升与组合次数不变式 / Shared input lifting and composition degree invariant
+// ============================================================================
+
+/// 判断二次多项式是否含真正的二次项。
+///
+/// 返回 `true` 表示至少存在一个带 `var_index2` 的单项式；`false` 表示该多项式只是线性
+/// 表达式的退化提升。
+///
+/// Whether a quadratic polynomial carries a genuine quadratic monomial.
+///
+/// `true` means at least one monomial has a `var_index2`; `false` means the polynomial is only a
+/// degenerate lift of a linear expression.
+pub fn has_quadratic_monomials<V>(poly: &Quadratic<V>) -> bool {
+    quadratic_has_square_terms(poly)
+}
+
+/// 把线性输入提升为二次输入（共享适配）。
+///
+/// 组合层的二次包装函数只接受 [`Quadratic`] 输入，线性世界的结果必须先提升，本函数是这一
+/// 提升的唯一共享入口（内部复用 [`Quadratic::from_linear`]），语义契约如下：
+///
+/// 1. 提升只是同一多项式的重新解释：单项式系数、变量索引与常数项逐项保持；
+/// 2. 纯线性输入提升后 **二次项为空**（每个单项式的 `var_index2` 都是 `None`），即二次
+///    世界中的退化形式；
+/// 3. 提升 **不新增任何 helper 列或 token**：返回的是纯数据，既不创建桥接变量，也不改变
+///    模型列空间，因此"线性输入包装"不会带来额外的二次辅助列；
+/// 4. 提升不提高次数：次数 1 提升后仍为 1，后续组合后最高次数不超过 2。
+///
+/// Lift a linear input into a quadratic input (shared adapter).
+///
+/// Every quadratic wrapper on the composition layer only accepts [`Quadratic`] input, so
+/// linear-world results must be lifted first. This function is the single shared entry point of
+/// that lift (delegating to [`Quadratic::from_linear`]) with the following contract:
+///
+/// 1. The lift only reinterprets the same polynomial: coefficients, variable indices and the
+///    constant term are preserved monomial by monomial;
+/// 2. A purely linear input has **no quadratic term** after the lift (every monomial has
+///    `var_index2 == None`), i.e. the degenerate form in the quadratic world;
+/// 3. The lift **adds no helper column or token**: it returns data only, creates no bridge
+///    variable and does not change the model column space, so wrapping a linear input never
+///    introduces an extra quadratic helper column;
+/// 4. The lift does not raise the degree: degree 1 stays degree 1, and later composition keeps
+///    the degree at most 2.
+pub fn lift_linear_input<V>(linear: &Linear<V>) -> Quadratic<V>
+where
+    V: Clone,
+{
+    Quadratic::from_linear(linear)
+}
+
+/// 带断言的线性输入提升。
+///
+/// 与 [`lift_linear_input`] 相同，但在返回前重新校验退化语义：一旦提升结果出现二次单项式
+/// 就返回 [`ModelError::InvalidConstraint`]，避免线性世界的结果被隐式升级成需要辅助列的
+/// 二次表达式。该断言在正常路径上不可能触发（提升只产生线性单项式），因此它同时充当
+/// 组合次数不变式的可执行文档。
+///
+/// Lift a linear input with an assertion.
+///
+/// Same as [`lift_linear_input`] but re-validates the degenerate semantics before returning: a
+/// quadratic monomial in the lifted result yields [`ModelError::InvalidConstraint`], so a
+/// linear-world result can never be silently upgraded into a quadratic expression that needs
+/// helper columns. The assertion cannot fire on the regular path (the lift only produces linear
+/// monomials) and therefore doubles as executable documentation of the degree invariant.
+pub fn lift_linear_input_checked<V>(linear: &Linear<V>) -> Result<Quadratic<V>>
+where
+    V: Clone,
+{
+    let lifted = lift_linear_input(linear);
+    if has_quadratic_monomials(&lifted) {
+        return Err(ModelError::InvalidConstraint(
+            "linear lift produced a quadratic monomial; a linear input has to stay degenerate"
+                .to_string(),
+        )
+        .into());
+    }
+    Ok(lifted)
+}
+
+/// 组合次数不变式守卫：拒绝会把次数抬到三次或更高的单项式。
+///
+/// 二次组合保持次数不超过二的充要条件是"桥接列只以一次项参与组合"：桥接列代表一个已经被
+/// 提升的二次表达式，一旦它在某个单项式里与任何变量相乘（含自乘），代入桥接等式后该单项式
+/// 的次数就会升到 3 或 4，二次模型无法表达。本函数逐单项式检查 `poly`，只要某个二次单项式
+/// 的一侧或两侧落在 `bridge_columns` 上就返回 [`ModelError::InvalidConstraint`]。
+///
+/// **调用约定**：`poly` 的变量索引必须与 `bridge_columns` 处于同一列空间（即模型列编号），
+/// 且 `bridge_columns` 必须是该组合真正涉及的全部桥接列。守卫由组合入口显式调用，而不是挂进
+/// [`QuadraticLinearFunction`]：桥接列在该函数内部创建，输入多项式不可能引用它，因此在那里
+/// 检查只会对"用占位索引构造的合成多项式"产生误报，并改变既有包装函数的默认行为。
+///
+/// Guard of the composition degree invariant: reject any monomial that would raise the degree to
+/// three or higher.
+///
+/// Quadratic composition keeps degree at most two exactly when "bridge columns only take part as
+/// linear terms": a bridge column stands for an already lifted quadratic expression, so once it is
+/// multiplied by any variable inside a monomial (including being squared), substituting the bridge
+/// equality raises that monomial to degree 3 or 4, which a quadratic model cannot express. This
+/// function inspects `poly` monomial by monomial and returns
+/// [`ModelError::InvalidConstraint`] as soon as a quadratic monomial touches `bridge_columns` on
+/// either side.
+///
+/// **Call contract**: the variable indices of `poly` must live in the same column space as
+/// `bridge_columns` (model column numbering) and `bridge_columns` must hold every bridge column the
+/// composition actually involves. The guard is called explicitly by composition entry points rather
+/// than wired into [`QuadraticLinearFunction`]: that constructor creates its own bridge column, so
+/// its input polynomial can never reference it, and checking there would only misfire on synthetic
+/// polynomials built from placeholder indices while changing the default behaviour of the existing
+/// wrappers.
+pub fn guard_quadratic_composition_degree<V>(
+    poly: &Quadratic<V>,
+    bridge_columns: &HashSet<usize>,
+    context: &str,
+) -> Result<()> {
+    for monomial in poly.monomials() {
+        let Some(second_index) = monomial.var_index2() else {
+            continue;
+        };
+        let first_index = monomial.var_index1();
+        if bridge_columns.contains(&first_index) || bridge_columns.contains(&second_index) {
+            return Err(ModelError::InvalidConstraint(format!(
+                "quadratic composition `{context}` puts bridge column(s) of the lifted quadratic expression into the monomial ({first_index}, {second_index}); substituting the bridge equality raises that term to degree 3 or higher, so bridge columns must stay linear during composition"
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn to_f64<V>(value: &V) -> Option<f64>
 where
     V: ToPrimitive,

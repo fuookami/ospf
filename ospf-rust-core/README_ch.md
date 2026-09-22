@@ -285,9 +285,9 @@ proof、incumbent 和取消链；未知 schema 或身份不匹配会在恢复前
 | 级别 | 内容 | 当前状态 |
 | --- | --- | --- |
 | 1 通用语义 | 所有函数符号的 EAGER 展开、边界收紧、Big-M 推导与布尔 hull | 已实现，默认路径 |
-| 2 延迟结构 | 求解器无关的 `DeferredFunctionStructure`（符号句柄、辅助列、固定 Big-M、版本化指纹） | 已实现：ABS、NOT、AND、OR、MAX、MIN、SEMI、二值化、关系指示、平衡三值化、Sigmoid、IF、二值掩码；其余函数继续 EAGER |
+| 2 延迟结构 | 求解器无关的 `DeferredFunctionStructure`（符号句柄、辅助列、固定 Big-M、版本化指纹） | 已实现：ABS、NOT、AND、OR、MAX、MIN、SEMI、二值化、关系指示、平衡三值化、Sigmoid、IF、二值掩码、Sin、Cos、多项式掩码、极值转发（MinMax/MaxMin）、范围松弛、IF-THEN、蕴含、IF-IN；其余函数继续 EAGER |
 | 3 调度与策略 | `FunctionExpansionPolicy`（EAGER/deferred/Auto）、求解器能力门、`NativeFunctionWriter` registry、模型级 lowering、失败原子性、版本化指纹 | 已实现（求解器无关） |
-| 4 原生 writer | 具体 SDK 的原生写入 | 仅 Gurobi ABS 的准入判定与 writer；**尚未接入 Gurobi 建模流程**，因此真实求解中暂不生效 |
+| 4 原生 writer | 具体 SDK 的原生写入 | Gurobi 已接入八类原生 writer：ABS（`add_genconstr_abs`）、MAX/MIN（`add_genconstr_max/min`）、分段线性 Sin/Cos/Sigmoid（`add_genconstr_pwl`）、关系指示（`add_genconstr_indicator`）、IF-IN（`add_genconstr_indicator` 每候选值 4 条 + `add_genconstr_or` 聚合）二值 AND/OR（`add_genconstr_and/or`）二值化（`add_genconstr_indicator` + Big-M 冗余证明）与蕴含（`add_genconstr_indicator`：每个内部子指示器 2 条 + 耦合 3 条），均通过 `GurobiSolver::solve_linear_with_native_lowering` 进入建模流程并在**真实求解中生效**（由 `tests/gurobi_native_function_lowering.rs` 端到端验证，需许可证）。所有 writer 共用同一组门控（结果列被固定、辅助列被外部引用、无法精确表达的形态），并在**原生形式会丢掉即时路径所依赖的行**时额外要求显式的范围证明或 Big-M 冗余证明；**真正写入失败**时求解器会丢弃 SDK 模型并对**整模型回退**；其余 writer 待补 |
 
 每个结构的物化都调用手写路径的同一个公式生成器（不存在第二份公式），因此延迟路径与 EAGER
 逐列一致；每个结构在测试中都被覆盖两次：结构层一次，贯穿

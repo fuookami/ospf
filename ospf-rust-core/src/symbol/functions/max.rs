@@ -562,6 +562,16 @@ where
     pub fn big_ms(&self) -> &[f64] {
         &self.big_ms
     }
+
+    /// 获取原始候选线性多项式 / Get the raw candidate linear polynomials.
+    ///
+    /// 供求解器无关的准入判定使用：原生 writer 的 planner 需要看到候选的真实形状，才能决定能否
+    /// 写成 `result = min(operands) + constant`。
+    /// Used by solver-neutral admission: a native writer's planner needs the candidates' real shape to
+    /// decide whether `result = min(operands) + constant` can be written.
+    pub fn candidate_polynomials(&self) -> &[Linear<V>] {
+        &self.symbol.polynomials
+    }
 }
 
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for MinStructure<V>
@@ -819,7 +829,40 @@ where
         infer_big_m_for_polynomials(&self.polynomials, tokens, BIG_M_POLICY.min())
     }
 
-    fn build_mechanism_constraints(
+    /// 推断即时展开使用的每候选非对称 Big-M。
+    ///
+    /// 这是即时展开与延迟结构共用的唯一一份 M 计算：先按可见令牌边界推断每候选 M，任一候选缺少
+    /// 有限域时退回统一回退值。转发到 MAX 的符号（例如范围松弛）在创建延迟结构时快照本方法的
+    /// 返回值，物化阶段直接使用同一组 M，因此两条路径不可能各自解析出不同的 M。
+    ///
+    /// Infer the per-candidate asymmetric Big-M values eager expansion uses.
+    ///
+    /// This is the single M computation shared by eager expansion and deferred structures: it first
+    /// infers a per-candidate M from the visible token bounds and falls back to the unified fallback
+    /// value when any candidate lacks a finite domain. A symbol forwarding to MAX (for example
+    /// slack-range) snapshots the returned group when it creates its deferred structure and reuses
+    /// that exact group at materialization, so the two paths can never resolve different M values.
+    pub(crate) fn eager_candidate_big_ms(&self, tokens: &[Token<V>]) -> Vec<f64> {
+        infer_extremum_candidate_big_ms(&self.polynomials, tokens, false, BIG_M_POLICY.min())
+            .unwrap_or_else(|| {
+                vec![
+                    BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens));
+                    self.polynomials.len()
+                ]
+            })
+    }
+
+    /// 使用给定的每候选 Big-M 生成机制约束。
+    ///
+    /// 延迟结构在创建时快照了那组 M，物化时通过本方法复用与即时展开完全相同的公式生成器，
+    /// 因此延迟物化与 EAGER 展开逐行一致（含 M 取值）。
+    ///
+    /// Build mechanism constraints from the given per-candidate Big-M values.
+    ///
+    /// A deferred structure snapshots the M group at creation time and reuses exactly the same formula
+    /// generator as eager expansion through this method at materialization, so deferred
+    /// materialization matches eager expansion row by row, including the M values.
+    pub(crate) fn build_mechanism_constraints(
         &self,
         symbol_to_index: &HashMap<usize, usize>,
         big_ms: &[f64],
@@ -1069,15 +1112,7 @@ where
         symbol_to_index: &HashMap<usize, usize>,
         tokens: &[Token<V>],
     ) -> Result<Vec<LinearConstraint<V>>> {
-        let big_ms = infer_extremum_candidate_big_ms(
-            &self.polynomials,
-            tokens,
-            false,
-            BIG_M_POLICY.min(),
-        )
-        .unwrap_or_else(|| {
-            vec![BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens)); self.polynomials.len()]
-        });
+        let big_ms = self.eager_candidate_big_ms(tokens);
         self.build_mechanism_constraints(symbol_to_index, &big_ms)
     }
 
@@ -1109,15 +1144,7 @@ where
         if self.polynomials.is_empty() || self.binary_vars.is_none() {
             return None;
         }
-        let big_ms = infer_extremum_candidate_big_ms(
-            &self.polynomials,
-            tokens,
-            false,
-            BIG_M_POLICY.min(),
-        )
-        .unwrap_or_else(|| {
-            vec![BIG_M_POLICY.resolve(self.infer_big_m_from_tokens(tokens)); self.polynomials.len()]
-        });
+        let big_ms = self.eager_candidate_big_ms(tokens);
         Some(Arc::new(MaxStructure::new(
             self.id.name.clone(),
             Arc::new(self.clone()),
@@ -1188,6 +1215,16 @@ where
     /// 获取每候选非对称 Big-M / Get the per-candidate asymmetric Big-M values.
     pub fn big_ms(&self) -> &[f64] {
         &self.big_ms
+    }
+
+    /// 获取原始候选线性多项式 / Get the raw candidate linear polynomials.
+    ///
+    /// 供求解器无关的准入判定使用：原生 writer 的 planner 需要看到候选的真实形状，才能决定能否
+    /// 写成 `result = max(operands) + constant`。
+    /// Used by solver-neutral admission: a native writer's planner needs the candidates' real shape to
+    /// decide whether `result = max(operands) + constant` can be written.
+    pub fn candidate_polynomials(&self) -> &[Linear<V>] {
+        &self.symbol.polynomials
     }
 }
 

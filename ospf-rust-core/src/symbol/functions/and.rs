@@ -885,6 +885,35 @@ where
     }
 }
 
+impl<V> AndStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    /// 获取紧凑 hull 的操作数列下标（只读；`None` 表示输入不是直接二值单项式）
+    /// Read-only access to the compact hull's operand column indices (`None` when some input is not a
+    /// direct binary monomial).
+    ///
+    /// 用途：原生 writer 要用 `result = AND(inputs)` 的 SDK 一般约束替换即时展开的两族 hull 行
+    /// （`result <= input_i` 与 `sum(input) - result <= n - 1`），因此必须拿到与即时展开**完全相同**
+    /// 的操作数列。本访问器复用即时路径的同一个 `direct_monomial_index` 判定，不复制公式，也不暴露
+    /// 可变状态。
+    ///
+    /// Purpose: a native writer replaces the eager two hull row families (`result <= input_i` and
+    /// `sum(input) - result <= n - 1`) with the SDK's `result = AND(inputs)` general constraint, so it
+    /// must obtain the **very same** operand columns. This reuses the eager path's own
+    /// `direct_monomial_index` check, copies no formula and exposes no mutable state.
+    pub fn operand_indices(&self) -> Option<Vec<usize>> {
+        if self.symbol.polynomials.is_empty() {
+            return None;
+        }
+        self.symbol
+            .polynomials
+            .iter()
+            .map(direct_monomial_index::<V>)
+            .collect()
+    }
+}
+
 impl<V> crate::model::intermediate::DeferredFunctionStructure<V> for AndStructure<V>
 where
     V: Clone
@@ -1578,6 +1607,34 @@ where
     /// 获取推导出的 Big-M / Get the inferred Big-M.
     pub fn big_m(&self) -> f64 {
         self.big_m
+    }
+}
+
+impl<V> OrStructure<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
+{
+    /// 获取紧凑 hull 的操作数列下标（只读；`None` 表示输入不是直接二值单项式）
+    /// Read-only access to the compact hull's operand column indices (`None` when some input is not a
+    /// direct binary monomial).
+    ///
+    /// 用途与 [`AndStructure::operand_indices`] 相同：原生 writer 用 `result = OR(inputs)` 的 SDK
+    /// 一般约束替换即时展开的 `result >= input_i` 与 `sum(input) - result >= 0` 两族行，因此必须拿到
+    /// 与即时展开完全相同的操作数列；本访问器复用即时路径的同一个判定，不复制公式。
+    ///
+    /// The purpose matches [`AndStructure::operand_indices`]: a native writer replaces the eager
+    /// `result >= input_i` and `sum(input) - result >= 0` row families with the SDK's
+    /// `result = OR(inputs)` general constraint, so it must obtain exactly the same operand columns;
+    /// this reuses the eager path's own check and copies no formula.
+    pub fn operand_indices(&self) -> Option<Vec<usize>> {
+        if self.symbol.polynomials.is_empty() {
+            return None;
+        }
+        self.symbol
+            .polynomials
+            .iter()
+            .map(direct_monomial_index::<V>)
+            .collect()
     }
 }
 
