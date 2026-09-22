@@ -31,15 +31,15 @@ pub use native::{
     GUROBI_BINARYZATION_SCHEMA, GUROBI_CONDITIONAL_VALUE_SCHEMA, GUROBI_IF_IN_BIG_M_TOLERANCE,
     GUROBI_IN_VALUES_SCHEMA, GUROBI_IMPLY_SCHEMA, GUROBI_INDICATOR_BIG_M_TOLERANCE,
     GUROBI_IF_SCHEMA, GUROBI_INDICATOR_SCHEMA, GUROBI_MASKING_BIG_M_TOLERANCE, GUROBI_MASKING_SCHEMA,
-    GUROBI_MAX_SCHEMA, GUROBI_MIN_SCHEMA, GUROBI_OR_SCHEMA, GUROBI_POLY_MASK_SCHEMA,
+    GUROBI_MAX_SCHEMA, GUROBI_MIN_SCHEMA, GUROBI_NOT_SCHEMA, GUROBI_OR_SCHEMA, GUROBI_POLY_MASK_SCHEMA,
     GurobiAbsWriter, GurobiBalanceTernWriter, GurobiBinaryzationWriter, GurobiConditionalValueWriter, GurobiExtremumWriter,
     GurobiIfWriter, GurobiInValuesWriter, GurobiImplyWriter, GurobiIndicatorWriter, GurobiLogicalWriter,
-    GurobiMaskingWriter, GurobiNativeContainer, GurobiPolyMaskWriter, BalanceTernNativePlan, IfNativePlan,
+    GurobiMaskingWriter, GurobiNativeContainer, GurobiNotWriter, GurobiPolyMaskWriter, BalanceTernNativePlan, IfNativePlan,
     InValuesNativePlan, ImplyNativePlan, IndicatorNativePlan, LogicalNativePlan, MaskingNativePlan,
-    PolyMaskNativePlan,
+    NotNativePlan, PolyMaskNativePlan,
     plan_abs_native, plan_and_native, plan_balance_tern_native, plan_binaryzation_native, plan_conditional_value_native,
     plan_imply_native, plan_in_values_native, plan_if_native, plan_indicator_from_parts, plan_indicator_native,
-    plan_masking_native, plan_max_native, plan_min_native, plan_or_native, plan_poly_mask_native,
+    plan_masking_native, plan_max_native, plan_min_native, plan_not_native, plan_or_native, plan_poly_mask_native,
 };
 pub use solver::GurobiSolver;
 

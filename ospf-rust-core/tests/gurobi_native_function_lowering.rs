@@ -39,7 +39,7 @@ use ospf_rust_core::symbol::function::{
     AbsFunction, AbsStructure, AndFunction, BalanceTernaryzationFunction, BinaryzationFunction,
     BinaryzationMethod, ConditionBounds, ConditionRelation, ConditionalThenFunction, IfFunction,
     InValuesFunction, ImplyFunction, InequalityFunction, InequalityKind, LogisticFunction,
-    MaskingFunction, MaskingWithPolyMaskFunction, OrFunction, SinFunction,
+    MaskingFunction, MaskingWithPolyMaskFunction, NotFunction, OrFunction, SinFunction,
 };
 use ospf_rust_core::variable::{
     BinaryVariableItem, ContinuousVariableItem, VariableId, VariableRange,
@@ -3760,6 +3760,159 @@ fn an_unbounded_balance_tern_input_falls_back() {
     assert!(
         report.materialized_fallbacks >= 1,
         "the unbounded input must force a fallback: {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+}
+
+// ===== NOT（逻辑非）原生写入验收 =====
+// ===== NOT native write acceptance =====
+
+const NOT_INPUT_ID: usize = 99_820;
+const NOT_FUNCTION_ID: u64 = 99_830;
+
+#[test]
+fn native_not_write_is_used_by_a_real_solve() {
+    // 直接二值输入：x 钉 1 ⇒ not = 0；恒等普通等式行 `result + input = 1` 经 add_linear_row 原生写入，
+    // writer/schema/计数/0 回退全验收，并与 EAGER 解对比。
+    //
+    // Direct binary input: x pinned at 1 gives not = 0; the identical plain equality row is written
+    // natively through add_linear_row, with writer/schema/counts/zero-fallbacks verified and an EAGER
+    // comparison.
+    let mut model = MetaModel::<f64>::new("gurobi_native_not");
+    model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+    let x = BinaryVariableItem::with_range(
+        VariableId::standalone(NOT_INPUT_ID),
+        "x",
+        VariableRange::bounded(1.0, 1.0),
+    );
+    let x_index = model.register_variable(x).expect("x should register");
+    let function = NotFunction::new(
+        NOT_FUNCTION_ID,
+        "not_native",
+        Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+    );
+    let result_id = function.result_variable().id();
+    model
+        .add_symbol(Arc::new(function))
+        .expect("not symbol should register");
+
+    let mechanism = model.try_into_mechanism_model().unwrap();
+    let view = mechanism.linear_column_view();
+    let x_column = view
+        .iter()
+        .position(|column| column.id == VariableId::standalone(NOT_INPUT_ID))
+        .expect("x column should exist");
+    let result_column = view
+        .iter()
+        .position(|column| column.id == result_id)
+        .expect("not result column should exist");
+
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the natively lowered model");
+
+    assert_eq!(report.native_writes, 1);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.iter().any(|outcome| matches!(
+            outcome,
+            NativeWriteOutcome::Native(record)
+                if record.writer == "gurobi_not" && record.schema == "functions-not-1"
+        )),
+        "expected a native NOT write with the stable schema, got {:?}",
+        report.outcomes
+    );
+    assert!(output.status.is_feasible(), "got {:?}", output.status);
+    let solution = output
+        .solution
+        .as_ref()
+        .expect("a feasible solve should carry a solution");
+    assert!(
+        (solution[result_column] - 0.0).abs() <= 1e-6,
+        "x = 1 must give not = 0: not = {}",
+        solution[result_column]
+    );
+
+    let mut eager_model = MetaModel::<f64>::new("gurobi_eager_not");
+    eager_model.set_function_expansion_policy(FunctionExpansionPolicy::Eager);
+    let eager_x = BinaryVariableItem::with_range(
+        VariableId::standalone(NOT_INPUT_ID),
+        "x",
+        VariableRange::bounded(1.0, 1.0),
+    );
+    let eager_x_index = eager_model
+        .register_variable(eager_x)
+        .expect("x should register");
+    let eager_function = NotFunction::new(
+        NOT_FUNCTION_ID,
+        "not_native",
+        Linear::new(vec![LinearMonomial::new(1.0, eager_x_index)], 0.0),
+    );
+    let eager_result_id = eager_function.result_variable().id();
+    eager_model
+        .add_symbol(Arc::new(eager_function))
+        .expect("not symbol should register");
+    let eager_mechanism = eager_model.try_into_mechanism_model().unwrap();
+    let eager_view = eager_mechanism.linear_column_view();
+    let eager_result_column = eager_view
+        .iter()
+        .position(|column| column.id == eager_result_id)
+        .expect("not result column should exist");
+    let eager = solver
+        .solve_linear(&eager_mechanism.into_linear_triad_model())
+        .expect("gurobi should solve the eager model");
+    let eager_solution = eager
+        .solution
+        .as_ref()
+        .expect("the eager solve should carry a solution");
+    assert!(
+        (eager_solution[eager_result_column] - solution[result_column]).abs() <= 1e-6,
+        "the two paths must agree on not: eager = {}, native = {}",
+        eager_solution[eager_result_column],
+        solution[result_column]
+    );
+}
+
+#[test]
+fn a_non_direct_not_input_never_reaches_the_native_path() {
+    // 生命周期契约：只有「直接二值输入」才提供 NOT 延迟结构；一般数值多项式连结构都不产生，
+    // 直接走 EAGER（间接 nonzero-indicator 编码）。因此原生路径从未被询问——native_writes 与
+    // materialized_fallbacks 均为 0、outcomes 为空，模型保持可行。writer 的门控是双保险。
+    //
+    // Lifecycle contract: only a direct binary input exposes a NOT deferred structure; general
+    // numeric polynomials produce no structure at all and stay EAGER (the indirect nonzero-indicator
+    // encoding). The native path is never consulted — native_writes and materialized_fallbacks stay
+    // zero with empty outcomes, and the model remains feasible. The writer gates are belt-and-braces.
+    let mut model = MetaModel::<f64>::new("gurobi_native_not_fallback");
+    model.set_function_expansion_policy(FunctionExpansionPolicy::DeferredNativeFirst);
+    let x = ContinuousVariableItem::with_range(
+        VariableId::standalone(NOT_INPUT_ID),
+        "x",
+        VariableRange::bounded(-2.0, 2.0),
+    );
+    let x_index = model.register_variable(x).expect("x should register");
+    let function = NotFunction::new(
+        NOT_FUNCTION_ID,
+        "not_native_fallback",
+        Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+    );
+    model
+        .add_symbol(Arc::new(function))
+        .expect("not symbol should register");
+
+    let mechanism = model.try_into_mechanism_model().unwrap();
+    let solver = GurobiSolver::new();
+    let (output, report) = solver
+        .solve_linear_with_native_lowering(mechanism, None)
+        .expect("gurobi should solve the eager model");
+
+    assert_eq!(report.native_writes, 0);
+    assert_eq!(report.materialized_fallbacks, 0);
+    assert!(
+        report.outcomes.is_empty(),
+        "a non-direct input must never reach the native path: {:?}",
         report.outcomes
     );
     assert!(output.status.is_feasible(), "got {:?}", output.status);

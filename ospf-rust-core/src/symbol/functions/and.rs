@@ -1832,11 +1832,6 @@ where
         Self::new(id, &name, polynomial)
     }
 
-    /// 获取输入多项式 / Get the input polynomial.
-    pub fn polynomial(&self) -> &Linear<V> {
-        &self.polynomial
-    }
-
     /// 获取结果变量 / Get the result variable.
     pub fn result_variable(&self) -> &BinaryVariableItem {
         &self.result_var
@@ -1857,6 +1852,11 @@ impl<V> NotFunction<V>
 where
     V: Clone + Debug + Send + Sync + 'static + ToPrimitive,
 {
+    /// 获取输入多项式 / Get the input polynomial.
+    pub fn polynomial(&self) -> &Linear<V> {
+        &self.polynomial
+    }
+
     fn infer_big_m_from_tokens(&self, tokens: &[Token<V>]) -> Option<f64> {
         infer_linear_abs_bound_from_tokens(&self.polynomial, tokens)
             .map(|bound| bound.max(BIG_M_POLICY.min()))
@@ -2162,6 +2162,11 @@ impl<V> NotStructure<V>
 where
     V: Clone + Debug + Send + Sync + 'static,
 {
+    /// 获取符号句柄 / Get the symbol handle.
+    pub fn symbol(&self) -> &Arc<NotFunction<V>> {
+        &self.symbol
+    }
+
     /// 创建结构描述 / Create a structure description.
     pub fn new(name: impl Into<String>, symbol: Arc<NotFunction<V>>, big_m: f64) -> Self {
         let result = symbol.result_var.id();

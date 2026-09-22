@@ -28,7 +28,7 @@ use crate::model::intermediate::{
     NativeWriteRecord, NativeWriteRequest,
 };
 use crate::symbol::function::{
-    AbsStructure, AndStructure, BalanceTernaryzationStructure, BinaryzationStructure, ConditionalThenStructure, CosStructure,
+    AbsStructure, AndStructure, BalanceTernaryzationStructure, NotStructure, BinaryzationStructure, ConditionalThenStructure, CosStructure,
     INDICATOR_TOLERANCE, IfStructure, InValuesStructure, ImplyStructure, InequalityKind,
     InequalityStructure, LogisticStructure, MaskingStructure, MaskingWithPolyMaskStructure,
     MaxStructure, MinStructure, OrStructure, SinStructure, binaryzation_core_relations,
@@ -4177,6 +4177,9 @@ pub const GUROBI_BALANCE_TERN_SCHEMA: &str = "functions-balance-ternary-1";
 /// 平衡三值化 band 行的 Big-M 容差 / Big-M tolerance for the balance-ternary band rows.
 pub const GUROBI_BALANCE_TERN_BIG_M_TOLERANCE: f64 = GUROBI_INDICATOR_BIG_M_TOLERANCE;
 
+/// NOT 原生写入 schema / Native NOT write schema.
+pub const GUROBI_NOT_SCHEMA: &str = "functions-not-1";
+
 /// 读输入多项式 `Σ c_k x_k + constant` 在 SDK 盒 `[x_min, x_max]` 上的取值区间。
 ///
 /// 与其它 writer 同源：Gurobi 用 ±1e100（`grb::INFINITY`）表示无穷界，它本身是有限数，必须显式比较；
@@ -4249,6 +4252,195 @@ fn sdk_polynomial_box(
 /// to `|x| ≤ M`. The only obligation is therefore **`M ≥ max|x|` over the input box**, exactly what
 /// [`Self::prove_input_box`] checks (a failure forces a fallback rather than writing an incomplete relation).
 #[derive(Debug, Clone, PartialEq)]
+/// NOT（逻辑非）原生写入计划 / Plan for one native NOT write.
+///
+/// 仅覆盖「直接二值输入」分支：即时展开为单条普通等式行 `result + input = 1`（行名
+/// `{name}_binary_result`），经容器 `add_linear_row` **恒等替换**，无任何证明义务。
+/// 间接分支（非直接输入走 nonzero-indicator 编码，`{name}_not_nz*`）整体回退。
+///
+/// Only the "direct binary input" branch is covered: the eager expansion is a single plain
+/// equality row `result + input = 1` (named `{name}_binary_result`), written **identically**
+/// through the container's `add_linear_row` with no proof obligation. The indirect branch
+/// (non-direct inputs use the nonzero-indicator encoding, `{name}_not_nz*`) falls back.
+pub struct NotNativePlan {
+    /// 函数名称，用作原生约束名称 / Function name used as the native constraint name
+    pub name: String,
+    /// 结果列 `not` / Result column `not`
+    pub result: VariableId,
+    /// 输入列下标 / Input column index
+    pub input_index: usize,
+}
+
+/// 判断一个 NOT 结构是否可以原生写入，并给出写入计划（不依赖 SDK）。
+///
+/// 仅当输入多项式恰为「单个系数 1 的单项式、无常数项」时接受（即直接二值输入形态）；
+/// 其余形态（非常数、系数非 1、多项式项）回退。二元校验由 writer 在解析出列之后完成。
+///
+/// Accept a NOT structure only when its input polynomial is exactly one unit-coefficient monomial
+/// with a zero constant (the direct-binary-input form); everything else falls back. The binary
+/// column check happens in the writer once the columns are resolved.
+pub fn plan_not_native(
+    structure: &NotStructure<f64>,
+) -> std::result::Result<NotNativePlan, FallbackReason> {
+    let name = structure.name().to_string();
+    let polynomial = structure.symbol().polynomial();
+    let constant = *polynomial.constant_term();
+    let monomials = polynomial.monomials();
+    if !constant.is_finite() || constant != 0.0 || monomials.len() != 1 {
+        return Err(FallbackReason::Rejected(format!(
+            "not `{name}` native lowering only supports the direct-binary-input form, got {} monomial(s) with constant {constant}",
+            monomials.len()
+        )));
+    }
+    let coefficient = *monomials[0].coefficient();
+    if !coefficient.is_finite() || coefficient != 1.0 {
+        return Err(FallbackReason::Rejected(format!(
+            "not `{name}` native lowering requires a unit input coefficient, got {coefficient}"
+        )));
+    }
+    Ok(NotNativePlan {
+        name,
+        result: structure.result().clone(),
+        input_index: monomials[0].var_index(),
+    })
+}
+
+/// Gurobi 的 NOT 原生 writer / Gurobi's native NOT writer.
+///
+/// 服务 [`NotStructure`]（`ospf-rust-core/src/symbol/functions/and.rs`）：直接二值输入分支写一条
+/// 普通等式行 `result + input = 1`（与 Kotlin 的 NOT 线性等式写入对齐）；结果列与输入列都必须是
+/// 二元列（SDK `VarType`），否则回退。
+///
+/// Serves [`NotStructure`]: the direct-binary-input branch writes one plain equality row
+/// `result + input = 1` (aligned with Kotlin's NOT linear-equality write); both the result and the
+/// input columns must be binary (SDK `VarType`), otherwise the write falls back.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct GurobiNotWriter;
+
+impl GurobiNotWriter {
+    /// 创建 writer / Create the writer.
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl NativeFunctionWriter<GurobiNativeContainer, f64> for GurobiNotWriter {
+    fn name(&self) -> &str {
+        "gurobi_not"
+    }
+
+    fn supports(&self, structure: &dyn DeferredFunctionStructure<f64>) -> bool {
+        structure.as_any().downcast_ref::<NotStructure<f64>>().is_some()
+    }
+
+    fn write_batch(
+        &self,
+        container: &mut GurobiNativeContainer,
+        requests: &[NativeWriteRequest<'_, f64>],
+    ) -> Result<Option<Vec<NativeWriteOutcome>>> {
+        if requests.is_empty() {
+            return Ok(None);
+        }
+        container.model_mut().update().map_err(|error| {
+            ModelError::InvalidConstraint(format!(
+                "gurobi_not writer failed to flush pending model changes before the checks: {error}"
+            ))
+        })?;
+
+        let mut outcomes = Vec::with_capacity(requests.len());
+        for request in requests {
+            let structure = request
+                .structure
+                .as_any()
+                .downcast_ref::<NotStructure<f64>>()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "gurobi_not writer received a structure that is not a NOT structure"
+                            .to_string(),
+                    )
+                })?;
+
+            let plan = match plan_not_native(structure) {
+                Ok(plan) => plan,
+                Err(reason) => {
+                    outcomes.push(NativeWriteOutcome::Fallback(reason));
+                    continue;
+                }
+            };
+
+            if request.usage.forbids_native_write() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "not `{}` native lowering rejected a fixed result column",
+                    plan.name
+                ))));
+                continue;
+            }
+            if !request.usage.helpers_are_exclusive() {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "not `{}` native lowering rejected externally referenced helper columns",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            let Some(result_var) = container.variable(&plan.result) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "not `{}` result column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            let Some(input_var) = container.variable_at(plan.input_index) else {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "not `{}` input column is missing from the solve model",
+                    plan.name
+                ))));
+                continue;
+            };
+            // NOT 的语义与「直接二值输入」分支都要求两列均为二元列。
+            // Both the NOT semantics and the direct-binary-input branch require binary columns.
+            let result_binary = matches!(
+                container.model_mut().get_obj_attr(attr::VType, &result_var),
+                Ok(VarType::Binary)
+            );
+            let input_binary = matches!(
+                container.model_mut().get_obj_attr(attr::VType, &input_var),
+                Ok(VarType::Binary)
+            );
+            if !result_binary || !input_binary {
+                outcomes.push(NativeWriteOutcome::Fallback(FallbackReason::Rejected(format!(
+                    "not `{}` native lowering requires binary result and input columns",
+                    plan.name
+                ))));
+                continue;
+            }
+
+            container
+                .add_linear_row(
+                    &format!("{}_binary_result", plan.name),
+                    vec![(result_var, 1.0), (input_var, 1.0)],
+                    0.0,
+                    ConstraintRelation::Equal,
+                    1.0,
+                )
+                .map_err(|error| {
+                    ModelError::InvalidConstraint(format!(
+                        "gurobi_not writer failed to write not `{}` (_binary_result): {error}",
+                        plan.name
+                    ))
+                })?;
+
+            outcomes.push(NativeWriteOutcome::Native(NativeWriteRecord::new(
+                self.name(),
+                GUROBI_NOT_SCHEMA,
+            )));
+        }
+
+        Ok(Some(outcomes))
+    }
+}
+
+/// 平衡三值化原生写入计划 / Plan for one native balance-ternary write.
 /// 平衡三值化原生写入计划 / Plan for one native balance-ternary write.
 ///
 /// 即时展开为 6 行：2 条普通行（`_bter_result`：`res − pos + neg = 0`；`_bter_exclusive`：

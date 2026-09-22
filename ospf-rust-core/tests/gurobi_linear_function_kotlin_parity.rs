@@ -10,10 +10,10 @@ use ospf_rust_core::model::{
 use ospf_rust_core::solver::{SolverOutput, SolverStatus, solvers::GurobiSolver};
 use ospf_rust_core::symbol::function::{
     AbsFunction, AndFunction, BalanceTernaryzationFunction, BinaryzationFunction,
-    BivariateLinearPiecewiseFunction, IfElseFunction, IfThenFunction, InequalityFunction,
+    BivariateLinearPiecewiseFunction, ConditionBounds, ConditionRelation, IfElseFunction, IfThenFunction, InequalityFunction,
     InequalityKind, MaskingFunction, MaskingRangeFunction, MaxFunction, MaxMinFunction,
     MinFunction, MinMaxFunction, ModFunction, NotFunction, OneOfFunction, OrFunction, Point2,
-    Point3, Triangle3, RoundingFunction, LogisticFunction, SlackFunction, SlackRangeFunction,
+    Point3, Triangle3, RoundingFunction, LogisticFunction, SigmoidFunction, SlackFunction, SlackRangeFunction,
     UnivariateLinearPiecewiseFunction, XorFunction,
 };
 use ospf_rust_core::variable::{
@@ -1125,35 +1125,70 @@ fn sigmoid_and_masking_range_parity() {
     expect_feasible(&mask_off_output);
     assert_close(mask_off_output.objective_value.unwrap(), 0.0);
 
+    // Kotlin 的 Sigmoid 是 **0/1 阶跃**（rename 批 84dd531 已把 Rust 的 `SigmoidFunction` 对齐到该语义；
+    // 连续形式在 Rust 侧是 `LogisticFunction`，与 Kotlin 无对应物）。因此 parity 断言收紧为：
+    // 阈值（GE 0）两侧各取一点，结果列**精确**等于 1 / 0——不再用「连续 Logistic 钉 0.5 可行」
+    // 这种宽松检查冒充 parity。
+    //
+    // Kotlin's Sigmoid is a **0/1 step** (the rename batch 84dd531 aligned Rust's `SigmoidFunction` to
+    // that semantics; the continuous form is `LogisticFunction` with no Kotlin counterpart). The parity
+    // assertions are therefore tightened to exact 1 / 0 on both sides of the threshold (GE 0) instead of
+    // a loose "continuous logistic pinned at 0.5 is feasible" check.
     let mut sigmoid_model = MetaModel::<f64>::new("kotlin_sigmoid_parity");
     let x = ContinuousVariableItem::with_range(
         VariableId::standalone(1560),
         "x",
-        VariableRange::fixed(0.0),
+        VariableRange::bounded(-2.0, 2.0),
     );
     let x_index = sigmoid_model.register_variable(x).unwrap();
-    let sigmoid = LogisticFunction::new(1561, "sigmoid", var_poly(x_index));
+    let sigmoid = SigmoidFunction::from_parts(
+        var_poly(x_index),
+        ConditionRelation::GreaterEqual,
+        0.5,
+        ConditionBounds {
+            lower: -2.0,
+            upper: 2.0,
+        },
+    )
+    .unwrap();
     let sigmoid_id = sigmoid.result_variable().id();
     sigmoid_model.add_symbol(Arc::new(sigmoid)).unwrap();
 
-    let mut sigmoid_mechanism = sigmoid_model.try_into_mechanism_model().unwrap();
+    let sigmoid_mechanism = sigmoid_model.try_into_mechanism_model().unwrap();
     let sigmoid_index = sigmoid_mechanism
         .find_token(sigmoid_id)
         .unwrap()
         .solver_index;
-    sigmoid_mechanism.add_constraint(linear_constraint(
-        &[(sigmoid_index, 1.0)],
+
+    let mut sigmoid_on = sigmoid_mechanism.clone();
+    sigmoid_on.add_constraint(linear_constraint(
+        &[(x_index, 1.0)],
         ConstraintRelation::Equal,
-        0.5,
-        "sigmoid_eq_half",
+        1.0,
+        "sigmoid_x_positive",
     ));
-    let sigmoid_output = solve_linear_model(
-        sigmoid_mechanism.into_linear_triad_model(),
+    let sigmoid_on_output = solve_linear_model(
+        sigmoid_on.into_linear_triad_model(),
         &[(sigmoid_index, 1.0)],
         ObjectiveCategory::Minimum,
     );
-    expect_feasible(&sigmoid_output);
-    assert_close(sigmoid_output.objective_value.unwrap(), 0.5);
+    expect_feasible(&sigmoid_on_output);
+    assert_close(sigmoid_on_output.objective_value.unwrap(), 1.0);
+
+    let mut sigmoid_off = sigmoid_mechanism;
+    sigmoid_off.add_constraint(linear_constraint(
+        &[(x_index, 1.0)],
+        ConstraintRelation::Equal,
+        -1.0,
+        "sigmoid_x_negative",
+    ));
+    let sigmoid_off_output = solve_linear_model(
+        sigmoid_off.into_linear_triad_model(),
+        &[(sigmoid_index, 1.0)],
+        ObjectiveCategory::Minimum,
+    );
+    expect_feasible(&sigmoid_off_output);
+    assert_close(sigmoid_off_output.objective_value.unwrap(), 0.0);
 }
 
 #[test]

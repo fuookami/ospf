@@ -67,6 +67,12 @@ interval 以及未经验证的 global-constraint 分解不会被声明为 native
 | `gurobi_poly_mask` | `functions-poly-mask-1` | `MaskingWithPolyMaskStructure`：同上，掩码定义另写一条普通线性等式行 | 两条等式指示 + 一条线性等式 |
 | `gurobi_if` | `functions-if-1` | `IfStructure`（分支选择：b=1 ⇒ result=t、b=0 ⇒ result=e）。即时条件行经分支等式归约，剩余两条义务（`M ≥ max|c|`、`M ≥ max|e−t|`）在 SDK 盒上证明 | 四条指示：条件两行（`b=0 ⇒ c=0`）+ 分支等式两条 |
 | `gurobi_balance_ternary` | `functions-balance-ternary-1` | `BalanceTernaryzationStructure`（符号三分支：res=1/0/−1）。两条普通行（`res − pos + neg = 0`、`pos + neg ≤ 1`）经容器 `add_linear_row` 恒等替换；4 条 band 松弛在 SDK 盒上证明 | 两条普通行 + 4 条 band 指示（`pos=1 ⇒ input ≥ ε+sb`、`pos=0 ⇒ input ≤ ε`、`neg=1 ⇒ input ≤ −ε−sb`、`neg=0 ⇒ input ≥ −ε`） |
+| `gurobi_not` | `functions-not-1` | `NotStructure`（逻辑非，仅直接二值输入；间接 nonzero-indicator 编码保持 EAGER）。两列都必须是二元列 | 一条普通等式行 `result + input = 1`，经容器 `add_linear_row` 恒等替换 |
+
+> **标注（SEMI / 半连续）：** 半连续是**变量类型层**能力，不属于函数符号原生 writer 范畴：Rust 侧的
+> `SemiFunction`/`SemiStructure`（`symbol/functions/semi.rs`）有延迟结构但未注册任何原生 writer，
+> 始终以 EAGER 物化；Kotlin 侧的 `GurobiNativeSemi` 以 `GRB.SEMICONT`（边界 + 变量类型）原生承载。
+> 未来如需对齐，应沿变量类型路径实现，而非 genconstr/行写入。
 
 所有 writer 写入前都施加同一组门控：
 

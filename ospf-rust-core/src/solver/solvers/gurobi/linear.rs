@@ -546,7 +546,7 @@ pub(super) fn solve_linear_with_native_lowering(
     use super::native::{
         GurobiAbsWriter, GurobiBinaryzationWriter, GurobiConditionalValueWriter,
         GurobiBalanceTernWriter, GurobiExtremumWriter, GurobiIfWriter, GurobiInValuesWriter, GurobiImplyWriter, GurobiIndicatorWriter,
-        GurobiLogicalWriter, GurobiMaskingWriter, GurobiNativeContainer, GurobiPolyMaskWriter, GurobiPwlWriter,
+        GurobiLogicalWriter, GurobiMaskingWriter, GurobiNativeContainer, GurobiNotWriter, GurobiPolyMaskWriter, GurobiPwlWriter,
     };
 
     let mut registry: NativeFunctionWriterRegistry<GurobiNativeContainer, f64> =
@@ -606,6 +606,12 @@ pub(super) fn solve_linear_with_native_lowering(
     // identically through the container's add_linear_row) plus four band indicators; the four eager relaxed
     // rows are covered by the SDK box proof.
     registry.register(Box::new(GurobiBalanceTernWriter::new()));
+    // NOT（逻辑非）的原生 writer：直接二值输入分支写一条恒等普通等式行（result + input = 1，经容器
+    // add_linear_row），非直接输入的 nonzero-indicator 编码整体回退。
+    // Native writer for NOT: the direct-binary-input branch writes one identical plain equality row
+    // (result + input = 1, through the container's add_linear_row); the indirect nonzero-indicator
+    // encoding falls back.
+    registry.register(Box::new(GurobiNotWriter::new()));
     solve_linear_with_native_writers(solver, mechanism, per_solve_options, registry)
 }
 

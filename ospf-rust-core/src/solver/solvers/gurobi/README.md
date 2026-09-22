@@ -70,6 +70,13 @@ Writers registered today:
 | `gurobi_poly_mask` | `functions-poly-mask-1` | `MaskingWithPolyMaskStructure`: as above, plus the mask definition written as a plain linear equality row | two equality indicators plus one linear equality |
 | `gurobi_if` | `functions-if-1` | `IfStructure` (branch selection: b=1 ⇒ result=t, b=0 ⇒ result=e). The eager condition rows reduce via branch equality; the two remaining obligations (`M ≥ max|c|`, `M ≥ max|e−t|`) are proven on the SDK box | four indicators: two condition rows (`b=0 ⇒ c=0`) plus two branch equalities |
 | `gurobi_balance_ternary` | `functions-balance-ternary-1` | `BalanceTernaryzationStructure` (ternary sign: res=1/0/−1). Two plain rows (`res − pos + neg = 0`, `pos + neg ≤ 1`) are written identically through the container's `add_linear_row`; the four band relaxations are proven on the SDK box | two plain rows plus four band indicators (`pos=1 ⇒ input ≥ ε+sb`, `pos=0 ⇒ input ≤ ε`, `neg=1 ⇒ input ≤ −ε−sb`, `neg=0 ⇒ input ≥ −ε`) |
+| `gurobi_not` | `functions-not-1` | `NotStructure` (logical NOT, direct binary input only; the indirect nonzero-indicator encoding stays EAGER). Both columns must be binary | one plain equality row `result + input = 1`, written identically through the container's `add_linear_row` |
+
+> **Note (SEMI / semi-continuity):** semi-continuity is a **variable-type-layer** capability, not a
+> function-symbol native writer: Rust's `SemiFunction`/`SemiStructure` (`symbol/functions/semi.rs`) expose a
+> deferred structure but no native writer registers for it, so it always materializes EAGER. Kotlin's
+> `GurobiNativeSemi` carries it natively through `GRB.SEMICONT` (bounds + variable type). Any future alignment
+> should follow that variable-type path rather than genconstr/row writes.
 
 Every writer applies the same gates before writing:
 
