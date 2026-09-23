@@ -404,6 +404,29 @@ where
         self
     }
 
+    /// 替换两侧条件多项式，保留全部变量与符号标识 / Replace both side-condition polynomials while keeping every variable and symbol identity.
+    ///
+    /// 供二次包装器在机制展开时把桥接列重映射到模型索引使用；范围边界、
+    /// 关系与三值语义不变。
+    /// Used by quadratic wrappers to remap bridge columns to model indices during
+    /// mechanism expansion; bounds, relations, and three-valued semantics stay unchanged.
+    pub(crate) fn with_side_conditions(
+        &self,
+        lower_condition: Linear<V>,
+        upper_condition: Linear<V>,
+    ) -> Self {
+        let mut cloned = self.clone();
+        cloned.range.lower.condition = lower_condition.clone();
+        cloned.range.upper.condition = upper_condition.clone();
+        cloned.lower_indicator = cloned
+            .lower_indicator
+            .with_condition_polynomial(lower_condition);
+        cloned.upper_indicator = cloned
+            .upper_indicator
+            .with_condition_polynomial(upper_condition);
+        cloned
+    }
+
     /// 获取闭区间描述器 / Get the interval descriptor
     pub fn condition_descriptor(&self) -> &IfInRangeFunction<V> {
         &self.range
