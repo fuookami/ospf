@@ -32,18 +32,18 @@ $$
 并使用二进制选择变量 $s$ 与 Big-M 界：
 
 $$
-0\le p^+\le M s,\qquad 0\le p^-\le M(1-s).
+0\le p^+\le M^+ s,\qquad 0\le p^-\le M^-(1-s).
 $$
 
 ## 适用域与边界
 
-数学函数接受任意有限实数。求解器编码需要可用的 Big-M 界。省略 `bigM` 时，实现会先尝试从 `polynomial` 推导有限界；无法推导时退回库默认值（当前为 $10^6$）。对于有明确范围的模型，应传入有效且足够紧的 `bigM`。结果变量非负，但输入多项式可以为负。
+数学函数接受任意有限实数。求解器编码需要可用的 Big-M 界。省略 `bigM` 时，实现会从 `polynomial` 的有限范围按侧推导（正部取其上界，负部取其下界的相反数）；无法推导时退回库默认值（当前为 $10^6$）。对于有明确范围的模型，应传入有效且足够紧的 `bigM`。结果变量非负，但输入多项式可以为负。
 
 ## 当前 API
 
 ### Kotlin
 
-源码：[`Abs.kt`（构造、变量、求值与约束）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Abs.kt#L41-L115)
+源码：[`Abs.kt`（构造、变量、求值与约束）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Abs.kt#L45-L173)
 
 主要构造器/工厂为：
 
@@ -73,17 +73,17 @@ AbsFunction::auto(input: Linear<V>) -> Self
 
 ## 求解器数学模型
 
-令 $p^+,p^-\ge0$，$s\in\{0,1\}$，结果 $y\ge0$。实际传给求解器的约束为
+令 $p^+,p^-\ge0$，$s\in\{0,1\}$，结果 $y\ge0$。Kotlin 实际传给求解器的约束为
 
 $$
 p-p^++p^-=0,\qquad y-p^+-p^-=0,
 $$
 
 $$
-p^+\le Ms,\qquad p^-\le M(1-s).
+p^+\le M^+ s,\qquad p^-\le M^-(1-s).
 $$
 
-Kotlin 注册全部四个辅助变量；Rust 对外暴露的辅助变量较少，但使用同一个符号析取模型。输入边界只用于推断 $M$，函数本身不会把输入边界作为约束注册。
+Kotlin 注册全部四个辅助变量。Rust 只注册一个结果变量和一个二值侧变量，并以 $y-p\ge0$、$y+p\ge0$、$y-p+M^+s\le M^+$、$y+p-M^-s\le0$ 表示同一个绝对值；非对称分支 Big-M 在输入范围可用时从输入范围推导，否则取策略回退值。输入边界用于推断两侧 Big-M 并收紧辅助变量的范围，函数本身不会把输入边界作为约束注册。
 
 ## `evaluate` 与 solver 的差异
 

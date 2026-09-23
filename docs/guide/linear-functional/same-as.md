@@ -151,7 +151,7 @@ check(value == Flt64.zero)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::SameAsFunction;
 
 let first = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

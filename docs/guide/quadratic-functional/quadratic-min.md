@@ -77,7 +77,7 @@ The minimum rows therefore agree across the languages; the main structural diffe
 
 ### Kotlin
 
-Source: [`QuadraticMin.kt` (`QuadraticMinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticMin.kt#L40-L390)
+Source: [`QuadraticMin.kt` (`QuadraticMinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticMin.kt#L43-L403)
 
 ```kotlin
 import fuookami.ospf.kotlin.core.solver.value.IntoValue

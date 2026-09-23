@@ -139,7 +139,7 @@ fun main() {
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::OneOfFunction;
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

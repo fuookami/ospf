@@ -7,7 +7,7 @@
 - 输入：`lhs: LinearPolynomial<V>`、标量 `rhs: V` 以及 `Comparison` 符号。
 - 直接 `evaluate` 支持 `LE`、`LT`、`GE`、`GT`、`EQ` 和 `NE`。
 - 输出：包含二值标志的线性多项式 `result`。
-- solver 注册支持 `LE/LT/GE/GT/EQ`；当前 MIP 编码会明确拒绝 `NE`。
+- solver 注册支持 `LE/LT/GE/GT/EQ/NE`；`NE` 使用与 `EQ` 相同的零带 side 编码，结果标志充当非零指示。
 - 泛型值使用 `V : RealNumber<V>, V : NumberField<V>`，并配合 `IntoValue<V>` 转换器。
 
 ## 定义与数学模型
@@ -18,7 +18,7 @@ $$
 y=\mathbf{1}[lhs\ \mathrel{\text{sign}}\ rhs].
 $$
 
-`EQ` 的 solver 编码使用带 tolerance 的零带和一个方向二值变量。其他支持的符号使用两条 Big-M 约束将标志连接到满足与违反分支。直接求值比较与 solver 的容差编码彼此独立。
+`EQ` 与 `NE` 的 solver 编码使用带 tolerance 的零带和一个方向二值变量。其他支持的符号使用两条 Big-M 约束将标志连接到满足与违反分支。直接求值比较与 solver 的容差编码彼此独立。
 
 ## 求解器数学模型
 
@@ -31,22 +31,22 @@ $$
 | `LT` | $-d$ | $g$ | $0$ |
 | `LE` | $-d$ | $0$ | $-g$ |
 
-给定有限范围 $L\le q\le U$ 和结果变量 $y\in\{0,1\}$，关系指示路径实际向求解器注册两条约束：
+给定结果变量 $y\in\{0,1\}$ 与由 lhs-rhs 有限范围推导的 Big-M $M$，实现实际向求解器注册两条 Big-M 约束：
 
 $$
 \begin{aligned}
-q+(L-T)y&\ge L,\\
-q+(F-U)y&\le F.
+q-M_1y&\le F,\\
+q-M_2y&\ge T-M_2,
 \end{aligned}
 $$
 
-因此 $y=1\Rightarrow q\ge T$，$y=0\Rightarrow q\le F$；开区间 $(F,T)$ 被刻意留为不可行间隔。对于 `EQ`，实现还会创建方向二值变量，使用共享的四约束零值/非零值 Big-M 编码，并令相等标志等于非零标志的补。Kotlin 在写入模型前拒绝 `NE`；Rust 使用相反的零带结果标志支持 `NE`。
+其中一个乘数是加上间隔的 $M+g$，使得每个指示值恰有一条约束起约束作用（`GT`/`LT` 取 $M_1=M,\ M_2=M+g$，`LE`/`GE` 取 $M_1=M+g,\ M_2=M$）。因此 $y=1\Rightarrow q\ge T$，$y=0\Rightarrow q\le F$；开区间 $(F,T)$ 被刻意留为不可行间隔。对于 `EQ` 与 `NE`，两种实现都会创建方向二值变量，并使用共享的四约束零值/非零值 Big-M 编码：`EQ` 的标志等于非零标志的补，而 `NE` 的标志就是非零标志本身。
 
 ## 当前 API
 
 ### Kotlin
 
-源码：[`Inequality.kt`（`InequalityFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Inequality.kt#L42-L205)
+源码：[`Inequality.kt`（`InequalityFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Inequality.kt#L44-L229)
 
 ```kotlin
 InequalityFunction(
@@ -87,15 +87,15 @@ InequalityFunction::less_equal(
 ) -> InequalityFunction<V>
 ```
 
-`InequalityKind` 包含 `LessEqual`、`GreaterEqual`、`Less`、`Greater`、`Equal` 和 `NotEqual`；`result_variable()` 返回二值指标，EQ/NE 还会创建 side 变量。与上面记录的 Kotlin 实现不同，Rust 的机理编码也支持 `NotEqual`，不只支持直接求值。Rust 构造器没有 Kotlin 的 converter/tolerance 参数；其机理使用固定的指标容差以及传入或推导的 Big-M。
+`InequalityKind` 包含 `LessEqual`、`GreaterEqual`、`Less`、`Greater`、`Equal` 和 `NotEqual`；`result_variable()` 返回二值指标，EQ/NE 还会创建 side 变量。Rust 的机理编码也支持 `NotEqual`，不只支持直接求值，与上面记录的 Kotlin 编码一致。Rust 构造器没有 Kotlin 的 converter/tolerance 参数；其机理使用固定的指标容差以及传入或推导的 Big-M。
 
 ## evaluate 与 solver 的差异
 
-直接求值使用符号对应的直接数值比较。solver 注册使用 Big-M 与 tolerance，因此严格边界附近的值可能得到不同判定。特别是直接 `NE` 求值可用，但对 `NE` 调用 `registerConstraints` 会返回失败 Result，且不会写入约束。
+直接求值按关系对应的间隔分类（`LE`/`GE` 用 `tolerance`，`LT`/`GT` 用 `strictBoundary`，`EQ`/`NE` 用距离带），间隔内返回 `null`。solver 注册使用相同阈值的 Big-M 约束；间隔在该处不可行而非未定义。`NE` 完全受支持：直接求值可用，`registerConstraints` 会写入四约束零值/非零值编码。
 
 ## 边界、tolerance 与 Undefined
 
-线性多项式符号缺失时 `evaluate` 返回 `null`。Big-M 必须为正、有限、可表示且足以覆盖 lhs-rhs 范围。EQ 还需要有限且有效的严格边界以构造 side 编码。该函数不会返回 `TruthValue.Undefined`；不支持的 solver 符号通过失败的注册 Result 暴露。
+线性多项式符号缺失时 `evaluate` 返回 `null`，取值落在关系间隔内时同样返回 `null`。Big-M 必须为正、有限、可表示且足以覆盖 lhs-rhs 范围。`EQ` 与 `NE` 还需要有限且有效的严格边界以构造 side 编码。非法输入（非正的 Big-M、无效的等式带）通过失败的注册 Result 暴露。
 
 ## 示例与测试
 
@@ -145,7 +145,7 @@ let _result = inequality.result_variable();
 
 :::
 
-- 当前 core function 测试目录没有专门的 `InequalityFunction` 测试：[function tests](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function)
+- core 专用测试：[`InequalityFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/InequalityFunctionDedicatedTest.kt)
 - 示例目录（当前没有专门的不等式文件）：[linear_function](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function)
 
 Rust 源码与 parity 覆盖：[`inequality.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/inequality.rs) 和 [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs)。

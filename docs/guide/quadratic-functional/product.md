@@ -50,7 +50,7 @@ Rust likewise creates no auxiliary variable and passes the quadratic expansion o
 
 ### Kotlin
 
-Source: [`Product.kt` (`ProductFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Product.kt#L37-L378)
+Source: [`Product.kt` (`ProductFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Product.kt#L37-L383)
 
 ```kotlin
 import fuookami.ospf.kotlin.core.solver.value.IntoValue

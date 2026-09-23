@@ -54,7 +54,7 @@ FloorFunction(
 
 源码：[`floor.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/floor.rs)
 
-Rust 接受平展后的 `Linear<V>`，并提供 `FloorFunction::new(id, name, input)`、`FloorFunction::named(name, input)` 与 `FloorFunction::auto(input)`。`input_polynomial()`、`result_variable()` 和 `integer_variable()` 暴露输入及辅助变量。结果变量是与辅助整数变量关联的 `ContinuousVariableItem`；Rust 没有调用方可传入的 `big_m` 或 tolerance 参数，机理层使用固定的 `ROUNDING_EPSILON = 1e-8` 边界。
+Rust 接受平展后的 `Linear<V>`，并提供 `FloorFunction::new(id, name, input)`、`FloorFunction::named(name, input)` 与 `FloorFunction::auto(input)`。`input_polynomial()`、`result_variable()` 和 `integer_variable()` 暴露输入及辅助变量。结果变量是与辅助整数变量关联的 `ContinuousVariableItem`；Rust 没有调用方可传入的 `big_m` 或 tolerance 参数，机理层使用固定的 `ROUNDING_EPSILON = 1e-10` 边界。
 
 ```rust
 FloorFunction::new(id: u64, name: &str, input: Linear<V>) -> Self

@@ -39,15 +39,15 @@ $$
 
 ## 求解器数学模型
 
-Kotlin 为每个扁平约束创建 $u_i\in\{0,1\}$，并使用[不等式指标](./inequality)中的两条规范化关系约束进行连接。令 $c=\sum_i u_i$。没有数量范围时，$c$ 就是结果；给定范围 $[l,u]$ 时，另建 $y\in\{0,1\}$ 并传入
+Kotlin 为每个扁平约束创建 $u_i\in\{0,1\}$，并使用[不等式指标](./inequality)中的两条规范化关系约束进行连接。令 $c=\sum_i u_i$。没有数量范围时，$c$ 就是结果；给定范围 $[l,u]$ 时，另建 $y\in\{0,1\}$ 并传入受 $y$ 门控的两条约束
 
 $$
 c\ge l\,y,
 \qquad
-c\le u+n(1-y).
+c+(n-u)\,y\le n.
 $$
 
-因此 $y=1\Rightarrow l\le c\le u$；仅凭这两条约束并不会强制反向蕴含。Rust 包装器接收既有指标，注册 $r-\sum_i u_i=0$，并把请求的数量范围作为硬边界，不创建 Kotlin 的独立 $y$。
+因此 $y=1\Rightarrow l\le c\le u$；在 $y=0$ 时两条约束退化为 $0\le c\le n$。仅凭这两条约束并不会强制反向蕴含。Rust 包装器接收既有指标，注册 $r-\sum_i u_i=0$，并把请求的数量范围作为硬边界，不创建 Kotlin 的独立 $y$。
 
 > [!WARNING]
 > 当前注册循环只有在两个范围端点都存在时才为输入编码。缺少端点的输入可能留下没有对应 solver 约束的标志；请提供有限且有序的 `lhsRange`。
@@ -56,7 +56,7 @@ $$
 
 ### Kotlin
 
-源码：[`SatisfiedAmountInequality.kt`（`SatisfiedAmountInequalityFunction` 与变体）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/SatisfiedAmountInequality.kt#L56-L526)
+源码：[`SatisfiedAmountInequality.kt`（`SatisfiedAmountInequalityFunction` 与变体）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/SatisfiedAmountInequality.kt#L56-L505)
 
 使用 `SatisfiedAmountInequalityFunction.from` 可得到原始计数或自定义 amount 范围；便捷类使用各自的 `from` 工厂。所有变体共享同一套标志和 amount 指标，是同一个基础实现的包装。
 
@@ -176,7 +176,7 @@ check(value == Flt64.one)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{AnyFunction, InequalityFunction};
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

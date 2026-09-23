@@ -81,7 +81,7 @@ For a function named `name`, the current implementation creates:
 - `name_and_nz{i}`: one nonzero indicator for each input;
 - `name_and_side{i}`: one sign-side helper for each nonzero indicator.
 
-`helperVariables` contains the result, all nonzero indicators, and all side helpers. Registration first adds these variables through `registerAuxiliaryTokens`; `registerConstraints` adds the shared four-inequality nonzero test for every input, then adds:
+`helperVariables` contains the result, all nonzero indicators, and all side helpers; when every input polynomial is exactly a unit-coefficient binary variable, only the result is registered and the indicator block below is skipped. Registration first adds these variables through `registerAuxiliaryTokens`; `registerConstraints` adds the shared four-inequality nonzero test for every input, then adds:
 
 For each $p_i$, with nonzero flag $a_i$, side flag $s_i$, zero tolerance $t$, and strict boundary $g$, that shared block is
 
@@ -102,6 +102,8 @@ $$
 \qquad
 y \le a_i\quad(1\le i\le n).
 $$
+
+In the all-binary-input case the indicator block is replaced by the direct rows $y\le z_i$ for each binary input $z_i$, plus $\sum_i z_i\ge n\,y+1-n$.
 
 The public `resultPolynomial` is the unit-coefficient polynomial of `name_and`. The implementation is in `And.kt` and uses `AbstractLinearMechanismModel` registration.
 

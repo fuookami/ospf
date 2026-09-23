@@ -7,7 +7,7 @@
 - Input: `lhs: LinearPolynomial<V>`, scalar `rhs: V`, and a `Comparison` sign.
 - Direct `evaluate` supports `LE`, `LT`, `GE`, `GT`, `EQ`, and `NE`.
 - Output: `result`, a linear polynomial containing the binary flag.
-- Solver registration supports `LE/LT/GE/GT/EQ`. `NE` is explicitly rejected by the current MIP encoding.
+- Solver registration supports `LE/LT/GE/GT/EQ/NE`; `NE` uses the same zero-band side encoding as `EQ`, with the result flag acting as the nonzero indicator.
 - Generic values use `V : RealNumber<V>, V : NumberField<V>` and an `IntoValue<V>` converter.
 
 ## Definition and mathematical model
@@ -18,7 +18,7 @@ $$
 y=\mathbf{1}[lhs\ \mathrel{\text{sign}}\ rhs].
 $$
 
-For `EQ`, the solver uses a zero-band with tolerance and a side binary variable. For the other supported signs, two Big-M inequalities link the flag to the satisfied and violated branches. The exact direct-evaluation comparison is separate from the solver tolerance encoding.
+For `EQ` and `NE`, the solver uses a zero-band with tolerance and a side binary variable. For the other supported signs, two Big-M inequalities link the flag to the satisfied and violated branches. The exact direct-evaluation comparison is separate from the solver tolerance encoding.
 
 ## Solver mathematical model
 
@@ -31,22 +31,22 @@ Let $d=lhs-rhs$ and normalize the requested relation to $q\ge T$ for the true br
 | `LT` | $-d$ | $g$ | $0$ |
 | `LE` | $-d$ | $0$ | $-g$ |
 
-For finite $L\le q\le U$ and result $y\in\{0,1\}$, the relation-indicator path passes these two rows to the solver:
+For result $y\in\{0,1\}$ and a Big-M $M$ inferred from the finite lhs-rhs range, the implementation passes two Big-M rows to the solver:
 
 $$
 \begin{aligned}
-q+(L-T)y&\ge L,\\
-q+(F-U)y&\le F.
+q-M_1y&\le F,\\
+q-M_2y&\ge T-M_2,
 \end{aligned}
 $$
 
-Hence $y=1\Rightarrow q\ge T$ and $y=0\Rightarrow q\le F$; the open interval $(F,T)$ is intentionally infeasible. For `EQ`, the implementation additionally creates a side binary and uses the shared four-row zero/nonzero Big-M encoding, with the equality flag equal to the complement of the nonzero flag. Kotlin rejects `NE` before writing the model; Rust implements `NE` with the opposite zero-band result flag.
+where one multiplier is the gap-relaxed $M+g$ so that exactly one row is binding per indicator value ($M_1=M,\ M_2=M+g$ for `GT`/`LT`, $M_1=M+g,\ M_2=M$ for `LE`/`GE`). Hence $y=1\Rightarrow q\ge T$ and $y=0\Rightarrow q\le F$; the open interval $(F,T)$ is intentionally infeasible. For `EQ` and `NE`, both implementations additionally create a side binary and use the shared four-row zero/nonzero Big-M encoding: the `EQ` flag equals the complement of the nonzero flag, while the `NE` flag is the nonzero flag itself.
 
 ## Current API
 
 ### Kotlin
 
-Source: [`Inequality.kt` (`InequalityFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Inequality.kt#L42-L205)
+Source: [`Inequality.kt` (`InequalityFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Inequality.kt#L44-L229)
 
 ```kotlin
 InequalityFunction(
@@ -87,15 +87,15 @@ InequalityFunction::less_equal(
 ) -> InequalityFunction<V>
 ```
 
-`InequalityKind` contains `LessEqual`, `GreaterEqual`, `Less`, `Greater`, `Equal`, and `NotEqual`; `result_variable()` returns the binary indicator and EQ/NE also allocate a side variable. Unlike the Kotlin implementation documented above, Rust has a mechanism encoding for `NotEqual` as well as direct evaluation. Rust has no Kotlin converter/tolerance parameters on the constructor; its mechanism uses fixed indicator tolerances and the supplied or inferred Big-M.
+`InequalityKind` contains `LessEqual`, `GreaterEqual`, `Less`, `Greater`, `Equal`, and `NotEqual`; `result_variable()` returns the binary indicator and EQ/NE also allocate a side variable. Rust has a mechanism encoding for `NotEqual` as well as direct evaluation, matching the Kotlin encoding documented above. Rust has no Kotlin converter/tolerance parameters on the constructor; its mechanism uses fixed indicator tolerances and the supplied or inferred Big-M.
 
 ## Evaluate versus solver
 
-Direct evaluation uses the sign's direct numeric comparison. Solver registration uses Big-M and tolerance; therefore values at or near a strict boundary can classify differently. In particular, direct `NE` evaluation works, but calling `registerConstraints` for `NE` returns a failed Result and writes no constraints.
+Direct evaluation classifies with the relation's gap (`tolerance` for `LE`/`GE`, `strictBoundary` for `LT`/`GT`, and the distance band for `EQ`/`NE`) and returns `null` inside the gap. Solver registration uses Big-M rows with the same thresholds; the gap is infeasible there rather than undefined. `NE` is fully supported: direct evaluation works, and `registerConstraints` writes the four-row zero/nonzero encoding.
 
 ## Boundaries, tolerance, and Undefined
 
-Missing polynomial symbols make `evaluate` return `null`. Big-M must be positive, finite, representable, and large enough for the lhs-rhs range. EQ additionally needs a valid finite strict boundary for its side encoding. There is no `TruthValue.Undefined` return from this function; unsupported solver signs surface as a failed registration Result.
+Missing polynomial symbols make `evaluate` return `null`, as does a value inside the relation's gap. Big-M must be positive, finite, representable, and large enough for the lhs-rhs range. `EQ` and `NE` additionally need a valid finite strict boundary for their side encoding. Invalid inputs (a non-positive Big-M, an invalid equality band) surface as a failed registration Result.
 
 ## Examples and tests
 
@@ -145,7 +145,7 @@ let _result = inequality.result_variable();
 
 :::
 
-- There is no dedicated current `InequalityFunction` test in the core function-test directory: [function tests](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function)
+- Dedicated core test: [`InequalityFunctionDedicatedTest.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/test/fuookami/ospf/kotlin/core/symbol/function/InequalityFunctionDedicatedTest.kt)
 - Example directory (no dedicated inequality file): [linear_function](https://github.com/fuookami/ospf-kotlin/tree/main/ospf-kotlin-example/src/test/fuookami/ospf/kotlin/example/linear_function)
 
 Rust source and parity coverage: [`inequality.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/inequality.rs) and [`gurobi_linear_function_kotlin_parity.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/tests/gurobi_linear_function_kotlin_parity.rs).

@@ -32,18 +32,18 @@ $$
 and uses a binary selector $s$ with Big-M bounds
 
 $$
-0\le p^+\le M s,\qquad 0\le p^-\le M(1-s).
+0\le p^+\le M^+ s,\qquad 0\le p^-\le M^-(1-s).
 $$
 
 ## Domain and boundaries
 
-The mathematical function accepts any finite real value. The solver encoding needs a usable Big-M bound. If `bigM` is omitted, the implementation first tries to derive a finite bound from `polynomial`; when that is not possible it falls back to the library default (currently $10^6$). Choose an explicit, valid `bigM` for a tightly bounded model. The result variable is non-negative, while the input polynomial itself may be negative.
+The mathematical function accepts any finite real value. The solver encoding needs a usable Big-M bound. If `bigM` is omitted, the implementation derives side-specific bounds from the polynomial's finite range (the positive part from its upper bound, the negative part from its negated lower bound); when that is not possible it falls back to the library default (currently $10^6$). Choose an explicit, valid `bigM` for a tightly bounded model. The result variable is non-negative, while the input polynomial itself may be negative.
 
 ## Current API
 
 ### Kotlin
 
-Source: [`Abs.kt` (constructor, variables, evaluation, and constraints)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Abs.kt#L41-L115)
+Source: [`Abs.kt` (constructor, variables, evaluation, and constraints)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Abs.kt#L45-L173)
 
 The primary constructor/factory is:
 
@@ -73,17 +73,17 @@ AbsFunction::auto(input: Linear<V>) -> Self
 
 ## Solver mathematical model
 
-With $p^+,p^-\ge0$, $s\in\{0,1\}$, and result $y\ge0$, the rows passed to the solver are
+With $p^+,p^-\ge0$, $s\in\{0,1\}$, and result $y\ge0$, Kotlin passes the rows
 
 $$
 p-p^++p^-=0,\qquad y-p^+-p^-=0,
 $$
 
 $$
-p^+\le Ms,\qquad p^-\le M(1-s).
+p^+\le M^+ s,\qquad p^-\le M^-(1-s).
 $$
 
-Kotlin registers all four helpers; Rust can expose a reduced helper surface but uses the same sign-disjunction model. Input bounds are used only to infer $M$ and are not added as rows by the function itself.
+Kotlin registers all four helpers. Rust registers only a result variable and a binary side variable and encodes the same absolute value with $y-p\ge0$, $y+p\ge0$, $y-p+M^+s\le M^+$, and $y+p-M^-s\le0$; the asymmetric branch Big-M pair is inferred from the input bounds when available and otherwise uses the policy fallback. Input bounds are used to infer the side Big-Ms and to tighten the helper variable ranges; they are not added as rows by the function itself.
 
 ## `evaluate` versus solver
 

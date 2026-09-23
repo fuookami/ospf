@@ -9,7 +9,7 @@ $$
 ## Contract
 
 - Input: a non-empty `List<LinearPolynomial<V>>` (`n >= 1`).
-- Output: `resultVar`, a `URealVar`, exposed as `resultPolynomial`.
+- Output: `resultVar`, a `RealVar`, exposed as `resultPolynomial`.
 - `evaluate` evaluates every input and returns their maximum; a missing symbol value makes it return `null`.
 - `V` must implement `RealNumber<V>` and `NumberField<V>`; pass the matching `IntoValue<V>` converter.
 
@@ -30,13 +30,13 @@ With the selector for one candidate equal to one, that candidate is forced to eq
 
 ## Domain and boundaries
 
-The current result variable is `URealVar`. Therefore a solver model cannot represent a negative maximum, even though `evaluate` can return a negative value. Ensure at least one candidate is known non-negative over the feasible domain, or use a different formulation if negative results are required. With no explicit `bigM`, each candidate's finite bounds are used when available; otherwise the fallback Big-M is currently $10^6$. An explicit value must be large enough for every candidate gap.
+The current result variable is a signed `RealVar`. When every candidate has finite bounds, the result variable's range is tightened to $[\min_i \text{lower}_i,\ \max_i \text{upper}_i]$, so a negative maximum is representable. With no explicit `bigM`, each candidate's finite bounds are used when available (each candidate gets the widest candidate upper bound minus its own lower bound); otherwise the fallback Big-M is currently $10^6$. An explicit value must be large enough for every candidate gap.
 
 ## Current API
 
 ### Kotlin
 
-Source: [`Max.kt` (`MaxFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L43-L142)
+Source: [`Max.kt` (`MaxFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L77-L217)
 
 ```kotlin
 MaxFunction(
@@ -63,7 +63,7 @@ MaxFunction::new(
 ) -> MaxFunction<V>
 ```
 
-`exact = true` creates one binary selector per candidate and registers an exactly-one selector model. With `exact = false`, Rust registers only the lower bounds `result >= p_i`; an objective or another upper bound is then needed to make the result equal the maximum. `result_variable()`, `polynomials()`, and `exact()` expose the state. Unlike Kotlin's `URealVar` result, Rust's result is a continuous variable; callers must provide suitable bounds when the model requires them. Rust's [`MinMaxFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) and [`MaxMinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) are the corresponding wrapper symbols without the `exact` flag.
+`exact = true` creates one binary selector per candidate and registers an exactly-one selector model. With `exact = false`, Rust registers only the lower bounds `result >= p_i`; an objective or another upper bound is then needed to make the result equal the maximum. `result_variable()`, `polynomials()`, and `exact()` expose the state. Rust's result is a continuous variable; callers must provide suitable bounds when the model requires them. Rust's [`MinMaxFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) and [`MaxMinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) are the corresponding wrapper symbols without the `exact` flag.
 
 ## Solver mathematical model
 
@@ -83,7 +83,7 @@ Rust `exact = false` registers only $y-p_i\ge0$; equality with the maximum then 
 
 ## `evaluate` versus solver
 
-`evaluate` is a direct fold over all candidate values and has no Big-M or variable-domain side effects. Solver registration adds the selector model and the non-negative result domain; an undersized Big-M or a negative true maximum can make the solver model infeasible despite a valid direct evaluation.
+`evaluate` is a direct fold over all candidate values and has no Big-M or variable-domain side effects. Solver registration adds the selector model and, when every candidate has finite bounds, tightens the result domain to the candidate bounds; an undersized Big-M can make the solver model infeasible despite a valid direct evaluation.
 
 ## Examples and tests
 
@@ -141,7 +141,7 @@ $$
 
 Despite their names, `MinMaxFunction` computes the maximum by delegating every evaluation, helper-variable, and constraint operation to an inner `MaxFunction`. `MaxMinFunction` computes the minimum by delegating to an inner `MinFunction`. The names describe the optimization interpretation, not a different aggregation algorithm. Both wrappers accept the same `polynomials`, optional `bigM`, `converter`, `name`, and optional `displayName` parameters. Their `fromSymbols` factories accept `List<LinearIntermediateSymbol<V>>` and return a `LinearFunctionSymbolAdapter`; the adapter is only a bridge to the intermediate-symbol API.
 
-Source: [`MinMax.kt` (`MinMaxFunction` and `MaxMinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L40-L196)
+Source: [`MinMax.kt` (`MinMaxFunction` and `MaxMinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L41-L187)
 
 ```kotlin
 val minMax = MinMaxFunction(

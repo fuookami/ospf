@@ -6,7 +6,7 @@ $$
 s=|L(x)-R(x)|
 $$
 
-两种语言都先把二次输入桥接成线性表达式，再注册绝对值约束；结果不依赖目标函数是否最小化松弛量。
+两种语言实现都对原始二次表达式求值，并注册精确的绝对值约束，因此正确性不依赖是否在目标中最小化该结果。Rust 仅为真正含二次项的输入创建线性桥接；纯线性输入保持为直接表达式。
 
 ## 求解器数学模型
 
@@ -37,7 +37,7 @@ val slack = QuadraticSlackFunction(
 )
 ```
 
-实现由两个精确正部函数组成，分别处理 $L-R$ 与 $R-L$；`polynomial` 是两者之和，`evaluate` 返回绝对差，注册时会注册两个委托函数。
+实现由两个精确正部函数组成，分别处理 $L-R$ 与 $R-L$；`evaluate` 返回绝对差，注册时会注册两个委托函数。
 
 ## Rust API
 
@@ -48,7 +48,7 @@ let slack = QuadraticSlackFunction::with_big_m(
 assert_eq!(slack.calculate_value(&tokens, false), Some(1.0));
 ```
 
-`new` 使用默认 Big-M，`with_target` 将右侧设为常量。结果变量是连续变量，机理注册两个二次桥接和上面的四条约束。
+`new` 使用默认 Big-M 策略，`with_target` 将右侧设为常量，`with_big_m` 覆盖默认策略。结果变量是连续变量；机理注册四条绝对值约束，并且只为每个真正含二次项的输入添加二次桥接行。
 
 ## Kotlin/Rust 示例
 
@@ -66,7 +66,7 @@ val slack = QuadraticSlackFunction(
     converter = IntoValue.Identity,
     name = "quadratic-slack"
 )
-check(slack.evaluate(values) == Flt64(1.0))
+check(slack.evaluate(values, null, IntoValue.Identity) == Flt64(1.0))
 ```
 
 ```rust [Rust]

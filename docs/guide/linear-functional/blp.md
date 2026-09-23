@@ -6,17 +6,26 @@ a triangulation. Every cell has three vertices $(x_{tk},y_{tk},z_{tk})$.
 ## Solver mathematical model
 
 Let $s_t\in\{0,1\}$ select a triangle and
-$\lambda_{tk}\in[0,1]$ be its barycentric weights. The exact formulation is
+$\lambda_{tk}\in[0,1]$ be its barycentric weights. Both implementations enforce
+exactly one active triangle whose weights sum to one, and express the
+coordinates as weighted sums over all vertices:
 
 $$
 \begin{aligned}
 \sum_t s_t&=1,\\
-\sum_{k=0}^{2}\lambda_{tk}&=s_t &&\forall t,\\
 x&=\sum_{t,k}x_{tk}\lambda_{tk},\\
 y&=\sum_{t,k}y_{tk}\lambda_{tk},\\
 z&=\sum_{t,k}z_{tk}\lambda_{tk}.
 \end{aligned}
 $$
+
+Rust ties each weight group to its selector with the per-triangle equality
+$\sum_{k=0}^{2}\lambda_{tk}=s_t$ and registers the $z$ relation as an explicit
+equality row. Kotlin instead combines the global row
+$\sum_{t,k}\lambda_{tk}=1$ with the SOS2-style rows
+$\sum_{k=0}^{2}\lambda_{tk}\le 3s_t$ per triangle and exposes
+$z=\sum_{t,k}z_{tk}\lambda_{tk}$ directly as `resultPolynomial`; for binary
+$s_t$ the two encodings describe the same feasible set.
 
 Only one triangle may carry nonzero weights. This is different from an
 unrestricted convex hull over all vertices and therefore preserves the

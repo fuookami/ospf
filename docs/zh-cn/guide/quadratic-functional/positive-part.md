@@ -59,7 +59,7 @@ val positivePart = QuadraticPositivePartFunction(
     converter = IntoValue.Identity,
     name = "positive_part"
 )
-// x = 1：max(1^2 - 4, 0) = 0
+// x = 1: max(1^2 - 4, 0) = 0
 ```
 
 ```rust [Rust]

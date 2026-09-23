@@ -34,16 +34,15 @@ The implication result is:
 
 ## Solver mathematical model
 
-Let $a,b\in\{0,1\}$ be the antecedent and consequent relation flags. Each is linked to its normalized condition $q_j\in[L_j,U_j]$ by
+Let $a,b\in\{0,1\}$ be the antecedent and consequent relation flags. The antecedent flag is linked to its normalized condition $q_0\in[L_0,U_0]$ by
 
 $$
-q_j+(L_j-T_j)u_j\ge L_j,
+q_0+(L_0-T_0)a\ge L_0,
 \qquad
-q_j+(F_j-U_j)u_j\le F_j,
-\qquad (u_0,u_1)=(a,b).
+q_0+(F_0-U_0)a\le F_0.
 $$
 
-Kotlin then passes the implication row
+The consequent rows keep the same thresholds for $q_1\in[L_1,U_1]$ but are additionally gated by $a$, so $b$ classifies $q_1$ only when $a=1$. Kotlin then passes the implication row
 
 $$
 a-b\le0.
@@ -55,7 +54,7 @@ Thus a true antecedent forces a true consequent; a false antecedent imposes no c
 
 ### Kotlin
 
-Source: [`Imply.kt` (`ImplyFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Imply.kt#L229-L1148)
+Source: [`Imply.kt` (`ImplyFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Imply.kt#L231-L1203)
 
 ```kotlin
 ImplyFunction(

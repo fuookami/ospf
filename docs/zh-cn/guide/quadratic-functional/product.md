@@ -50,7 +50,7 @@ Rust 同样不创建辅助变量，直接把 $left(x)right(x)$ 的二次展开�
 
 ### Kotlin
 
-源码：[`Product.kt`（`ProductFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Product.kt#L37-L378)
+源码：[`Product.kt`（`ProductFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Product.kt#L37-L383)
 
 ```kotlin
 import fuookami.ospf.kotlin.core.solver.value.IntoValue

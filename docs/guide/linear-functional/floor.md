@@ -54,7 +54,7 @@ FloorFunction(
 
 Source: [`floor.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/floor.rs)
 
-Rust accepts a flattened `Linear<V>` and provides `FloorFunction::new(id, name, input)`, `FloorFunction::named(name, input)`, and `FloorFunction::auto(input)`. `input_polynomial()`, `result_variable()`, and `integer_variable()` expose the input and helper variables. The result variable is a `ContinuousVariableItem` linked to the auxiliary integer variable; Rust has no caller-supplied `big_m` or tolerance argument, and its mechanism uses the fixed `ROUNDING_EPSILON = 1e-8` boundary.
+Rust accepts a flattened `Linear<V>` and provides `FloorFunction::new(id, name, input)`, `FloorFunction::named(name, input)`, and `FloorFunction::auto(input)`. `input_polynomial()`, `result_variable()`, and `integer_variable()` expose the input and helper variables. The result variable is a `ContinuousVariableItem` linked to the auxiliary integer variable; Rust has no caller-supplied `big_m` or tolerance argument, and its mechanism uses the fixed `ROUNDING_EPSILON = 1e-10` boundary.
 
 ```rust
 FloorFunction::new(id: u64, name: &str, input: Linear<V>) -> Self

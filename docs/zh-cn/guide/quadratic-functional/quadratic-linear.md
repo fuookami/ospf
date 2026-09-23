@@ -7,7 +7,7 @@
 - 输入：`polynomial: QuadraticPolynomial<V>`。
 - 直接求值返回封装多项式的值。
 - 若多项式没有二次单项式，符号分类为线性，不注册辅助变量或约束。
-- 若存在二次单项式，实现创建名称追加 `_y` 的有符号实数辅助变量，并注册 $y=polynomial$。
+- 若存在二次单项式，实现创建名称追加 `_y`（Kotlin）或 `_lin_y`（Rust）的有符号实数辅助变量，并注册 $y=polynomial$。
 - 泛型值要求 `V : RealNumber<V>, V : Ring<V>, V : NumberField<V>`，并配合 `IntoValue<V>` 转换器。
 
 ## 定义与数学模型
@@ -46,7 +46,7 @@ $$
 
 ### Kotlin
 
-源码：[`QuadraticLinear.kt`（`QuadraticLinearFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticLinear.kt#L39-L325)
+源码：[`QuadraticLinear.kt`（`QuadraticLinearFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticLinear.kt#L40-L338)
 
 ```kotlin
 import fuookami.ospf.kotlin.core.solver.value.IntoValue

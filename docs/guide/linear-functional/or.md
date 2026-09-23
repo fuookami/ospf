@@ -71,7 +71,7 @@ OrFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OrFunction<
 
 ## Solver mathematical model
 
-For `name`, the implementation creates `name_or` as the result, `name_or_nz{i}` as one nonzero indicator per input, and `name_or_side{i}` as one sign-side helper per input. All are returned by `helperVariables`.
+For `name`, the implementation creates `name_or` as the result, `name_or_nz{i}` as one nonzero indicator per input, and `name_or_side{i}` as one sign-side helper per input. All are returned by `helperVariables`. When every input polynomial is exactly a unit-coefficient binary variable, only the result is registered and the indicator block below is skipped.
 
 For each input, the four-row Big-M block represents
 
@@ -93,9 +93,11 @@ $$
 y \ge a_i\quad(1\le i\le n).
 $$
 
+In that all-binary case the indicator rows are replaced by the direct rows $y\ge b_i$ for every input plus $\sum_i b_i\le y$ in Kotlin; Rust instead registers the exact two-sided hull with $\sum_i b_i\ge y$.
+
 The public `resultPolynomial` is the unit-coefficient polynomial of `name_or`. The symbol registers against `AbstractLinearMechanismModel`.
 
-Rust registers the same nonzero-indicator block followed by the same OR rows, with Rust's own fixed threshold and bound inference.
+Rust registers the same nonzero-indicator block followed by the same OR rows, with Rust's own fixed threshold and bound inference. For a direct all-binary input, Rust registers the exact hull $y\ge b_i$ and $\sum_i b_i\ge y$.
 
 ## `evaluate()` versus the solver model
 
@@ -137,7 +139,7 @@ fun main() {
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::OrFunction;
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

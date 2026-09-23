@@ -49,7 +49,7 @@ let slack = QuadraticSlackRangeFunction::new(
 assert_eq!(slack.calculate_value(&tokens, false), Some(1.0));
 ```
 
-二次输入先桥接为线性变量，再交给精确的线性区间距离模型；`result_variable()` 是连续变量。
+当输入不含二次项时，精确的线性区间距离模型直接使用原始线性输入；真正含二次项的输入会先获得一个有符号线性桥接变量和一条二次桥接等式。`with_big_m` 可提供显式 Big-M；否则在可用时使用已注册的 token 边界。`result_variable()` 是连续变量。
 
 ## Kotlin/Rust 示例
 
@@ -68,7 +68,7 @@ val slack = QuadraticSlackRangeFunction(
     converter = IntoValue.Identity,
     name = "quadratic-slack-range"
 )
-check(slack.evaluate(values) == Flt64(1.0))
+check(slack.evaluate(values, null, IntoValue.Identity) == Flt64(1.0))
 ```
 
 ```rust [Rust]

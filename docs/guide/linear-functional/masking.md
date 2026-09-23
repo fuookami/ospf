@@ -40,7 +40,7 @@ The solver semantics require `mask` to take only 0 or 1. A mask value other than
 
 ### Kotlin
 
-Source: [`Masking.kt` (`MaskingFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L42-L122)
+Source: [`Masking.kt` (`MaskingFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L45-L237)
 
 ```kotlin
 MaskingFunction(
@@ -158,7 +158,7 @@ $$
 
 It creates `maskVar` (a `BinVar`) and `resultVar` (a `RealVar`), registers `maskPoly = maskVar`, then applies the same four Big-M constraints as `MaskingFunction`. Direct `evaluate` returns zero for a missing or zero mask expression and otherwise evaluates `input`; the solver relies on the binary equality to enforce the intended domain.
 
-Source: [`Masking.kt` (`MaskingWithPolyMaskFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L227-L430)
+Source: [`Masking.kt` (`MaskingWithPolyMaskFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L253-L432)
 
 ```kotlin
 val mask = BinVar("mask")
@@ -193,7 +193,7 @@ $$
 
 The constructor requires `lower <= upper`, creates a signed `RealVar`/continuous result, and registers only those two inequalities; the mask expression is expected to be binary, but this class neither creates nor enforces a binary mask. Negative lower bounds are valid. With binary `m`, `m=0` gives `y=0` and `m=1` gives `lower\le y\le upper`.
 
-Source: [`Masking.kt` (`MaskingRangeFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L432-L567)
+Source: [`Masking.kt` (`MaskingRangeFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L448-L536)
 
 ```kotlin
 val mask = BinVar("range_mask")

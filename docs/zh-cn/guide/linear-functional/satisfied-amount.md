@@ -142,7 +142,7 @@ check(value == Flt64.one)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{
     InequalityFunction, SatisfiedAmountFunction,
 };

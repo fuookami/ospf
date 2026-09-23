@@ -4,17 +4,18 @@
 
 ## 求解器数学模型
 
-令 $s_t\in\{0,1\}$ 选择三角形，$\lambda_{tk}\in[0,1]$ 为该三角形的重心权重。精确公式为
+令 $s_t\in\{0,1\}$ 选择三角形，$\lambda_{tk}\in[0,1]$ 为该三角形的重心权重。两种实现都强制恰好一个三角形激活且其权重之和为一，并把坐标表示为所有顶点的加权和：
 
 $$
 \begin{aligned}
 \sum_t s_t&=1,\\
-\sum_{k=0}^{2}\lambda_{tk}&=s_t &&\forall t,\\
 x&=\sum_{t,k}x_{tk}\lambda_{tk},\\
 y&=\sum_{t,k}y_{tk}\lambda_{tk},\\
 z&=\sum_{t,k}z_{tk}\lambda_{tk}.
 \end{aligned}
 $$
+
+Rust 用每个三角形的等式 $\sum_{k=0}^{2}\lambda_{tk}=s_t$ 把权重组绑定到选择变量，并把 $z$ 关系注册为显式等式行。Kotlin 则组合全局行 $\sum_{t,k}\lambda_{tk}=1$ 与每个三角形的 SOS2 风格行 $\sum_{k=0}^{2}\lambda_{tk}\le 3s_t$，并把 $z=\sum_{t,k}z_{tk}\lambda_{tk}$ 直接作为 `resultPolynomial` 暴露；在 $s_t$ 为二值变量时两种编码描述同一可行域。
 
 只有一个三角形可以具有非零权重。该模型不是所有顶点的无约束凸包，因此能够保留非共面单元之间的分段曲面。
 

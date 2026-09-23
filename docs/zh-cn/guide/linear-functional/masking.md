@@ -40,7 +40,7 @@ $$
 
 ### Kotlin
 
-源码：[`Masking.kt`（`MaskingFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L42-L122)
+源码：[`Masking.kt`（`MaskingFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L45-L237)
 
 ```kotlin
 MaskingFunction(
@@ -158,7 +158,7 @@ $$
 
 它创建 `maskVar`（`BinVar`）和 `resultVar`（`RealVar`），注册 `maskPoly = maskVar`，然后应用与 `MaskingFunction` 相同的四个 Big-M 约束。直接 `evaluate` 在掩码表达式缺失或恰为零时返回零，否则计算 `input`；求解器依靠二值等式约束保证预期的掩码域。
 
-源码：[`Masking.kt`（`MaskingWithPolyMaskFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L227-L430)
+源码：[`Masking.kt`（`MaskingWithPolyMaskFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L253-L432)
 
 ```kotlin
 val mask = BinVar("mask")
@@ -193,7 +193,7 @@ $$
 
 构造器要求 `lower <= upper`，创建有符号的 `RealVar`/连续结果，并且只注册上述两个不等式；掩码表达式应当是二值的，但该类既不创建也不强制掩码为二值。负下界是合法的。当 `m` 为二值变量时，`m=0` 给出 `y=0`，`m=1` 给出 `lower\le y\le upper`。
 
-源码：[`Masking.kt`（`MaskingRangeFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L432-L567)
+源码：[`Masking.kt`（`MaskingRangeFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Masking.kt#L448-L536)
 
 ```kotlin
 val mask = BinVar("range_mask")

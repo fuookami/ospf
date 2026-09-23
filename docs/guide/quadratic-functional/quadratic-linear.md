@@ -7,7 +7,7 @@
 - Input: `polynomial: QuadraticPolynomial<V>`.
 - Direct evaluation returns the value of the wrapped polynomial.
 - If the polynomial has no quadratic monomials, the symbol is categorized as linear and registers no helper variable or constraint.
-- If a quadratic monomial exists, the implementation creates a signed real helper named by appending `_y` to `name` and registers $y=polynomial$.
+- If a quadratic monomial exists, the implementation creates a signed real helper named by appending `_y` (Kotlin) or `_lin_y` (Rust) to `name` and registers $y=polynomial$.
 - Generic values require `V : RealNumber<V>, V : Ring<V>, V : NumberField<V>` and an `IntoValue<V>` converter.
 
 ## Definition and mathematical model
@@ -46,7 +46,7 @@ Both implementations therefore use the same conditional helper rule and signed b
 
 ### Kotlin
 
-Source: [`QuadraticLinear.kt` (`QuadraticLinearFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticLinear.kt#L39-L325)
+Source: [`QuadraticLinear.kt` (`QuadraticLinearFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/QuadraticLinear.kt#L40-L338)
 
 ```kotlin
 import fuookami.ospf.kotlin.core.solver.value.IntoValue

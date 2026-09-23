@@ -102,7 +102,7 @@ check(value != null && (value eq Flt64.one))
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::ModFunction;
 
 let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

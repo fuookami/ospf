@@ -34,16 +34,15 @@ $$
 
 ## 求解器数学模型
 
-令 $a,b\in\{0,1\}$ 分别表示前件与后件的关系指标。每个指标都通过下列约束连接到规范化条件 $q_j\in[L_j,U_j]$：
+令 $a,b\in\{0,1\}$ 分别表示前件与后件的关系指标。前件指标通过下列约束连接到其规范化条件 $q_0\in[L_0,U_0]$：
 
 $$
-q_j+(L_j-T_j)u_j\ge L_j,
+q_0+(L_0-T_0)a\ge L_0,
 \qquad
-q_j+(F_j-U_j)u_j\le F_j,
-\qquad (u_0,u_1)=(a,b).
+q_0+(F_0-U_0)a\le F_0.
 $$
 
-Kotlin 随后实际传入蕴含约束
+后件约束对 $q_1\in[L_1,U_1]$ 保持相同的阈值，但额外受 $a$ 门控，因此只有当 $a=1$ 时 $b$ 才对 $q_1$ 进行判定。Kotlin 随后实际传入蕴含约束
 
 $$
 a-b\le0.
@@ -55,7 +54,7 @@ $$
 
 ### Kotlin
 
-源码：[`Imply.kt`（`ImplyFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Imply.kt#L229-L1148)
+源码：[`Imply.kt`（`ImplyFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Imply.kt#L231-L1203)
 
 ```kotlin
 ImplyFunction(

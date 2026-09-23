@@ -71,7 +71,7 @@ For `name`, the implementation creates:
 - `name_not_side`: the sign-side helper used by the nonzero test;
 - `name_not`: the binary result (y).
 
-All three are in `helperVariables`. For zero tolerance $t$ and strict boundary $g$, the four-row Big-M block represents
+For the general polynomial path all three are in `helperVariables`. When the polynomial is a single binary variable, both implementations take the direct binary path instead: only `name_not` is registered, and the only registered row is the complement $y + b = 1$. For zero tolerance $t$ and strict boundary $g$, the four-row Big-M block represents
 
 $$
 a=0\Rightarrow -t\le p\le t,
@@ -91,7 +91,7 @@ $$
 
 The public `resultPolynomial` is the unit-coefficient polynomial of `name_not`; constraints are registered on `AbstractLinearMechanismModel`.
 
-Rust likewise registers a nonzero indicator and the complement equality $y+a=1$, using Rust's fixed numerical threshold policy.
+Rust likewise registers a nonzero indicator and the complement equality $y+a=1$, using Rust's fixed numerical threshold policy, and takes the same direct binary path when the input is a single binary variable.
 
 ## `evaluate()` versus the solver model
 
@@ -128,7 +128,7 @@ fun main() {
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::NotFunction;
 
 let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

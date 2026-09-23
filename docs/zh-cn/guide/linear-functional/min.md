@@ -9,7 +9,7 @@ $$
 ## 契约
 
 - 输入：非空的 `List<LinearPolynomial<V>>`（`n >= 1`）。
-- 输出：`resultVar`，其类型为 `URealVar`，并通过 `resultPolynomial` 暴露。
+- 输出：`resultVar`，其类型为有符号 `RealVar`，并通过 `resultPolynomial` 暴露。
 - `evaluate` 求值每个输入并返回最小值；缺少符号值时返回 `null`。
 - `V` 必须实现 `RealNumber<V>` 与 `NumberField<V>`，并传入匹配的 `IntoValue<V>` 转换器。
 
@@ -30,13 +30,13 @@ $$
 
 ## 适用域与边界
 
-solver 结果是 `URealVar`，所以无法表示负的最小值；`evaluate` 仍可以返回负值。只有在可行模型保证最小值非负时才应使用此函数，或者选择带符号的结果建模。与 `MaxFunction` 一样，推导 Big-M 需要候选有限界；否则当前回退值为 $10^6$，显式 `bigM` 必须覆盖所有候选差距。
+solver 结果是有符号的 `RealVar`；当每个候选都有有限界时，结果范围会收紧到候选范围，因此可以表示负的最小值。推导 Big-M 需要候选有限界；否则当前回退值为 $10^6$，显式 `bigM` 必须覆盖所有候选差距。推导边界时，每个候选的 Big-M 等于该候选上界减去所有候选中最小的下界。
 
 ## 当前 API
 
 ### Kotlin
 
-`MinFunction` 与 `MaxFunction` 声明在同一个源码文件中（不存在独立实现文件）：[`Max.kt`（`MinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L182-L281)
+`MinFunction` 与 `MaxFunction` 声明在同一个源码文件中（不存在独立实现文件）：[`Max.kt`（`MinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L235-L374)
 
 ```kotlin
 MinFunction(
@@ -78,7 +78,7 @@ $$
 
 ## `evaluate` 与 solver 的差异
 
-`evaluate` 直接折叠候选值，不施加 `URealVar` 的变量域。solver 注册会施加该域并依赖有效的 Big-M。因此全为负候选时，直接求值可以成功，而 solver 模型可能不可行。
+`evaluate` 直接折叠候选值，不执行 solver 侧的结果范围收紧。solver 注册会把结果范围收紧到候选范围，并依赖有效的 Big-M；Big-M 过小时可能排除真正的最小值。
 
 ## 示例与测试
 
@@ -109,7 +109,7 @@ check(value != null && (value eq Flt64.two))
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::MinFunction;
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
@@ -136,7 +136,7 @@ $$
 
 虽然名称容易引起误解，`MinMaxFunction` 实际通过委托给内部 `MaxFunction` 来计算最大值，并转发求值、辅助变量和约束注册。`MaxMinFunction` 通过委托给内部 `MinFunction` 来计算最小值。名称描述的是优化语境下的解释，而不是另一种聚合算法。两个包装器都接收相同的 `polynomials`、可选 `bigM`、`converter`、`name` 和可选 `displayName` 参数。它们的 `fromSymbols` 工厂接收 `List<LinearIntermediateSymbol<V>>`，返回 `LinearFunctionSymbolAdapter`；该适配器仅用于衔接中间符号 API。
 
-源码：[`MinMax.kt`（`MinMaxFunction` 与 `MaxMinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L40-L196)
+源码：[`MinMax.kt`（`MinMaxFunction` 与 `MaxMinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L41-L187)
 
 ```kotlin
 val minMax = MinMaxFunction(

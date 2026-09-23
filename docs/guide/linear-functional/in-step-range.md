@@ -56,8 +56,8 @@ The former grid-membership function is explicitly named
 
 ```kotlin [Kotlin]
 val stepped = InStepRangeFunction(
-    lb = constant(1.0),
-    ub = constant(10.0),
+    lb = LinearPolynomial(emptyList(), Flt64(1.0)),
+    ub = LinearPolynomial(emptyList(), Flt64(10.0)),
     step = Flt64(3.0),
     converter = IntoValue.Identity,
     name = "stepped"

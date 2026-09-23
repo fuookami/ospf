@@ -9,7 +9,7 @@ $$
 ## 契约
 
 - 输入：非空的 `List<LinearPolynomial<V>>`（`n >= 1`）。
-- 输出：`resultVar`，其类型为 `URealVar`，并通过 `resultPolynomial` 暴露。
+- 输出：`resultVar`，其类型为 `RealVar`，并通过 `resultPolynomial` 暴露。
 - `evaluate` 求值每个输入并返回最大值；缺少符号值时返回 `null`。
 - `V` 必须实现 `RealNumber<V>` 与 `NumberField<V>`，并传入匹配的 `IntoValue<V>` 转换器。
 
@@ -30,13 +30,13 @@ $$
 
 ## 适用域与边界
 
-当前结果变量为 `URealVar`。因此求解器模型不能表示负的最大值，即使 `evaluate` 可以返回负值。应确保可行域内至少有一个候选已知为非负，或者在需要负结果时采用其他建模方式。未传入 `bigM` 时，实现会尽可能使用每个候选的有限范围；否则当前 Big-M 回退值为 $10^6$。显式值必须足以覆盖所有候选差距。
+当前结果变量为有符号的 `RealVar`。当每个候选都有有限范围时，结果变量的范围会被收紧到 $[\min_i \text{lower}_i,\ \max_i \text{upper}_i]$，因此可以表示负的最大值。未传入 `bigM` 时，实现会尽可能使用每个候选的有限范围（每个候选取“最宽候选上界减其自身下界”）；否则当前 Big-M 回退值为 $10^6$。显式值必须足以覆盖所有候选差距。
 
 ## 当前 API
 
 ### Kotlin
 
-源码：[`Max.kt`（`MaxFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L43-L142)
+源码：[`Max.kt`（`MaxFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L77-L217)
 
 ```kotlin
 MaxFunction(
@@ -63,7 +63,7 @@ MaxFunction::new(
 ) -> MaxFunction<V>
 ```
 
-`exact = true` 为每个候选创建二值选择器，并注册恰好一个选择器的模型。`exact = false` 时，Rust 只注册 `result >= p_i` 下界；此时需要目标函数或其他上界才能让结果等于最大值。`result_variable()`、`polynomials()` 和 `exact()` 暴露内部状态。与 Kotlin 的 `URealVar` 结果不同，Rust 结果是连续变量；若模型有边界要求，调用方必须提供合适的变量范围。Rust 的 [`MinMaxFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) 和 [`MaxMinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) 是对应的包装符号，但没有 `exact` 参数。
+`exact = true` 为每个候选创建二值选择器，并注册恰好一个选择器的模型。`exact = false` 时，Rust 只注册 `result >= p_i` 下界；此时需要目标函数或其他上界才能让结果等于最大值。`result_variable()`、`polynomials()` 和 `exact()` 暴露内部状态。Rust 结果是连续变量；若模型有边界要求，调用方必须提供合适的变量范围。Rust 的 [`MinMaxFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) 和 [`MaxMinFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/min_max.rs) 是对应的包装符号，但没有 `exact` 参数。
 
 ## 求解器数学模型
 
@@ -83,7 +83,7 @@ Rust 的 `exact = false` 只注册 $y-p_i\ge0$；此时必须通过最小化或�
 
 ## `evaluate` 与 solver 的差异
 
-`evaluate` 直接折叠所有候选值，不产生 Big-M 或变量域副作用。solver 注册选择模型并施加非负结果域；Big-M 过小或真实最大值为负时，solver 可能不可行，而直接求值仍能成功。
+`evaluate` 直接折叠所有候选值，不产生 Big-M 或变量域副作用。solver 注册选择模型，并在每个候选都有有限范围时把结果域收紧到候选范围；Big-M 过小时，solver 可能不可行，而直接求值仍能成功。
 
 ## 示例与测试
 
@@ -141,7 +141,7 @@ $$
 
 虽然名称容易引起误解，`MinMaxFunction` 实际通过委托给内部 `MaxFunction` 来计算最大值，并转发求值、辅助变量和约束注册。`MaxMinFunction` 通过委托给内部 `MinFunction` 来计算最小值。名称描述的是优化语境下的解释，而不是另一种聚合算法。两个包装器都接收相同的 `polynomials`、可选 `bigM`、`converter`、`name` 和可选 `displayName` 参数。它们的 `fromSymbols` 工厂接收 `List<LinearIntermediateSymbol<V>>`，返回 `LinearFunctionSymbolAdapter`；该适配器仅用于衔接中间符号 API。
 
-源码：[`MinMax.kt`（`MinMaxFunction` 与 `MaxMinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L40-L196)
+源码：[`MinMax.kt`（`MinMaxFunction` 与 `MaxMinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L41-L187)
 
 ```kotlin
 val minMax = MinMaxFunction(

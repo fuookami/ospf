@@ -63,10 +63,10 @@ The companion `invoke` exposes the same arguments. `bounds` and `conditionBounds
 
 Source: [`if_in.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/if_in.rs)
 
-Rust's same-named `IfInFunction` is not the Kotlin closed-interval API: it tests approximate membership in a discrete `values` set and takes an explicit `big_m`. The closest interval composition is `ConditionalIfFunction` for each side, combined by `IfInRangeFunction`; call `IfInRangeFunction::registerable(id, name)` to obtain a `RegisterableIfInRangeFunction` with registered indicators and an AND result. The range validator requires `GreaterEqual` side relations, opposite-signed one-variable conditions, ordered endpoints, and finite bounds.
+Rust's legacy `InValuesFunction` is not the Kotlin closed-interval API: it tests approximate membership in a discrete `values` set and takes an explicit `big_m`. The closest interval composition is `ConditionalIfFunction` for each side, combined by `IfInRangeFunction`; call `IfInRangeFunction::registerable(id, name)` to obtain a `RegisterableIfInRangeFunction` with registered indicators and an AND result. The range validator requires `GreaterEqual` side relations, opposite-signed one-variable conditions, ordered endpoints, and finite bounds.
 
 ```rust
-IfInFunction::new(
+InValuesFunction::new(
     id: u64,
     name: &str,
     input: Linear<V>,
@@ -103,14 +103,14 @@ $$
 It then registers the AND result $y$:
 
 $$
-a_l+a_u\ge2y,
+y\ge a_l+a_u-1,
 \qquad
 y\le a_l,
 \qquad
 y\le a_u.
 $$
 
-Rust `RegisterableIfInRangeFunction` uses the same two relation indicators plus an AND result. Rust's older same-named `IfInFunction` instead models membership in a discrete list and is not this interval model.
+Rust `RegisterableIfInRangeFunction` uses the same two relation indicators plus an AND result. Rust's legacy `InValuesFunction` instead models membership in a discrete list and is not this interval model.
 
 ## `evaluate()` versus the solver model
 

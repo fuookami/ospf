@@ -63,10 +63,10 @@ IfInFunction(
 
 源码：[`if_in.rs`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/if_in.rs)
 
-Rust 同名的 `IfInFunction` 不是 Kotlin 闭区间 API 的一一对应实现：它测试输入是否近似属于离散 `values` 集合，并接收显式 `big_m`。最接近的区间组合是为两侧分别创建 `ConditionalIfFunction`，再用 `IfInRangeFunction` 合并；调用 `IfInRangeFunction::registerable(id, name)` 可得到带已注册指示器和 AND 结果的 `RegisterableIfInRangeFunction`。区间校验要求两侧使用 `GreaterEqual`、一元变量条件系数符号相反、端点有序且范围有限。
+Rust 旧版的 `InValuesFunction` 不是 Kotlin 闭区间 API 的一一对应实现：它测试输入是否近似属于离散 `values` 集合，并接收显式 `big_m`。最接近的区间组合是为两侧分别创建 `ConditionalIfFunction`，再用 `IfInRangeFunction` 合并；调用 `IfInRangeFunction::registerable(id, name)` 可得到带已注册指示器和 AND 结果的 `RegisterableIfInRangeFunction`。区间校验要求两侧使用 `GreaterEqual`、一元变量条件系数符号相反、端点有序且范围有限。
 
 ```rust
-IfInFunction::new(
+InValuesFunction::new(
     id: u64,
     name: &str,
     input: Linear<V>,
@@ -103,14 +103,14 @@ $$
 然后注册 AND 结果 $y$：
 
 $$
-a_l+a_u\ge2y,
+y\ge a_l+a_u-1,
 \qquad
 y\le a_l,
 \qquad
 y\le a_u.
 $$
 
-Rust `RegisterableIfInRangeFunction` 同样使用两个关系指标和一个 AND 结果。Rust 较旧的同名 `IfInFunction` 表示离散列表成员关系，不是这里的区间模型。
+Rust `RegisterableIfInRangeFunction` 同样使用两个关系指标和一个 AND 结果。Rust 旧版的 `InValuesFunction` 表示离散列表成员关系，不是这里的区间模型。
 
 ## `evaluate()` 与求解器模型的差异
 

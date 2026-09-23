@@ -71,7 +71,7 @@ NotFunction::new(id: u64, name: &str, polynomial: Linear<V>) -> NotFunction<V>
 - `name_not_side`：非零检测使用的符号侧辅助量；
 - `name_not`：二值结果 (y)。
 
-三个变量都在 `helperVariables` 中。令零值容差为 $t$、严格边界为 $g$，四约束 Big-M 模型表示
+一般多项式路径下三个变量都在 `helperVariables` 中。当多项式为单个二值变量时，两种实现都会改走直接二元路径：只注册 `name_not`，唯一注册的约束是补关系 $y + b = 1$。令零值容差为 $t$、严格边界为 $g$，四约束 Big-M 模型表示
 
 $$
 a=0\Rightarrow -t\le p\le t,
@@ -91,7 +91,7 @@ $$
 
 公开的 `resultPolynomial` 是 `name_not` 的单位系数多项式；约束注册到 `AbstractLinearMechanismModel`。
 
-Rust 同样注册非零指标和补关系 $y+a=1$，但使用 Rust 固定的数值阈值策略。
+Rust 同样注册非零指标和补关系 $y+a=1$，但使用 Rust 固定的数值阈值策略；当输入为单个二值变量时同样走直接二元路径。
 
 ## `evaluate()` 与求解器模型的差异
 
@@ -128,7 +128,7 @@ fun main() {
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::NotFunction;
 
 let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

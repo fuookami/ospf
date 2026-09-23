@@ -2,11 +2,12 @@
 
 ## 契约
 
-`BinaryzationFunction<V>` 将一个线性多项式 $p$ 映射为二值结果。当前契约是正值二值化：
+`BinaryzationFunction<V>` 将一个线性多项式 $p$ 映射为二值结果。当前契约是带正间隔 $\varepsilon$（即构造器的 `tolerance` 参数）的正值二值化：
 
 $$
 y = \operatorname{Bin}(p) = \begin{cases}
-1, & p > 0 \\
+1, & p \ge \varepsilon \\
+\text{undefined}, & 0 < p < \varepsilon \\
 0, & p \le 0
 \end{cases}
 $$
@@ -17,17 +18,17 @@ $$
 
 | $p$ | $y$ |
 | --- | --- |
-| $p>0$ | 1 |
-| $p=0$ | 0 |
-| $p<0$ | 0 |
+| $p\ge\varepsilon$ | 1 |
+| $0<p<\varepsilon$ | `null` |
+| $p\le0$ | 0 |
 
 结果是二值变量，不是 $p$ 的数值副本。
 
 ## 边界、tolerance 与 Undefined
 
-`evaluate()` 使用严格比较 `p > 0`；缺少多项式求值结果时返回 `null`。
+`evaluate()` 按关系 `p > 0` 与间隔 $\varepsilon$ 对 $p$ 进行三值判定：$p \ge \varepsilon$ 返回 `1`，$p \le 0$ 返回 `0`，间隔内返回 `null`；缺少多项式求值结果时同样返回 `null`。
 
-求解器注册固定使用 `NONZERO_TOLERANCE = 1e-10` 作为 $\varepsilon$。如果 $a$ 是结果变量，$M$ 是选定的 Big-M 值，核心指示约束为：
+求解器注册使用 `tolerance` 参数（默认 `NONZERO_TOLERANCE = 1e-10`）作为 $\varepsilon$。如果 $a$ 是结果变量，$M$ 是选定的 Big-M 值，核心指示约束为：
 
 $$
 p - M a \le 0,
@@ -35,7 +36,7 @@ p - M a \le 0,
 p - M' a \ge \varepsilon-M'.
 $$
 
-因此 $a=0$ 要求 $p\le0$，而 $a=1$ 要求 $p\ge\varepsilon$。开区间 $0<p<\varepsilon$ 是求解器间隔：`evaluate()` 返回 `1`，但线性化模型没有有效分支。`BinaryzationFunction` 没有公开的 `tolerance` 参数。
+因此 $a=0$ 要求 $p\le0$，而 $a=1$ 要求 $p\ge\varepsilon$。开区间 $0<p<\varepsilon$ 是求解器间隔：`evaluate()` 在该区间返回 `null`，线性化模型同样没有有效分支。
 
 省略 `bigM` 时，实现根据多项式有限范围推导；必要时回退到 `BIG_M_DEFAULT = 1e6`。
 
@@ -49,11 +50,12 @@ BinaryzationFunction(
     converter: IntoValue<V>,
     bigM: V? = null,
     name: String = "bin",
-    displayName: String? = null
+    displayName: String? = null,
+    tolerance: V? = null
 )
 ```
 
-伴生 `invoke` 使用相同参数。`converter` 是必需参数；旧的标量构造器不属于当前 API。
+伴生 `invoke` 使用相同参数，但 `name` 为必填。`converter` 是必需参数；旧的标量构造器不属于当前 API。
 
 ### Rust
 
@@ -88,7 +90,7 @@ $$
 
 ## `evaluate()` 与求解器模型的差异
 
-求值器只区分 $p > 0$ 和 $p \le 0$，不表示求解器使用的数值间隔。如果模型可能产生 $(0, \text{NONZERO\_TOLERANCE})$ 内的值，应先决定是否改变输入格点，或增加单独记录的策略，再依赖求值器与求解器一致。
+求值器与求解器模型在间隔上表现一致：两者都把 $0 < p < \varepsilon$ 视为定义域之外（`evaluate()` 返回 `null`，注册的约束在该区间没有可行分支）。如果模型可能产生该区间内的值，函数会返回“无值”，而不是具有误导性的 `1`。
 
 ## 当前最小示例
 

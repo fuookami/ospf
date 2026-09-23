@@ -12,7 +12,7 @@ withNegative = false, withPositive = true:  max(0,  d)
 withNegative = true,  withPositive = true:  |d|
 ```
 
-The implementation is [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L42-L196). Its primary constructor is:
+The implementation is [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L43-L339). Its primary constructor is:
 
 ```kotlin
 SlackFunction(
@@ -29,7 +29,7 @@ SlackFunction(
 )
 ```
 
-Overloads accept `LinearIntermediateSymbol<V>` and `ToLinearPolynomial<V>` (`Slack.kt:173-280`). At least one of `withNegative` and `withPositive` must be true (`Slack.kt:54-56`). Integer `type` creates `UIntVar` helpers; a continuous type creates `URealVar` helpers (`Slack.kt:98-100`). When both directions are enabled, Kotlin also creates one binary branch helper (`<name>_side`), so the helper list is `neg`, `pos`, and `side`.
+Overloads accept `LinearIntermediateSymbol<V>` and `ToLinearPolynomial<V>` (`Slack.kt:270-336`). At least one of `withNegative` and `withPositive` must be true (`Slack.kt:55-57`). Integer `type` creates `UIntVar` helpers; a continuous type creates `URealVar` helpers (`Slack.kt:102-104`). When both directions are enabled, Kotlin also creates one binary branch helper (`<name>_side`), so the helper list is `neg`, `pos`, and `side`.
 
 ### Rust
 
@@ -70,7 +70,7 @@ polyX = x + neg - pos,
 \qquad z = neg + pos.
 $$
 
-`neg` and `pos` are exposed as nullable linear polynomials, and `resultPolynomial` is the sum of whichever helpers were requested (`Slack.kt:58-90`). Direct evaluation uses only `x` and `y`: both helpers give `|x-y|`, only `neg` gives `max(0,y-x)`, and only `pos` gives `max(0,x-y)` (`Slack.kt:102-115`). It returns `null` when either input is unresolved.
+`neg` and `pos` are exposed as nullable linear polynomials, and `resultPolynomial` is the sum of whichever helpers were requested (`Slack.kt:72-94`). Direct evaluation uses only `x` and `y`: both helpers give `|x-y|`, only `neg` gives `max(0,y-x)`, and only `pos` gives `max(0,x-y)` (`Slack.kt:106-119`). It returns `null` when either input is unresolved.
 
 ## Solver mathematical model
 
@@ -86,7 +86,7 @@ With `constraint = true`:
   where $s=neg+pos$, $d=x-y$, and $u$ is the binary side helper. These rows force $s=|d|$ without an objective.
 - with only one helper enabled, `threshold = false` registers the equality `x + neg - pos = y`; `threshold = true` registers the corresponding one-sided inequality (`x + neg >= y` for `neg`, `x - pos <= y` for `pos`).
 
-With `constraint = false`, no relation between the inputs and helpers is registered (`Slack.kt:125-128`). `evaluate` always computes the mathematical violation from the inputs, independently of registered helper values. The model-side value is therefore exact only when the relevant helper expression is minimized or otherwise constrained to its minimum; without minimization, the relation permits inflated slack.
+With `constraint = false`, no relation between the inputs and helpers is registered (`Slack.kt:130-132`). `evaluate` always computes the mathematical violation from the inputs, independently of registered helper values. The model-side value is therefore exact only when the relevant helper expression is minimized or otherwise constrained to its minimum; without minimization, the relation permits inflated slack.
 
 Rust creates signed result $s$, binary selector $u$, and $d=x-y$, and uses the same exact absolute-difference rows
 

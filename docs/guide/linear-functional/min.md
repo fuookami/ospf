@@ -9,7 +9,7 @@ $$
 ## Contract
 
 - Input: a non-empty `List<LinearPolynomial<V>>` (`n >= 1`).
-- Output: `resultVar`, a `URealVar`, exposed as `resultPolynomial`.
+- Output: `resultVar`, a signed `RealVar`, exposed as `resultPolynomial`.
 - `evaluate` evaluates every input and returns their minimum; a missing symbol value makes it return `null`.
 - `V` must implement `RealNumber<V>` and `NumberField<V>`; pass the matching `IntoValue<V>` converter.
 
@@ -30,13 +30,13 @@ With the selector for one candidate equal to zero, that candidate is forced to e
 
 ## Domain and boundaries
 
-The solver result is a `URealVar`, so a negative minimum cannot be represented. `evaluate` can still return a negative value. Use this function only when the feasible model guarantees a non-negative minimum, or choose a signed result formulation. As with `MaxFunction`, inferred Big-M values require finite candidate bounds; otherwise the current fallback is $10^6$, and an explicit `bigM` must cover all candidate gaps.
+The solver result is a signed `RealVar`; when every candidate has finite bounds, the result range is tightened to the candidate bounds, so a negative minimum is representable. Inferred Big-M values require finite candidate bounds; otherwise the current fallback is $10^6$, and an explicit `bigM` must cover all candidate gaps. When bounds are inferred, each candidate's Big-M is that candidate's upper bound minus the lowest candidate lower bound.
 
 ## Current API
 
 ### Kotlin
 
-`MinFunction` is declared in the same source file as `MaxFunction` (there is no separate implementation file): [`Max.kt` (`MinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L182-L281)
+`MinFunction` is declared in the same source file as `MaxFunction` (there is no separate implementation file): [`Max.kt` (`MinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Max.kt#L235-L374)
 
 ```kotlin
 MinFunction(
@@ -78,7 +78,7 @@ Here the selected candidate has $s_i=0$. Rust `exact = false` keeps only $y-p_i\
 
 ## `evaluate` versus solver
 
-`evaluate` directly folds the candidate values and does not impose the `URealVar` domain. Solver registration does impose that domain and relies on valid Big-M values. Consequently, direct evaluation of all-negative candidates can succeed while the solver model is infeasible.
+`evaluate` directly folds the candidate values and does not apply the solver result-range tightening. Solver registration tightens the result range to the candidate bounds and relies on valid Big-M values; an undersized Big-M can exclude the true minimum.
 
 ## Examples and tests
 
@@ -109,7 +109,7 @@ check(value != null && (value eq Flt64.two))
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::MinFunction;
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
@@ -136,7 +136,7 @@ $$
 
 Despite their names, `MinMaxFunction` computes the maximum by delegating every evaluation, helper-variable, and constraint operation to an inner `MaxFunction`. `MaxMinFunction` computes the minimum by delegating to an inner `MinFunction`. The names describe the optimization interpretation, not a different aggregation algorithm. Both wrappers accept the same `polynomials`, optional `bigM`, `converter`, `name`, and optional `displayName` parameters. Their `fromSymbols` factories accept `List<LinearIntermediateSymbol<V>>` and return a `LinearFunctionSymbolAdapter`; the adapter is only a bridge to the intermediate-symbol API.
 
-Source: [`MinMax.kt` (`MinMaxFunction` and `MaxMinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L40-L196)
+Source: [`MinMax.kt` (`MinMaxFunction` and `MaxMinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/MinMax.kt#L41-L187)
 
 ```kotlin
 val minMax = MinMaxFunction(

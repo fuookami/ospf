@@ -33,7 +33,8 @@ BalanceTernaryzationFunction(
     converter: IntoValue<V>,
     name: String = "bter",
     displayName: String? = null,
-    fallbackBigM: Flt64 = Flt64(1e6)
+    fallbackBigM: Flt64 = Flt64(1e6),
+    strictBoundary: Flt64 = Flt64(NONZERO_TOLERANCE)
 )
 ```
 

@@ -37,13 +37,13 @@ q+(L-T)y\ge L,
 q+(F-U)y\le F.
 $$
 
-非恒定情况下只有这两条关系约束：$y=1\Rightarrow q\ge T$，$y=0\Rightarrow q\le F$。Rust `SigmoidStepFunction` 使用同一关系指标模型。Rust `SigmoidFunction::new` 则注册采样的 logistic 分段线性模型，不能解释为这两条约束。
+非恒定情况下只有这两条关系约束：$y=1\Rightarrow q\ge T$，$y=0\Rightarrow q\le F$。Rust `SigmoidFunction`（关系阶跃入口）使用同一关系指标模型。Rust `LogisticFunction::new` 则注册采样的 logistic 分段线性模型，不能解释为这两条约束。
 
 ## 当前 API
 
 ### Kotlin
 
-源码：[`Sigmoid.kt`（`SigmoidFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sigmoid.kt#L45-L300)
+源码：[`Sigmoid.kt`（`SigmoidFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sigmoid.kt#L46-L324)
 
 公开工厂和构造器使用相同的条件、边界、关系、范围和命名参数；有限 solver 范围使用 `conditionBounds`（或 `bounds` 别名）。
 
@@ -74,24 +74,24 @@ check(value == Flt64.one)
 
 ### Rust
 
-本页 Kotlin 的二值关系阶跃语义对应 Rust 的 [`SigmoidStepFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/sigmoid.rs)，而不是 Rust 中同名的连续分段线性符号：
+本页 Kotlin 的二值关系阶跃语义对应 Rust 的 [`SigmoidFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/sigmoid.rs)，而不是 Rust 的连续分段线性 `LogisticFunction` 符号：
 
 ```rust
-SigmoidStepFunction::from_parts(
+SigmoidFunction::from_parts(
     condition: Linear<V>,
     relation: ConditionRelation,
     strict_boundary: V,
     bounds: ConditionBounds<V>,
-) -> Result<SigmoidStepFunction<V>>
+) -> Result<SigmoidFunction<V>>
 
-SigmoidFunction::new(
+LogisticFunction::new(
     id: u64,
     name: &str,
     input: Linear<V>,
-) -> SigmoidFunction<V>
+) -> LogisticFunction<V>
 ```
 
-`SigmoidStepFunction` 是最接近的 Rust API：它对关系进行 `True`/`False`/`Undefined` 三值判定，并暴露二值 `result_variable()`。也可以通过 `SigmoidFunction::step`/`relation` 以及别名 `SigmoidRelationFunction`、`ConditionalSigmoidFunction` 使用。Rust 的 `SigmoidFunction::new` 则构造采样的连续 logistic 分段线性函数；其直接求值为 $1/(1+e^{-x})$，因此不是 Kotlin 阶跃指标的一一对应实现。
+`SigmoidFunction` 是最接近的 Rust API：它对关系进行 `True`/`False`/`Undefined` 三值判定，并暴露二值 `result_variable()`。也可以通过 `LogisticFunction::step`/`relation` 以及别名 `SigmoidRelationFunction`、`ConditionalLogisticFunction` 使用。Rust 的 `LogisticFunction::new` 则构造采样的连续 logistic 分段线性函数；其直接求值为 $1/(1+e^{-x})$，因此不是 Kotlin 阶跃指标的一一对应实现。
 
 ## evaluate 与 solver 的差异
 
@@ -131,13 +131,13 @@ check(value == Flt64.one)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{
-    ConditionBounds, ConditionRelation, SigmoidFunction, SigmoidStepFunction,
+    ConditionBounds, ConditionRelation, LogisticFunction, SigmoidFunction,
 };
 
 let condition = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
-let step = SigmoidStepFunction::from_parts(
+let step = SigmoidFunction::from_parts(
     condition.clone(),
     ConditionRelation::Greater,
     0.1_f64,
@@ -146,7 +146,7 @@ let step = SigmoidStepFunction::from_parts(
 .unwrap();
 assert_eq!(step.evaluate(&1.0).unwrap(), Some(1.0));
 
-let smooth = SigmoidFunction::new(2, "sigmoid", condition);
+let smooth = LogisticFunction::new(2, "sigmoid", condition);
 let _smooth_result = smooth.result_variable();
 ```
 

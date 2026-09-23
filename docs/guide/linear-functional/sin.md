@@ -61,7 +61,7 @@ Neither solver receives an exact trigonometric constraint.
 
 ### Kotlin
 
-Source: [`Sin.kt` (`SinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sin.kt#L36-L118)
+Source: [`Sin.kt` (`SinFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sin.kt#L37-L122)
 
 The factory also accepts an explicit `samplingPoints` list. Points must be finite, have at least two entries, and have strictly increasing x-coordinates when the delegated piecewise implementation is registered or evaluated.
 
@@ -136,7 +136,7 @@ check(value != null && value == Flt64.zero)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::SinFunction;
 
 let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

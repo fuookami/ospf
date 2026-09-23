@@ -71,7 +71,7 @@ OrFunction::new(id: u64, name: &str, polynomials: Vec<Linear<V>>) -> OrFunction<
 
 ## 求解器数学模型
 
-对于 `name`，实现创建 `name_or` 作为结果、每个输入一个 `name_or_nz{i}` 非零指示量，以及每个输入一个 `name_or_side{i}` 符号侧辅助量。它们全部由 `helperVariables` 返回。
+对于 `name`，实现创建 `name_or` 作为结果、每个输入一个 `name_or_nz{i}` 非零指示量，以及每个输入一个 `name_or_side{i}` 符号侧辅助量。它们全部由 `helperVariables` 返回。当每个输入多项式都是系数为 1 的单个二值变量时，只注册结果变量，并跳过下方的指示块。
 
 对每个输入，四约束 Big-M 模型表示
 
@@ -93,9 +93,11 @@ $$
 y \ge a_i\quad(1\le i\le n).
 $$
 
+在全二值输入的情况下，指示约束会被替换为直接行：每个输入 $y\ge b_i$，Kotlin 中还有 $\sum_i b_i\le y$；Rust 则注册精确的双侧 hull，即 $\sum_i b_i\ge y$。
+
 公开的 `resultPolynomial` 是 `name_or` 的单位系数多项式。该符号向 `AbstractLinearMechanismModel` 注册。
 
-Rust 同样先注册非零指标块，再注册相同的 OR 约束，但使用 Rust 自己的固定阈值与范围推断。
+Rust 同样先注册非零指标块，再注册相同的 OR 约束，但使用 Rust 自己的固定阈值与范围推断。当输入全为直接二值变量时，Rust 注册精确 hull：$y\ge b_i$ 与 $\sum_i b_i\ge y$。
 
 ## `evaluate()` 与求解器模型的差异
 
@@ -137,7 +139,7 @@ fun main() {
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::OrFunction;
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

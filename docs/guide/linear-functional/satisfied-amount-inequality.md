@@ -39,15 +39,15 @@ The convenience variants are:
 
 ## Solver mathematical model
 
-Kotlin creates one $u_i\in\{0,1\}$ per flattened constraint and links it with the two normalized relation rows from [Inequality Indicator](./inequality). Let $c=\sum_i u_i$. Without an amount range, $c$ is the result. For range $[l,u]$, Kotlin additionally creates $y\in\{0,1\}$ and passes the relaxed range rows
+Kotlin creates one $u_i\in\{0,1\}$ per flattened constraint and links it with the two normalized relation rows from [Inequality Indicator](./inequality). Let $c=\sum_i u_i$. Without an amount range, $c$ is the result. For range $[l,u]$, Kotlin additionally creates $y\in\{0,1\}$ and passes the gated rows
 
 $$
 c\ge l\,y,
 \qquad
-c\le u+n(1-y).
+c+(n-u)\,y\le n.
 $$
 
-Thus $y=1\Rightarrow l\le c\le u$; the reverse implication is not forced by these two rows alone. Rust wrappers instead receive existing indicators, register $r-\sum_i u_i=0$, and apply the requested count range as hard bounds, without Kotlin's separate $y$.
+Thus $y=1\Rightarrow l\le c\le u$; at $y=0$ the rows reduce to $0\le c\le n$. The reverse implication is not forced by these two rows alone. Rust wrappers instead receive existing indicators, register $r-\sum_i u_i=0$, and apply the requested count range as hard bounds, without Kotlin's separate $y$.
 
 > [!WARNING]
 > The current registration loop only encodes an input when both range bounds are present. An input with a missing bound can leave its flag without a corresponding solver constraint; provide finite, ordered `lhsRange` values.
@@ -56,7 +56,7 @@ Thus $y=1\Rightarrow l\le c\le u$; the reverse implication is not forced by thes
 
 ### Kotlin
 
-Source: [`SatisfiedAmountInequality.kt` (`SatisfiedAmountInequalityFunction` and variants)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/SatisfiedAmountInequality.kt#L56-L526)
+Source: [`SatisfiedAmountInequality.kt` (`SatisfiedAmountInequalityFunction` and variants)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/SatisfiedAmountInequality.kt#L56-L505)
 
 Use `SatisfiedAmountInequalityFunction.from` for raw count or a custom amount range, and the variant `from` factories for the convenience classes. The variants share the same flags and amount indicator; they are wrappers over one base implementation.
 
@@ -176,7 +176,7 @@ check(value == Flt64.one)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{AnyFunction, InequalityFunction};
 
 let x = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

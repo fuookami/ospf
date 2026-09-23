@@ -12,7 +12,7 @@ withNegative = false, withPositive = true:  max(0,  d)
 withNegative = true,  withPositive = true:  |d|
 ```
 
-实现位于 [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L42-L196)。主构造函数为：
+实现位于 [`Slack.kt`](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Slack.kt#L43-L339)。主构造函数为：
 
 ```kotlin
 SlackFunction(
@@ -29,7 +29,7 @@ SlackFunction(
 )
 ```
 
-同一文件还提供 `LinearIntermediateSymbol<V>` 与 `ToLinearPolynomial<V>` 重载（`Slack.kt:173-280`）。`withNegative` 与 `withPositive` 至少有一个必须为 `true`（`Slack.kt:54-56`）。整数 `type` 创建 `UIntVar` 辅助变量，连续类型创建 `URealVar`（`Slack.kt:98-100`）。两个方向同时启用时，Kotlin 还创建一个二值分支变量（`<name>_side`），因此辅助变量为 `neg`、`pos`、`side`。
+同一文件还提供 `LinearIntermediateSymbol<V>` 与 `ToLinearPolynomial<V>` 重载（`Slack.kt:270-336`）。`withNegative` 与 `withPositive` 至少有一个必须为 `true`（`Slack.kt:55-57`）。整数 `type` 创建 `UIntVar` 辅助变量，连续类型创建 `URealVar`（`Slack.kt:102-104`）。两个方向同时启用时，Kotlin 还创建一个二值分支变量（`<name>_side`），因此辅助变量为 `neg`、`pos`、`side`。
 
 ### Rust
 
@@ -70,7 +70,7 @@ polyX = x + neg - pos,
 \qquad z = neg + pos.
 $$
 
-`neg`、`pos` 以可空线性多项式公开，`resultPolynomial` 是所启用辅助变量之和（`Slack.kt:58-90`）。直接求值只使用 `x`、`y`：两类辅助变量返回 `|x-y|`，仅 `neg` 返回 `max(0,y-x)`，仅 `pos` 返回 `max(0,x-y)`（`Slack.kt:102-115`）；任一输入未解析时返回 `null`。
+`neg`、`pos` 以可空线性多项式公开，`resultPolynomial` 是所启用辅助变量之和（`Slack.kt:72-94`）。直接求值只使用 `x`、`y`：两类辅助变量返回 `|x-y|`，仅 `neg` 返回 `max(0,y-x)`，仅 `pos` 返回 `max(0,x-y)`（`Slack.kt:106-119`）；任一输入未解析时返回 `null`。
 
 ## 求解器数学模型
 
@@ -86,7 +86,7 @@ $$
   其中 $s=neg+pos$、$d=x-y$，$u$ 为二值分支变量。这些行无需目标函数即可强制 $s=|d|$。
 - 只启用一个辅助变量时，`threshold = false` 注册等式 `x + neg - pos = y`；`threshold = true` 注册对应的单向不等式（`neg` 为 `x + neg >= y`，`pos` 为 `x - pos <= y`）。
 
-当 `constraint = false` 时，不注册输入与辅助变量之间的关系（`Slack.kt:125-128`）。`evaluate` 始终根据输入计算数学违约量，与注册的辅助变量值无关。因此，模型侧的值只有在最小化相应辅助表达式或另加最小性约束时才精确；不最小化时，关系允许出现被放大的松弛量。
+当 `constraint = false` 时，不注册输入与辅助变量之间的关系（`Slack.kt:130-132`）。`evaluate` 始终根据输入计算数学违约量，与注册的辅助变量值无关。因此，模型侧的值只有在最小化相应辅助表达式或另加最小性约束时才精确；不最小化时，关系允许出现被放大的松弛量。
 
 Rust 同样创建有符号结果 $s$、二值选择变量 $u$，并令 $d=x-y$，实际传入精确绝对差约束
 

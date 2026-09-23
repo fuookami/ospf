@@ -81,7 +81,7 @@ AndFunction::auto(polynomials: Vec<Linear<V>>) -> Self
 - `name_and_nz{i}`：每个输入对应一个非零指示量；
 - `name_and_side{i}`：每个非零指示量对应一个符号侧辅助量。
 
-`helperVariables` 包含结果、全部非零指示量和全部侧辅助量。对每个 $p_i$，令非零标志为 $a_i$、方向标志为 $s_i$、零值容差为 $t$、严格边界为 $g$。共享的四约束 Big-M 模型表示
+`helperVariables` 包含结果、全部非零指示量和全部侧辅助量；当每个输入多项式都恰好是系数为 1 的二值变量时，只注册结果，并跳过下方的指示块。对每个 $p_i$，令非零标志为 $a_i$、方向标志为 $s_i$、零值容差为 $t$、严格边界为 $g$。共享的四约束 Big-M 模型表示
 
 $$
 a_i=0\Rightarrow -t\le p_i\le t,
@@ -100,6 +100,8 @@ $$
 \qquad
 y \le a_i\quad(1\le i\le n).
 $$
+
+在全部输入均为二值变量时，指示块被替换为直接约束：对每个二值输入 $z_i$ 有 $y\le z_i$，另有 $\sum_i z_i\ge n\,y+1-n$。
 
 公开的 `resultPolynomial` 是 `name_and` 的单位系数多项式。实现位于 `And.kt`，并向 `AbstractLinearMechanismModel` 注册。
 

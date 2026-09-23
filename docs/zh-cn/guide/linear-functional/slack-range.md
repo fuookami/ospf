@@ -42,7 +42,8 @@ $$
 let slack = SlackRangeFunction::new(
     1, "slack_range", input, -2.0_f64, 2.0_f64,
 );
-assert_eq!(slack.calculate_value(&tokens, false), Some(0.0));
+assert_eq!(slack.lower_bound(), &-2.0);
+assert_eq!(slack.upper_bound(), &2.0);
 ```
 
 Rust 同样使用标量上下界、最大值模型和相同的直接求值公式。

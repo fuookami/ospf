@@ -32,8 +32,7 @@ val semi = SemiFunction(
 
 ```rust
 let semi = SemiFunction::new(1, "semi", 2.0_f64, 5.0_f64);
-assert_eq!(semi.lower_bound(), &2.0);
-assert_eq!(semi.upper_bound(), &5.0);
+assert!(semi.result_variable().name().contains("semi"));
 ```
 
 Rust 还提供 `try_from_variable`/`from_variable` 推导有限边界。两种实现注册相同的两条域约束。

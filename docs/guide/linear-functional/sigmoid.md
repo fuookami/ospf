@@ -37,13 +37,13 @@ q+(L-T)y\ge L,
 q+(F-U)y\le F.
 $$
 
-These are the only nonconstant rows: $y=1\Rightarrow q\ge T$ and $y=0\Rightarrow q\le F$. Rust `SigmoidStepFunction` uses the same relation-indicator model. Rust `SigmoidFunction::new` instead registers a sampled logistic piecewise-linear model and must not be interpreted as these two rows.
+These are the only nonconstant rows: $y=1\Rightarrow q\ge T$ and $y=0\Rightarrow q\le F$. Rust `SigmoidFunction` (the relation-step entry) uses the same relation-indicator model. Rust `LogisticFunction::new` instead registers a sampled logistic piecewise-linear model and must not be interpreted as these two rows.
 
 ## Current API
 
 ### Kotlin
 
-Source: [`Sigmoid.kt` (`SigmoidFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sigmoid.kt#L45-L300)
+Source: [`Sigmoid.kt` (`SigmoidFunction`)](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sigmoid.kt#L46-L324)
 
 The public factory and constructor expose the same condition, boundary, relation, bound, and naming parameters; use `conditionBounds` (or the `bounds` alias) for the finite solver range.
 
@@ -74,24 +74,24 @@ check(value == Flt64.one)
 
 ### Rust
 
-The Kotlin page's binary relation-step semantics map to Rust [`SigmoidStepFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/sigmoid.rs), not to Rust's same-named continuous PWL symbol:
+The Kotlin page's binary relation-step semantics map to Rust [`SigmoidFunction`](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-core/src/symbol/functions/sigmoid.rs), not to Rust's continuous PWL `LogisticFunction` symbol:
 
 ```rust
-SigmoidStepFunction::from_parts(
+SigmoidFunction::from_parts(
     condition: Linear<V>,
     relation: ConditionRelation,
     strict_boundary: V,
     bounds: ConditionBounds<V>,
-) -> Result<SigmoidStepFunction<V>>
+) -> Result<SigmoidFunction<V>>
 
-SigmoidFunction::new(
+LogisticFunction::new(
     id: u64,
     name: &str,
     input: Linear<V>,
-) -> SigmoidFunction<V>
+) -> LogisticFunction<V>
 ```
 
-`SigmoidStepFunction` is the closest Rust API: it classifies a relation with `True`/`False`/`Undefined` and exposes a binary `result_variable()`. It is also available through `SigmoidFunction::step`/`relation` and the aliases `SigmoidRelationFunction` and `ConditionalSigmoidFunction`. Rust's `SigmoidFunction::new` instead builds a sampled continuous logistic PWL function; its direct evaluator is $1/(1+e^{-x})$, so it is not a one-to-one replacement for the Kotlin step indicator.
+`SigmoidFunction` is the closest Rust API: it classifies a relation with `True`/`False`/`Undefined` and exposes a binary `result_variable()`. It is also available through `LogisticFunction::step`/`relation` and the aliases `SigmoidRelationFunction` and `ConditionalLogisticFunction`. Rust's `LogisticFunction::new` instead builds a sampled continuous logistic PWL function; its direct evaluator is $1/(1+e^{-x})$, so it is not a one-to-one replacement for the Kotlin step indicator.
 
 ## Evaluate versus solver
 
@@ -131,13 +131,13 @@ check(value == Flt64.one)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::{
-    ConditionBounds, ConditionRelation, SigmoidFunction, SigmoidStepFunction,
+    ConditionBounds, ConditionRelation, LogisticFunction, SigmoidFunction,
 };
 
 let condition = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);
-let step = SigmoidStepFunction::from_parts(
+let step = SigmoidFunction::from_parts(
     condition.clone(),
     ConditionRelation::Greater,
     0.1_f64,
@@ -146,7 +146,7 @@ let step = SigmoidStepFunction::from_parts(
 .unwrap();
 assert_eq!(step.evaluate(&1.0).unwrap(), Some(1.0));
 
-let smooth = SigmoidFunction::new(2, "sigmoid", condition);
+let smooth = LogisticFunction::new(2, "sigmoid", condition);
 let _smooth_result = smooth.result_variable();
 ```
 

@@ -61,7 +61,7 @@ $$
 
 ### Kotlin
 
-源码：[`Sin.kt`（`SinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sin.kt#L36-L118)
+源码：[`Sin.kt`（`SinFunction`）](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-core/src/main/fuookami/ospf/kotlin/core/symbol/function/Sin.kt#L37-L122)
 
 工厂也接受显式的 `samplingPoints` 列表。交给分段实现注册或求值时，点必须至少有两个、值为有限数，且 x 坐标严格递增。
 
@@ -136,7 +136,7 @@ check(value != null && value == Flt64.zero)
 ```
 
 ```rust [Rust]
-use ospf_rust_core::flatten::{Linear, LinearMonomial};
+use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
 use ospf_rust_core::symbol::function::SinFunction;
 
 let input = Linear::new(vec![LinearMonomial::new(1.0, 0)], 0.0);

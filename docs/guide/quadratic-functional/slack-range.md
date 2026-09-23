@@ -77,7 +77,7 @@ val slack = QuadraticSlackRangeFunction(
     converter = IntoValue.Identity,
     name = "quadratic-slack-range"
 )
-check(slack.evaluate(values) == Flt64(1.0))
+check(slack.evaluate(values, null, IntoValue.Identity) == Flt64(1.0))
 ```
 
 ```rust [Rust]
