@@ -404,6 +404,26 @@ where
         self
     }
 
+    /// 替换条件与 then 多项式，保留全部变量与符号标识 / Replace the condition and then polynomials while keeping every variable and symbol identity.
+    ///
+    /// 供二次包装器在机制展开时把桥接列重映射到模型索引使用；范围边界、
+    /// 关系与三值语义不变。
+    /// Used by quadratic wrappers to remap bridge columns to model indices during
+    /// mechanism expansion; bounds, relations, and three-valued semantics stay unchanged.
+    pub(crate) fn with_condition_and_then_polynomials(
+        &self,
+        condition: Linear<V>,
+        then_poly: Linear<V>,
+    ) -> Self {
+        let mut cloned = self.clone();
+        cloned.condition.condition = condition.clone();
+        cloned.then_poly = then_poly;
+        cloned.condition_indicator = cloned
+            .condition_indicator
+            .with_condition_polynomial(condition);
+        cloned
+    }
+
     /// 对条件差值分类 / Classify a condition difference
     pub fn classify(&self, difference: &V) -> Result<TruthValue> {
         self.validate()?;

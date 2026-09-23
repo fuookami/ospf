@@ -1,18 +1,24 @@
 //! 二次输入函数符号包装 / Quadratic-input function symbol wrappers
 //!
-//! # Rust 扩展说明 / Rust Extension Note
+//! # 与 Kotlin 对应关系 / Kotlin Parity Note
 //!
 //! 本文件包含 Quadratic*Function 包装器，提供基础函数符号的二次多项式视图 / This file contains Quadratic*Function wrappers that provide quadratic polynomial views of base function symbols
-//! 这些是 Rust 特有的扩展，没有直接的 1:1 Kotlin 文件对应 / These are Rust-specific extensions that don't have direct 1:1 Kotlin file counterparts
 //!
-//! Kotlin 有 4 个独立的 QuadraticXxx.kt 文件 / Kotlin has 4 independent QuadraticXxx.kt files:
+//! Kotlin 的独立 QuadraticXxx.kt 文件与 Rust 模块的对应关系 / Kotlin's independent QuadraticXxx.kt files map to Rust modules:
 //! - QuadraticLinear.kt → `quadratic_linear.rs`
 //! - QuadraticMin.kt → `quadratic_min.rs`
 //! - QuadraticMaskingRange.kt → `quadratic_masking_range.rs`
 //! - QuadraticInStepRange.kt → `quadratic_in_step_range.rs`
 //!
-//! 本文件中剩余的 14 个 Quadratic* 类型是 Rust 扩展 / The remaining 14 Quadratic* types in this file are Rust extensions
-//! 它们将二次多项式视图与基础函数符号组合在一起，为了便利和向后兼容而保留在此 / that combine quadratic polynomial views with base function symbols, kept here for convenience and backward compatibility
+//! 其余 Quadratic* 类型保留在本文件中，其中 Max/MaxMin/MinMax/If/IfIn/IfThen/
+//! Inequality/Masking/Abs 现在与 Kotlin 同名符号一一对应（组合桥接 + 精确二次
+//! 等式，语义继承线性对应物），其余类型（Binaryzation/Rounding/Mod/Slack/
+//! SlackRange/Sin/Cos/Piecewise/PositivePart/Logistic）仍是 Rust 侧便利扩展。
+//! The remaining Quadratic* types stay in this file. Max/MaxMin/MinMax/If/IfIn/IfThen/
+//! Inequality/Masking/Abs now mirror their Kotlin name-sakes one-to-one (bridge
+//! composition with an exact quadratic equality, semantics inherited from the linear
+//! counterparts), while the rest (Binaryzation/Rounding/Mod/Slack/SlackRange/Sin/Cos/
+//! Piecewise/PositivePart/Logistic) remain Rust-side convenience extensions.
 
 use crate::error::{ModelError, Result};
 use crate::model::{ConstraintRelation, LinearConstraint, LinearInequality, QuadraticConstraint};
@@ -26,7 +32,7 @@ use ospf_rust_math::symbol::{DynSymbol, Symbol, SymbolDynId};
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Sub};
 use std::sync::Arc;
 
 use super::super::{
@@ -38,12 +44,15 @@ use super::big_m::{
     infer_quadratic_bounds_from_tokens, infer_quadratic_difference_abs_bound_from_tokens,
     infer_quadratic_shifted_abs_bound_from_tokens, tighten_token_range,
 };
+use super::conditional::{classify, ConditionBounds, ConditionRelation, TruthValue};
 use super::quadratic_linear::*;
 use super::{
     AbsBranchBigM, AbsFunction, BinaryzationFunction, BinaryzationMethod,
-    BivariateLinearPiecewiseFunction, CosFunction, InequalityFunction, InequalityKind,
-    MaskingFunction, MaxFunction, ModFunction, Point2, RoundingFunction, RoundingKind,
-    LogisticFunction, SigmoidPrecision, SinFunction, SlackFunction, SlackRangeFunction, Triangle3,
+    BivariateLinearPiecewiseFunction, ConditionalIfFunction, ConditionalIndicatorFunction,
+    ConditionalThenFunction, CosFunction, IfInRangeFunction, InequalityFunction, InequalityKind,
+    MaskingFunction, MaxFunction, MinFunction, ModFunction, Point2,
+    RegisterableIfInRangeFunction, RoundingFunction, RoundingKind, LogisticFunction,
+    SigmoidPrecision, SinFunction, SlackFunction, SlackRangeFunction, Triangle3,
     UnivariateLinearPiecewiseFunction,
 };
 
@@ -1510,6 +1519,630 @@ where
     }
 }
 
+/// 二次输入的 MaxMin 函数符号：精确最小值，用于 max-min 目标 / Quadratic-input MaxMin function symbol: the exact minimum for max-min objectives
+///
+/// 与 Kotlin `QuadraticMaxMinFunction` 一致：每个含二次项的候选建立桥接变量与
+/// 精确二次等式，线性侧套用精确 `MinFunction`（即 `MaxMinFunction` 的委托目标）。
+/// 结果是候选的精确最小值，最大化它即为 max-min 目标。
+/// Mirrors Kotlin `QuadraticMaxMinFunction`: each candidate with quadratic terms gets a
+/// bridge variable and an exact quadratic equality, and the linear side reuses the exact
+/// `MinFunction` (the delegation target of `MaxMinFunction`). The result is the exact
+/// minimum of the candidates; maximizing it forms a max-min objective.
+#[derive(Debug, Clone)]
+pub struct QuadraticMaxMinFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    inputs: Vec<Quadratic<V>>,
+    bridges: Vec<QuadraticLinearFunction<V>>,
+    inner: MinFunction<V>,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> QuadraticMaxMinFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
+{
+    /// 创建二次输入 MaxMin 函数：y = min(p1, ..., pn) / Create a quadratic MaxMin function: y = min(p1, ..., pn)
+    pub fn new(id: u64, name: &str, inputs: Vec<Quadratic<V>>) -> Self {
+        let bridges: Vec<QuadraticLinearFunction<V>> = inputs
+            .iter()
+            .enumerate()
+            .map(|(i, input)| {
+                QuadraticLinearFunction::new(
+                    auxiliary_id(id, 651 + i as u64),
+                    &format!("{}_bridge{}", name, i),
+                    input.clone(),
+                )
+            })
+            .collect();
+        // 纯线性候选用原表达式表示；只有真正的二次候选才有桥接结果列。
+        // Pure-linear candidates stay expression-only; only genuine quadratic
+        // candidates get a bridge result column.
+        let linear_inputs: Vec<Linear<V>> = bridges
+            .iter()
+            .map(|bridge| {
+                bridge.input_linear_polynomial().unwrap_or_else(|| {
+                    Linear::new(
+                        vec![LinearMonomial::new(
+                            from_f64(1.0).expect("convert 1.0"),
+                            bridge.result_variable().index(),
+                        )],
+                        from_f64(0.0).expect("convert 0.0"),
+                    )
+                })
+            })
+            .collect();
+        // MaxMin 是 MinFunction(exact=true) 的转发符号 / MaxMin forwards to the exact MinFunction
+        let inner = MinFunction::new(id, name, linear_inputs, true);
+
+        Self {
+            id: IntermediateSymbolId::new(id, name),
+            inputs,
+            bridges,
+            inner,
+            declared_dependency_ids: Vec::new(),
+        }
+    }
+
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &ContinuousVariableItem {
+        self.inner.result_variable()
+    }
+
+    fn mapped_inputs(&self, symbol_to_index: &HashMap<usize, usize>) -> Result<Vec<Linear<V>>> {
+        self.bridges
+            .iter()
+            .map(|bridge| {
+                if !bridge.has_quadratic_terms() {
+                    return bridge.input_linear_polynomial().ok_or_else(|| {
+                        ModelError::InvalidConstraint(
+                            "quadratic max-min linear candidate cannot be represented as linear"
+                                .to_string(),
+                        )
+                        .into()
+                    });
+                }
+
+                let bridge_index = symbol_to_index
+                    .get(&(bridge.result_variable().id().unique_id() as usize))
+                    .copied()
+                    .ok_or_else(|| {
+                        ModelError::SymbolNotRegistered(format!(
+                            "quadratic max-min bridge variable id {}",
+                            bridge.result_variable().id().unique_id()
+                        ))
+                    })?;
+                Ok(Linear::new(
+                    vec![LinearMonomial::new(
+                        from_f64(1.0).expect("convert 1.0"),
+                        bridge_index,
+                    )],
+                    from_f64(0.0).expect("convert 0.0"),
+                ))
+            })
+            .collect()
+    }
+}
+
+impl<V> Display for QuadraticMaxMinFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "qmaxmin({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for QuadraticMaxMinFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for QuadraticMaxMinFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for QuadraticMaxMinFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn operation_category(&self) -> Category {
+        Category::Quadratic
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        let mapped_inputs = self.mapped_inputs(symbol_to_index)?;
+        let mapped_inner = self.inner.with_polynomials(mapped_inputs);
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        let mapped_inputs = self.mapped_inputs(symbol_to_index)?;
+        let mapped_inner = self.inner.with_polynomials(mapped_inputs);
+        let big_m = infer_big_m_for_quadratic_polynomials(&self.inputs, tokens, MIN_BIG_M);
+        match big_m {
+            Some(big_m) => constraints
+                .extend(mapped_inner.mechanism_constraints_with_big_m(symbol_to_index, big_m)?),
+            None => constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?),
+        }
+        Ok(constraints)
+    }
+
+    fn quadratic_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<QuadraticConstraint<V>>> {
+        let mut constraints = Vec::new();
+        for bridge in &self.bridges {
+            constraints.extend(bridge.quadratic_mechanism_constraints(symbol_to_index)?);
+        }
+        Ok(constraints)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_variable().index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("qmaxmin({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for QuadraticMaxMinFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        for bridge in &self.bridges {
+            bridge.register_tokens(tokens)?;
+        }
+        self.inner.register_tokens(tokens)?;
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let mut min_value: Option<f64> = None;
+        for input in &self.inputs {
+            let value = to_f64(&evaluate_quadratic(input, token_table, zero_if_none)?)?;
+            min_value = Some(match min_value {
+                Some(current) => current.min(value),
+                None => value,
+            });
+        }
+        match min_value {
+            Some(v) => from_f64(v),
+            None if zero_if_none => from_f64(0.0),
+            None => None,
+        }
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for QuadraticMaxMinFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.inner.to_linear_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 二次输入的 MinMax 函数符号：精确最大值，用于 min-max 目标 / Quadratic-input MinMax function symbol: the exact maximum for min-max objectives
+///
+/// 与 Kotlin `QuadraticMinMaxFunction` 一致：每个含二次项的候选建立桥接变量与
+/// 精确二次等式，线性侧套用精确 `MaxFunction`（即 `MinMaxFunction` 的委托目标）。
+/// 结果是候选的精确最大值，最小化它即为 min-max 目标。
+/// Mirrors Kotlin `QuadraticMinMaxFunction`: each candidate with quadratic terms gets a
+/// bridge variable and an exact quadratic equality, and the linear side reuses the exact
+/// `MaxFunction` (the delegation target of `MinMaxFunction`). The result is the exact
+/// maximum of the candidates; minimizing it forms a min-max objective.
+#[derive(Debug, Clone)]
+pub struct QuadraticMinMaxFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    inputs: Vec<Quadratic<V>>,
+    bridges: Vec<QuadraticLinearFunction<V>>,
+    inner: MaxFunction<V>,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> QuadraticMinMaxFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + FromPrimitive,
+{
+    /// 创建二次输入 MinMax 函数：y = max(p1, ..., pn) / Create a quadratic MinMax function: y = max(p1, ..., pn)
+    pub fn new(id: u64, name: &str, inputs: Vec<Quadratic<V>>) -> Self {
+        let bridges: Vec<QuadraticLinearFunction<V>> = inputs
+            .iter()
+            .enumerate()
+            .map(|(i, input)| {
+                QuadraticLinearFunction::new(
+                    auxiliary_id(id, 661 + i as u64),
+                    &format!("{}_bridge{}", name, i),
+                    input.clone(),
+                )
+            })
+            .collect();
+        // 纯线性候选用原表达式表示；只有真正的二次候选才有桥接结果列。
+        // Pure-linear candidates stay expression-only; only genuine quadratic
+        // candidates get a bridge result column.
+        let linear_inputs: Vec<Linear<V>> = bridges
+            .iter()
+            .map(|bridge| {
+                bridge.input_linear_polynomial().unwrap_or_else(|| {
+                    Linear::new(
+                        vec![LinearMonomial::new(
+                            from_f64(1.0).expect("convert 1.0"),
+                            bridge.result_variable().index(),
+                        )],
+                        from_f64(0.0).expect("convert 0.0"),
+                    )
+                })
+            })
+            .collect();
+        // MinMax 是 MaxFunction(exact=true) 的转发符号 / MinMax forwards to the exact MaxFunction
+        let inner = MaxFunction::new(id, name, linear_inputs, true);
+
+        Self {
+            id: IntermediateSymbolId::new(id, name),
+            inputs,
+            bridges,
+            inner,
+            declared_dependency_ids: Vec::new(),
+        }
+    }
+
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &ContinuousVariableItem {
+        self.inner.result_variable()
+    }
+
+    fn mapped_inputs(&self, symbol_to_index: &HashMap<usize, usize>) -> Result<Vec<Linear<V>>> {
+        self.bridges
+            .iter()
+            .map(|bridge| {
+                if !bridge.has_quadratic_terms() {
+                    return bridge.input_linear_polynomial().ok_or_else(|| {
+                        ModelError::InvalidConstraint(
+                            "quadratic min-max linear candidate cannot be represented as linear"
+                                .to_string(),
+                        )
+                        .into()
+                    });
+                }
+
+                let bridge_index = symbol_to_index
+                    .get(&(bridge.result_variable().id().unique_id() as usize))
+                    .copied()
+                    .ok_or_else(|| {
+                        ModelError::SymbolNotRegistered(format!(
+                            "quadratic min-max bridge variable id {}",
+                            bridge.result_variable().id().unique_id()
+                        ))
+                    })?;
+                Ok(Linear::new(
+                    vec![LinearMonomial::new(
+                        from_f64(1.0).expect("convert 1.0"),
+                        bridge_index,
+                    )],
+                    from_f64(0.0).expect("convert 0.0"),
+                ))
+            })
+            .collect()
+    }
+}
+
+impl<V> Display for QuadraticMinMaxFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "qminmax({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for QuadraticMinMaxFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for QuadraticMinMaxFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for QuadraticMinMaxFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn operation_category(&self) -> Category {
+        Category::Quadratic
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        let mapped_inputs = self.mapped_inputs(symbol_to_index)?;
+        let mapped_inner = self.inner.with_polynomials(mapped_inputs);
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        let mapped_inputs = self.mapped_inputs(symbol_to_index)?;
+        let mapped_inner = self.inner.with_polynomials(mapped_inputs);
+        let big_m = infer_big_m_for_quadratic_polynomials(&self.inputs, tokens, MIN_BIG_M);
+        match big_m {
+            Some(big_m) => constraints
+                .extend(mapped_inner.mechanism_constraints_with_big_m(symbol_to_index, big_m)?),
+            None => constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?),
+        }
+        Ok(constraints)
+    }
+
+    fn quadratic_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<QuadraticConstraint<V>>> {
+        let mut constraints = Vec::new();
+        for bridge in &self.bridges {
+            constraints.extend(bridge.quadratic_mechanism_constraints(symbol_to_index)?);
+        }
+        Ok(constraints)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.result_variable().index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("qminmax({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for QuadraticMinMaxFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        for bridge in &self.bridges {
+            bridge.register_tokens(tokens)?;
+        }
+        self.inner.register_tokens(tokens)?;
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let mut max_value: Option<f64> = None;
+        for input in &self.inputs {
+            let value = to_f64(&evaluate_quadratic(input, token_table, zero_if_none)?)?;
+            max_value = Some(match max_value {
+                Some(current) => current.max(value),
+                None => value,
+            });
+        }
+        match max_value {
+            Some(v) => from_f64(v),
+            None if zero_if_none => from_f64(0.0),
+            None => None,
+        }
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for QuadraticMinMaxFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.inner.to_linear_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
 /// 二次输入的松弛函数符号 / Quadratic-input slack function symbol
 #[derive(Debug, Clone)]
 pub struct QuadraticSlackFunction<V = f64>
@@ -2518,6 +3151,1131 @@ where
 }
 
 impl<V> LinearIntermediateSymbol<V> for QuadraticMaskingFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.inner.to_linear_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 二次输入的条件指示函数符号 / Quadratic-input conditional indicator function symbol
+///
+/// 与 Kotlin `QuadraticIfFunction` 一致：对有界二次条件建立桥接变量与精确二次
+/// 等式，线性侧套用范围驱动的 `ConditionalIndicatorFunction`，保留其真、假分支
+/// 间隔与三值语义。Rust 侧不提供 `IfFunction` 三元选择器对应物——本符号的
+/// 结果是二值关系指标。
+/// Mirrors Kotlin `QuadraticIfFunction`: the bounded quadratic condition gets a bridge
+/// variable and an exact quadratic equality, and the linear side reuses the range-driven
+/// `ConditionalIndicatorFunction`, preserving its strict-branch gap and three-valued
+/// semantics. There is no Rust counterpart of the ternary `IfFunction` selector — this
+/// symbol's result is the binary relation indicator.
+#[derive(Debug, Clone)]
+pub struct QuadraticIfFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    input: Quadratic<V>,
+    relation: ConditionRelation,
+    strict_boundary: V,
+    condition_bounds: ConditionBounds<V>,
+    bridge: QuadraticLinearFunction<V>,
+    inner: ConditionalIndicatorFunction<V>,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> QuadraticIfFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 创建二次条件指示函数 / Create a quadratic conditional indicator function.
+    ///
+    /// `condition_bounds` 必须覆盖条件表达式的实际取值范围；构造阶段即完成
+    /// 范围、边界与有限性预检。
+    /// `condition_bounds` must cover the actual range of the condition expression;
+    /// bounds, boundary, and finiteness are checked during construction.
+    pub fn new(
+        id: u64,
+        name: &str,
+        condition: Quadratic<V>,
+        relation: ConditionRelation,
+        strict_boundary: V,
+        condition_bounds: ConditionBounds<V>,
+    ) -> Result<Self> {
+        let bridge = QuadraticLinearFunction::new(
+            auxiliary_id(id, 671),
+            &format!("{}_bridge", name),
+            condition.clone(),
+        );
+        let bridge_condition = bridge.input_linear_polynomial().unwrap_or_else(|| {
+            Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge.result_variable().index(),
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            )
+        });
+        let inner = ConditionalIndicatorFunction::new(
+            auxiliary_id(id, 672),
+            name,
+            bridge_condition,
+            relation,
+            strict_boundary.clone(),
+            condition_bounds.clone(),
+        )?;
+
+        Ok(Self {
+            id: IntermediateSymbolId::new(id, name),
+            input: condition,
+            relation,
+            strict_boundary,
+            condition_bounds,
+            bridge,
+            inner,
+            declared_dependency_ids: Vec::new(),
+        })
+    }
+
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &BinaryVariableItem {
+        self.inner.result_variable()
+    }
+
+    /// 获取条件关系 / Get the condition relation
+    pub fn relation(&self) -> ConditionRelation {
+        self.relation
+    }
+
+    /// 获取严格边界 / Get the strict boundary
+    pub fn strict_boundary(&self) -> &V {
+        &self.strict_boundary
+    }
+
+    /// 获取条件范围 / Get the condition bounds
+    pub fn condition_bounds(&self) -> &ConditionBounds<V> {
+        &self.condition_bounds
+    }
+
+    fn mapped_inner(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<ConditionalIndicatorFunction<V>> {
+        if !self.bridge.has_quadratic_terms() {
+            return Ok(self.inner.clone());
+        }
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic if bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        Ok(self.inner.with_condition_polynomial(Linear::new(
+            vec![LinearMonomial::new(
+                from_f64(1.0).expect("convert 1.0"),
+                bridge_index,
+            )],
+            from_f64(0.0).expect("convert 0.0"),
+        )))
+    }
+}
+
+impl<V> Display for QuadraticIfFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "qif({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for QuadraticIfFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for QuadraticIfFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for QuadraticIfFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn operation_category(&self) -> Category {
+        Category::Quadratic
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let mapped_inner = self.mapped_inner(symbol_to_index)?;
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        _tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 指示器的 Big-M 完全由显式条件范围决定，不读取令牌边界。
+        // The indicator's Big-M is fully determined by the explicit condition bounds
+        // and never reads token bounds.
+        self.mechanism_constraints(symbol_to_index)
+    }
+
+    fn quadratic_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<QuadraticConstraint<V>>> {
+        self.bridge.quadratic_mechanism_constraints(symbol_to_index)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.inner.result_variable().index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("qif({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for QuadraticIfFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.bridge.register_tokens(tokens)?;
+        self.inner.register_tokens(tokens)?;
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let difference = evaluate_quadratic(&self.input, token_table, zero_if_none)?;
+        let truth = classify(&difference, self.relation, &self.strict_boundary).ok()?;
+        match truth {
+            TruthValue::True => from_f64(1.0),
+            TruthValue::False => from_f64(0.0),
+            TruthValue::Undefined if zero_if_none => from_f64(0.0),
+            TruthValue::Undefined => None,
+        }
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for QuadraticIfFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.inner.to_linear_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 二次输入的闭区间指示函数符号 / Quadratic-input closed-interval indicator function symbol
+///
+/// 与 Kotlin `QuadraticIfInFunction` 一致：对有界二次输入建立桥接变量与精确
+/// 二次等式，线性侧套用 `RegisterableIfInRangeFunction` 的闭区间语义——
+/// `y = 1` 当且仅当 `lower <= x <= upper`，区间外为 `0`，间隔内未定义。
+/// Mirrors Kotlin `QuadraticIfInFunction`: the bounded quadratic input gets a bridge
+/// variable and an exact quadratic equality, and the linear side reuses the
+/// `RegisterableIfInRangeFunction` closed-interval semantics — `y = 1` iff
+/// `lower <= x <= upper`, `0` outside, undefined inside the strict-boundary gap.
+#[derive(Debug, Clone)]
+pub struct QuadraticIfInFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    input: Quadratic<V>,
+    lower: V,
+    upper: V,
+    strict_boundary: V,
+    input_bounds: ConditionBounds<V>,
+    bridge: QuadraticLinearFunction<V>,
+    inner: RegisterableIfInRangeFunction<V>,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> QuadraticIfInFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + ToPrimitive
+        + FromPrimitive
+        + Sub<Output = V>
+        + Zero,
+{
+    /// 把区间侧条件换算到指定输入表达式上 / Shift the interval side conditions onto the given input expression.
+    fn side_conditions(
+        x: &Linear<V>,
+        lower: &V,
+        upper: &V,
+        input_bounds: &ConditionBounds<V>,
+        strict_boundary: &V,
+    ) -> Result<(ConditionalIfFunction<V>, ConditionalIfFunction<V>)> {
+        // 下侧：x - lower >= 0 / Lower side: x - lower >= 0
+        let lower_condition = Linear::new(
+            x.monomials().to_vec(),
+            x.constant_term().clone() - lower.clone(),
+        );
+        let lower_side = ConditionalIfFunction::new(
+            lower_condition,
+            ConditionRelation::GreaterEqual,
+            strict_boundary.clone(),
+            ConditionBounds {
+                lower: input_bounds.lower.clone() - lower.clone(),
+                upper: input_bounds.upper.clone() - lower.clone(),
+            },
+        )?;
+        // 上侧：upper - x >= 0 / Upper side: upper - x >= 0
+        let upper_condition = Linear::new(
+            x.monomials()
+                .iter()
+                .map(|monomial| {
+                    LinearMonomial::new(
+                        <V as Zero>::zero() - monomial.coefficient().clone(),
+                        monomial.var_index(),
+                    )
+                })
+                .collect(),
+            upper.clone() - x.constant_term().clone(),
+        );
+        let upper_side = ConditionalIfFunction::new(
+            upper_condition,
+            ConditionRelation::GreaterEqual,
+            strict_boundary.clone(),
+            ConditionBounds {
+                lower: upper.clone() - input_bounds.upper.clone(),
+                upper: upper.clone() - input_bounds.lower.clone(),
+            },
+        )?;
+        Ok((lower_side, upper_side))
+    }
+
+    /// 创建二次闭区间指示函数 / Create a quadratic closed-interval indicator function.
+    ///
+    /// `input_bounds` 必须覆盖输入表达式的实际取值范围；`lower <= upper` 与
+    /// 单变量条件等校验在构造阶段完成。
+    /// `input_bounds` must cover the actual range of the input expression; the
+    /// `lower <= upper` ordering and single-variable condition checks happen during
+    /// construction.
+    pub fn new(
+        id: u64,
+        name: &str,
+        input: Quadratic<V>,
+        lower: V,
+        upper: V,
+        strict_boundary: V,
+        input_bounds: ConditionBounds<V>,
+    ) -> Result<Self> {
+        let bridge = QuadraticLinearFunction::new(
+            auxiliary_id(id, 681),
+            &format!("{}_bridge", name),
+            input.clone(),
+        );
+        let x = bridge.input_linear_polynomial().unwrap_or_else(|| {
+            Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge.result_variable().index(),
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            )
+        });
+        let (lower_side, upper_side) =
+            Self::side_conditions(&x, &lower, &upper, &input_bounds, &strict_boundary)?;
+        let range = IfInRangeFunction::new(lower_side, upper_side)?;
+        let inner = RegisterableIfInRangeFunction::new(auxiliary_id(id, 682), name, range)?;
+
+        Ok(Self {
+            id: IntermediateSymbolId::new(id, name),
+            input,
+            lower,
+            upper,
+            strict_boundary,
+            input_bounds,
+            bridge,
+            inner,
+            declared_dependency_ids: Vec::new(),
+        })
+    }
+
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &BinaryVariableItem {
+        self.inner.result_variable()
+    }
+
+    /// 获取区间下界 / Get the interval lower endpoint
+    pub fn lower(&self) -> &V {
+        &self.lower
+    }
+
+    /// 获取区间上界 / Get the interval upper endpoint
+    pub fn upper(&self) -> &V {
+        &self.upper
+    }
+
+    /// 获取严格边界 / Get the strict boundary
+    pub fn strict_boundary(&self) -> &V {
+        &self.strict_boundary
+    }
+
+    /// 获取输入范围 / Get the input bounds
+    pub fn input_bounds(&self) -> &ConditionBounds<V> {
+        &self.input_bounds
+    }
+}
+
+impl<V> QuadraticIfInFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    fn mapped_inner(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<RegisterableIfInRangeFunction<V>> {
+        if !self.bridge.has_quadratic_terms() {
+            return Ok(self.inner.clone());
+        }
+        let bridge_index = symbol_to_index
+            .get(&(self.bridge.result_variable().id().unique_id() as usize))
+            .copied()
+            .ok_or_else(|| {
+                ModelError::SymbolNotRegistered(format!(
+                    "quadratic if-in bridge variable id {}",
+                    self.bridge.result_variable().id().unique_id()
+                ))
+            })?;
+        // 构造期侧条件以桥接列的 token 索引书写；机制展开时仅做索引重映射，
+        // 不重新执行任何 V 上的算术，保证与构造期逐字面一致。
+        // The construction-time side conditions are written against the bridge
+        // column's token index; mechanism expansion only remaps that index without
+        // re-running any V arithmetic, staying literally identical to construction.
+        let from_index = self.bridge.result_variable().index();
+        let descriptor = self.inner.condition_descriptor();
+        let lower_condition =
+            Self::remap_condition_indices(&descriptor.lower.condition, from_index, bridge_index);
+        let upper_condition =
+            Self::remap_condition_indices(&descriptor.upper.condition, from_index, bridge_index);
+        Ok(self.inner.with_side_conditions(lower_condition, upper_condition))
+    }
+
+    fn remap_condition_indices(
+        condition: &Linear<V>,
+        from_index: usize,
+        to_index: usize,
+    ) -> Linear<V> {
+        Linear::new(
+            condition
+                .monomials()
+                .iter()
+                .map(|monomial| {
+                    let index = monomial.var_index();
+                    let mapped = if index == from_index {
+                        to_index
+                    } else {
+                        index
+                    };
+                    LinearMonomial::new(monomial.coefficient().clone(), mapped)
+                })
+                .collect(),
+            condition.constant_term().clone(),
+        )
+    }
+}
+
+impl<V> Display for QuadraticIfInFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "qifin({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for QuadraticIfInFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for QuadraticIfInFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for QuadraticIfInFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn operation_category(&self) -> Category {
+        Category::Quadratic
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = self.bridge.mechanism_constraints(symbol_to_index)?;
+        let mapped_inner = self.mapped_inner(symbol_to_index)?;
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        _tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 两侧指示器的 Big-M 完全由显式范围决定，不读取令牌边界。
+        // The side indicators' Big-M is fully determined by the explicit bounds and
+        // never reads token bounds.
+        self.mechanism_constraints(symbol_to_index)
+    }
+
+    fn quadratic_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<QuadraticConstraint<V>>> {
+        self.bridge.quadratic_mechanism_constraints(symbol_to_index)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.inner.result_variable().index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("qifin({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for QuadraticIfInFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.bridge.register_tokens(tokens)?;
+        self.inner.register_tokens(tokens)?;
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        // 直接求值在 f64 上完成区间差值换算，与 qmin/qmax 的直接求值路径一致。
+        // Direct evaluation shifts the interval differences in f64, matching the
+        // qmin/qmax direct-evaluation path.
+        let x = to_f64(&evaluate_quadratic(&self.input, token_table, zero_if_none)?)?;
+        let lower = to_f64(&self.lower)?;
+        let upper = to_f64(&self.upper)?;
+        let lower_difference = from_f64(x - lower)?;
+        let upper_difference = from_f64(upper - x)?;
+        let lower_truth = classify(
+            &lower_difference,
+            ConditionRelation::GreaterEqual,
+            &self.strict_boundary,
+        )
+        .ok()?;
+        let upper_truth = classify(
+            &upper_difference,
+            ConditionRelation::GreaterEqual,
+            &self.strict_boundary,
+        )
+        .ok()?;
+        match (lower_truth, upper_truth) {
+            (TruthValue::False, _) | (_, TruthValue::False) => from_f64(0.0),
+            (TruthValue::True, TruthValue::True) => from_f64(1.0),
+            _ if zero_if_none => from_f64(0.0),
+            _ => None,
+        }
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for QuadraticIfInFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn to_linear_polynomial(&self) -> Linear<V> {
+        self.inner.to_linear_polynomial()
+    }
+
+    fn to_quadratic_polynomial(&self) -> Quadratic<V> {
+        Quadratic::from_linear(&self.to_linear_polynomial())
+    }
+}
+
+/// 二次输入的条件值函数符号 / Quadratic-input conditional value function symbol
+///
+/// 与 Kotlin `QuadraticIfThenFunction` 一致：条件与 then 表达式分别建立桥接
+/// 变量与精确二次等式，线性侧套用 `ConditionalThenFunction`——条件成立时
+/// 结果为 then 表达式，否则为零；条件落在间隔内时未定义。
+/// Mirrors Kotlin `QuadraticIfThenFunction`: the condition and the then expression each
+/// get a bridge variable and an exact quadratic equality, and the linear side reuses
+/// `ConditionalThenFunction` — the result equals the then expression when the condition
+/// holds, zero otherwise, and is undefined inside the strict-boundary gap.
+#[derive(Debug, Clone)]
+pub struct QuadraticIfThenFunction<V = f64>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    id: IntermediateSymbolId,
+    condition: Quadratic<V>,
+    then_poly: Quadratic<V>,
+    relation: ConditionRelation,
+    strict_boundary: V,
+    condition_bounds: ConditionBounds<V>,
+    then_bounds: ConditionBounds<V>,
+    bridge_condition: QuadraticLinearFunction<V>,
+    bridge_then: QuadraticLinearFunction<V>,
+    inner: ConditionalThenFunction<V>,
+    declared_dependency_ids: Vec<u64>,
+}
+
+impl<V> QuadraticIfThenFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static + ToPrimitive + FromPrimitive,
+{
+    /// 创建二次条件值函数 / Create a quadratic conditional value function.
+    ///
+    /// `condition_bounds` 与 `then_bounds` 必须分别覆盖条件与 then 表达式的
+    /// 实际取值范围；校验在构造阶段完成。
+    /// `condition_bounds` and `then_bounds` must cover the actual ranges of the condition
+    /// and then expressions; validation happens during construction.
+    pub fn new(
+        id: u64,
+        name: &str,
+        condition: Quadratic<V>,
+        then_poly: Quadratic<V>,
+        relation: ConditionRelation,
+        strict_boundary: V,
+        condition_bounds: ConditionBounds<V>,
+        then_bounds: ConditionBounds<V>,
+    ) -> Result<Self> {
+        let bridge_condition = QuadraticLinearFunction::new(
+            auxiliary_id(id, 691),
+            &format!("{}_bridge_condition", name),
+            condition.clone(),
+        );
+        let bridge_then = QuadraticLinearFunction::new(
+            auxiliary_id(id, 692),
+            &format!("{}_bridge_then", name),
+            then_poly.clone(),
+        );
+        let condition_linear = bridge_condition
+            .input_linear_polynomial()
+            .unwrap_or_else(|| {
+                Linear::new(
+                    vec![LinearMonomial::new(
+                        from_f64(1.0).expect("convert 1.0"),
+                        bridge_condition.result_variable().index(),
+                    )],
+                    from_f64(0.0).expect("convert 0.0"),
+                )
+            });
+        let then_linear = bridge_then.input_linear_polynomial().unwrap_or_else(|| {
+            Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge_then.result_variable().index(),
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            )
+        });
+        let inner = ConditionalThenFunction::from_parts_with_bounds(
+            condition_linear,
+            relation,
+            strict_boundary.clone(),
+            condition_bounds.clone(),
+            then_linear,
+            then_bounds.clone(),
+        )?;
+
+        Ok(Self {
+            id: IntermediateSymbolId::new(id, name),
+            condition,
+            then_poly,
+            relation,
+            strict_boundary,
+            condition_bounds,
+            then_bounds,
+            bridge_condition,
+            bridge_then,
+            inner,
+            declared_dependency_ids: Vec::new(),
+        })
+    }
+
+    /// 设置声明的依赖 ID / Set declared dependency IDs
+    pub fn with_declared_dependencies(mut self, dependency_ids: Vec<u64>) -> Self {
+        self.declared_dependency_ids = dependency_ids;
+        self
+    }
+
+    /// 获取结果变量 / Get the result variable
+    pub fn result_variable(&self) -> &ContinuousVariableItem {
+        self.inner.result_variable()
+    }
+
+    /// 获取条件关系 / Get the condition relation
+    pub fn relation(&self) -> ConditionRelation {
+        self.relation
+    }
+
+    /// 获取严格边界 / Get the strict boundary
+    pub fn strict_boundary(&self) -> &V {
+        &self.strict_boundary
+    }
+
+    /// 获取条件范围 / Get the condition bounds
+    pub fn condition_bounds(&self) -> &ConditionBounds<V> {
+        &self.condition_bounds
+    }
+
+    /// 获取 then 表达式范围 / Get the then-expression bounds
+    pub fn then_bounds(&self) -> &ConditionBounds<V> {
+        &self.then_bounds
+    }
+
+    fn mapped_inner(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<ConditionalThenFunction<V>> {
+        if !self.bridge_condition.has_quadratic_terms()
+            && !self.bridge_then.has_quadratic_terms()
+        {
+            return Ok(self.inner.clone());
+        }
+        let mapped_condition = if self.bridge_condition.has_quadratic_terms() {
+            let bridge_index = symbol_to_index
+                .get(&(self.bridge_condition.result_variable().id().unique_id() as usize))
+                .copied()
+                .ok_or_else(|| {
+                    ModelError::SymbolNotRegistered(format!(
+                        "quadratic if-then condition bridge variable id {}",
+                        self.bridge_condition.result_variable().id().unique_id()
+                    ))
+                })?;
+            Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge_index,
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            )
+        } else {
+            self.bridge_condition
+                .input_linear_polynomial()
+                .ok_or_else(|| {
+                    ModelError::InvalidConstraint(
+                        "quadratic if-then linear condition cannot be represented as linear"
+                            .to_string(),
+                    )
+                })?
+        };
+        let mapped_then = if self.bridge_then.has_quadratic_terms() {
+            let bridge_index = symbol_to_index
+                .get(&(self.bridge_then.result_variable().id().unique_id() as usize))
+                .copied()
+                .ok_or_else(|| {
+                    ModelError::SymbolNotRegistered(format!(
+                        "quadratic if-then then bridge variable id {}",
+                        self.bridge_then.result_variable().id().unique_id()
+                    ))
+                })?;
+            Linear::new(
+                vec![LinearMonomial::new(
+                    from_f64(1.0).expect("convert 1.0"),
+                    bridge_index,
+                )],
+                from_f64(0.0).expect("convert 0.0"),
+            )
+        } else {
+            self.bridge_then.input_linear_polynomial().ok_or_else(|| {
+                ModelError::InvalidConstraint(
+                    "quadratic if-then linear then expression cannot be represented as linear"
+                        .to_string(),
+                )
+            })?
+        };
+        Ok(self
+            .inner
+            .with_condition_and_then_polynomials(mapped_condition, mapped_then))
+    }
+}
+
+impl<V> Display for QuadraticIfThenFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "qifthen({})", self.id.name)
+    }
+}
+
+impl<V> DynSymbol for QuadraticIfThenFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    fn name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn display_name(&self) -> &str {
+        &self.id.name
+    }
+
+    fn dyn_id(&self) -> SymbolDynId<'_> {
+        SymbolDynId::standalone(self.id.id as usize)
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<V> Symbol for QuadraticIfThenFunction<V>
+where
+    V: Clone + Debug + Send + Sync + 'static,
+{
+    type Id = IntermediateSymbolId;
+
+    fn id(&self) -> Self::Id {
+        self.id.clone()
+    }
+}
+
+impl<V> IntermediateSymbol<V> for QuadraticIfThenFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn category(&self) -> Category {
+        Category::Linear
+    }
+
+    fn operation_category(&self) -> Category {
+        Category::Quadratic
+    }
+
+    fn cached(&self) -> bool {
+        false
+    }
+
+    fn dependencies(&self) -> HashSet<Arc<dyn IntermediateSymbol<V>>> {
+        HashSet::new()
+    }
+
+    fn declared_dependency_ids(&self) -> Vec<u64> {
+        self.declared_dependency_ids.clone()
+    }
+
+    fn flush(&self, _force: bool) {}
+
+    fn register_auxiliary_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        <Self as FunctionSymbol<V>>::register_tokens(self, tokens)
+    }
+
+    fn mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        let mut constraints = Vec::new();
+        constraints.extend(self.bridge_condition.mechanism_constraints(symbol_to_index)?);
+        constraints.extend(self.bridge_then.mechanism_constraints(symbol_to_index)?);
+        let mapped_inner = self.mapped_inner(symbol_to_index)?;
+        constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
+        Ok(constraints)
+    }
+
+    fn mechanism_constraints_with_tokens(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+        _tokens: &[Token<V>],
+    ) -> Result<Vec<LinearConstraint<V>>> {
+        // 条件指示器的 Big-M 完全由显式范围决定，不读取令牌边界。
+        // The condition indicator's Big-M is fully determined by the explicit bounds
+        // and never reads token bounds.
+        self.mechanism_constraints(symbol_to_index)
+    }
+
+    fn quadratic_mechanism_constraints(
+        &self,
+        symbol_to_index: &HashMap<usize, usize>,
+    ) -> Result<Vec<QuadraticConstraint<V>>> {
+        let mut constraints = Vec::new();
+        constraints.extend(
+            self.bridge_condition
+                .quadratic_mechanism_constraints(symbol_to_index)?,
+        );
+        constraints.extend(
+            self.bridge_then
+                .quadratic_mechanism_constraints(symbol_to_index)?,
+        );
+        Ok(constraints)
+    }
+
+    fn evaluate_from_tokens(
+        &self,
+        token_table: &dyn TokenList<V>,
+        zero_if_none: bool,
+    ) -> Option<V> {
+        <Self as FunctionSymbol<V>>::calculate_value(self, token_table, zero_if_none)
+    }
+
+    fn prepare(&self, values: &HashMap<usize, V>) -> Option<V> {
+        values.get(&self.inner.result_variable().index()).cloned()
+    }
+
+    fn to_raw_string(&self, _unfold: u64) -> String {
+        format!("qifthen({})", self.id.name)
+    }
+}
+
+impl<V> FunctionSymbol<V> for QuadraticIfThenFunction<V>
+where
+    V: Clone
+        + Debug
+        + Send
+        + Sync
+        + 'static
+        + Add<Output = V>
+        + Mul<Output = V>
+        + Zero
+        + ToPrimitive
+        + FromPrimitive,
+    f64: IntoValue<V>,
+{
+    fn register_tokens(&self, tokens: &mut Vec<Token<V>>) -> Result<()> {
+        self.bridge_condition.register_tokens(tokens)?;
+        self.bridge_then.register_tokens(tokens)?;
+        self.inner.register_tokens(tokens)?;
+        Ok(())
+    }
+
+    fn calculate_value(&self, token_table: &dyn TokenList<V>, zero_if_none: bool) -> Option<V> {
+        let difference = evaluate_quadratic(&self.condition, token_table, zero_if_none)?;
+        let truth = classify(&difference, self.relation, &self.strict_boundary).ok()?;
+        match truth {
+            TruthValue::True => evaluate_quadratic(&self.then_poly, token_table, zero_if_none),
+            TruthValue::False => from_f64(0.0),
+            TruthValue::Undefined if zero_if_none => from_f64(0.0),
+            TruthValue::Undefined => None,
+        }
+    }
+}
+
+impl<V> LinearIntermediateSymbol<V> for QuadraticIfThenFunction<V>
 where
     V: Clone
         + Debug
@@ -4897,6 +6655,11 @@ impl_quadratic_function_symbol!(
     QuadraticRoundingFunction,
     QuadraticModFunction,
     QuadraticMaxFunction,
+    QuadraticMaxMinFunction,
+    QuadraticMinMaxFunction,
+    QuadraticIfFunction,
+    QuadraticIfInFunction,
+    QuadraticIfThenFunction,
     QuadraticSlackFunction,
     QuadraticSlackRangeFunction,
     QuadraticMaskingFunction,
@@ -5225,6 +6988,315 @@ mod tests {
             .expect("max upper constraint should exist");
 
         assert!((coefficient_for_index(upper, selector_index) - 4.0).abs() <= 1e-9);
+    }
+
+    #[test]
+    fn quadratic_max_min_and_min_max_calculate_value() {
+        let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
+        let y = ContinuousVariableItem::create(VariableId::standalone(1), "y");
+        let mut tokens = VecTokenList::<f64>::new();
+        let tx = Token::from_generic(x, 0);
+        tx.set_result(2.0);
+        tokens.add_token(tx);
+        let ty = Token::from_generic(y, 1);
+        ty.set_result(1.5);
+        tokens.add_token(ty);
+
+        let quad1 = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0); // 4.0
+        let quad2 = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 1)], 0.0); // 3.0
+
+        let qmaxmin =
+            QuadraticMaxMinFunction::new(20051, "qmaxmin", vec![quad1.clone(), quad2.clone()]);
+        let qminmax = QuadraticMinMaxFunction::new(20052, "qminmax", vec![quad1, quad2]);
+        assert_eq!(qmaxmin.calculate_value(&tokens, false), Some(3.0));
+        assert_eq!(qminmax.calculate_value(&tokens, false), Some(4.0));
+    }
+
+    #[test]
+    fn quadratic_if_classifies_three_valued_condition() {
+        // 条件 x^2，x ∈ [0, 2] => 条件范围 [0, 4]，间隔 0.5
+        // Condition x^2 with x ∈ [0, 2] => condition range [0, 4], gap 0.5
+        let condition = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qif: QuadraticIfFunction<f64> = QuadraticIfFunction::new(
+            20053,
+            "qif_value",
+            condition,
+            ConditionRelation::Greater,
+            0.5,
+            ConditionBounds {
+                lower: 0.0,
+                upper: 4.0,
+            },
+        )
+        .expect("quadratic if should construct");
+
+        let tokens_for = |value: f64| {
+            let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
+            let mut tokens = VecTokenList::<f64>::new();
+            let tx = Token::from_generic(x, 0);
+            tx.set_result(value);
+            tokens.add_token(tx);
+            tokens
+        };
+
+        assert_eq!(
+            qif.calculate_value(&tokens_for(2.0), false),
+            Some(1.0) // x^2 = 4 >= 0.5
+        );
+        assert_eq!(
+            qif.calculate_value(&tokens_for(0.0), false),
+            Some(0.0) // x^2 = 0 <= 0
+        );
+        assert_eq!(
+            qif.calculate_value(&tokens_for(0.5), false),
+            None // x^2 = 0.25 falls inside (0, 0.5)
+        );
+    }
+
+    #[test]
+    fn quadratic_if_registers_indicator_rows_over_the_bridge_column() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let condition = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qif: QuadraticIfFunction<f64> = QuadraticIfFunction::new(
+            20054,
+            "qif_bound",
+            condition,
+            ConditionRelation::Greater,
+            0.5,
+            ConditionBounds {
+                lower: 0.0,
+                upper: 4.0,
+            },
+        )
+        .expect("quadratic if should construct");
+
+        let mut aux_tokens = Vec::new();
+        qif.register_tokens(&mut aux_tokens)
+            .expect("quadratic if tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let bridge_index = *symbol_to_index
+            .get(&(qif.bridge.result_variable().id().unique_id() as usize))
+            .expect("bridge index should exist");
+        let tokens = vec![Token::from_generic(x, 0)];
+
+        let constraints = qif
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic if constraints should be generated");
+        assert!(
+            constraints.iter().any(|constraint| {
+                constraint
+                    .inequality
+                    .polynomial
+                    .monomials()
+                    .iter()
+                    .any(|monomial| monomial.var_index() == bridge_index)
+            }),
+            "indicator rows must reference the mapped bridge column"
+        );
+    }
+
+    #[test]
+    fn quadratic_if_in_classifies_closed_interval() {
+        // 输入 x^2，x ∈ [0, 2] => 输入范围 [0, 4]，区间 [1, 4]
+        // Input x^2 with x ∈ [0, 2] => input range [0, 4], interval [1, 4]
+        let input = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qifin: QuadraticIfInFunction<f64> = QuadraticIfInFunction::new(
+            20055,
+            "qifin_value",
+            input,
+            1.0,
+            4.0,
+            0.5,
+            ConditionBounds {
+                lower: 0.0,
+                upper: 4.0,
+            },
+        )
+        .expect("quadratic if-in should construct");
+
+        let tokens_for = |value: f64| {
+            let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
+            let mut tokens = VecTokenList::<f64>::new();
+            let tx = Token::from_generic(x, 0);
+            tx.set_result(value);
+            tokens.add_token(tx);
+            tokens
+        };
+
+        assert_eq!(
+            qifin.calculate_value(&tokens_for(1.5), false),
+            Some(1.0) // x^2 = 2.25 ∈ [1, 4]
+        );
+        assert_eq!(
+            qifin.calculate_value(&tokens_for(2.0), false),
+            Some(1.0) // x^2 = 4 is the closed upper endpoint
+        );
+        assert_eq!(
+            qifin.calculate_value(&tokens_for(0.5), false),
+            Some(0.0) // x^2 = 0.25 < 1
+        );
+    }
+
+    #[test]
+    fn quadratic_if_in_registers_interval_rows_over_the_bridge_column() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let input = Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], 0.0);
+        let qifin: QuadraticIfInFunction<f64> = QuadraticIfInFunction::new(
+            20056,
+            "qifin_bound",
+            input,
+            1.0,
+            4.0,
+            0.5,
+            ConditionBounds {
+                lower: 0.0,
+                upper: 4.0,
+            },
+        )
+        .expect("quadratic if-in should construct");
+
+        let mut aux_tokens = Vec::new();
+        qifin.register_tokens(&mut aux_tokens)
+            .expect("quadratic if-in tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let bridge_index = *symbol_to_index
+            .get(&(qifin.bridge.result_variable().id().unique_id() as usize))
+            .expect("bridge index should exist");
+        let tokens = vec![Token::from_generic(x, 0)];
+
+        let constraints = qifin
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic if-in constraints should be generated");
+        assert!(
+            constraints.iter().any(|constraint| {
+                constraint
+                    .inequality
+                    .polynomial
+                    .monomials()
+                    .iter()
+                    .any(|monomial| monomial.var_index() == bridge_index)
+            }),
+            "interval rows must reference the mapped bridge column"
+        );
+    }
+
+    #[test]
+    fn quadratic_if_then_gates_then_value_by_condition() {
+        // 条件 x^2 - 1（GT，间隔 0.5），then = 2x^2；x ∈ [0, 2]
+        // Condition x^2 - 1 (GT, gap 0.5), then = 2x^2; x ∈ [0, 2]
+        let condition =
+            Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], -1.0);
+        let then_poly = Quadratic::new(vec![QuadraticMonomial::new_quadratic(2.0, 0, 0)], 0.0);
+        let qifthen: QuadraticIfThenFunction<f64> = QuadraticIfThenFunction::new(
+            20057,
+            "qifthen_value",
+            condition,
+            then_poly,
+            ConditionRelation::Greater,
+            0.5,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 3.0,
+            },
+            ConditionBounds {
+                lower: 0.0,
+                upper: 8.0,
+            },
+        )
+        .expect("quadratic if-then should construct");
+
+        let tokens_for = |value: f64| {
+            let x = ContinuousVariableItem::create(VariableId::standalone(0), "x");
+            let mut tokens = VecTokenList::<f64>::new();
+            let tx = Token::from_generic(x, 0);
+            tx.set_result(value);
+            tokens.add_token(tx);
+            tokens
+        };
+
+        assert_eq!(
+            qifthen.calculate_value(&tokens_for(2.0), false),
+            Some(8.0) // 条件 3 >= 0.5 => then = 2 * 4
+        );
+        assert_eq!(
+            qifthen.calculate_value(&tokens_for(1.0), false),
+            Some(0.0) // 条件 0 <= 0 => 零假分支
+        );
+        assert_eq!(
+            qifthen.calculate_value(&tokens_for(1.1), false),
+            None // 条件 0.21 落在 (0, 0.5) 间隔内 / condition 0.21 falls inside (0, 0.5)
+        );
+    }
+
+    #[test]
+    fn quadratic_if_then_registers_rows_over_both_bridge_columns() {
+        let x = ContinuousVariableItem::with_range(
+            VariableId::standalone(0),
+            "x",
+            VariableRange::bounded(0.0, 2.0),
+        );
+        let condition =
+            Quadratic::new(vec![QuadraticMonomial::new_quadratic(1.0, 0, 0)], -1.0);
+        let then_poly = Quadratic::new(vec![QuadraticMonomial::new_quadratic(2.0, 0, 0)], 0.0);
+        let qifthen: QuadraticIfThenFunction<f64> = QuadraticIfThenFunction::new(
+            20058,
+            "qifthen_bound",
+            condition,
+            then_poly,
+            ConditionRelation::Greater,
+            0.5,
+            ConditionBounds {
+                lower: -1.0,
+                upper: 3.0,
+            },
+            ConditionBounds {
+                lower: 0.0,
+                upper: 8.0,
+            },
+        )
+        .expect("quadratic if-then should construct");
+
+        let mut aux_tokens = Vec::new();
+        qifthen.register_tokens(&mut aux_tokens)
+            .expect("quadratic if-then tokens should be registered");
+        let symbol_to_index = token_index_map(&aux_tokens);
+        let condition_bridge_index = *symbol_to_index
+            .get(&(qifthen.bridge_condition.result_variable().id().unique_id() as usize))
+            .expect("condition bridge index should exist");
+        let then_bridge_index = *symbol_to_index
+            .get(&(qifthen.bridge_then.result_variable().id().unique_id() as usize))
+            .expect("then bridge index should exist");
+        let tokens = vec![Token::from_generic(x, 0)];
+
+        let constraints = qifthen
+            .mechanism_constraints_with_tokens(&symbol_to_index, &tokens)
+            .expect("quadratic if-then constraints should be generated");
+        let references = |index: usize| {
+            constraints.iter().any(|constraint| {
+                constraint
+                    .inequality
+                    .polynomial
+                    .monomials()
+                    .iter()
+                    .any(|monomial| monomial.var_index() == index)
+            })
+        };
+        assert!(
+            references(condition_bridge_index),
+            "condition rows must reference the mapped condition bridge column"
+        );
+        assert!(
+            references(then_bridge_index),
+            "gating rows must reference the mapped then bridge column"
+        );
     }
 
     #[test]

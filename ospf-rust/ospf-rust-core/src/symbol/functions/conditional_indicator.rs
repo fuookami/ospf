@@ -307,6 +307,18 @@ where
         self
     }
 
+    /// 替换条件差值多项式，保留全部变量与符号标识 / Replace the condition-difference polynomial while keeping every variable and symbol identity.
+    ///
+    /// 供二次包装器在机制展开时把桥接列重映射到模型索引使用；范围、边界与
+    /// 三值语义不变。
+    /// Used by quadratic wrappers to remap the bridge column to model indices during
+    /// mechanism expansion; bounds and three-valued semantics stay unchanged.
+    pub(crate) fn with_condition_polynomial(&self, condition: Linear<V>) -> Self {
+        let mut cloned = self.clone();
+        cloned.condition = condition;
+        cloned
+    }
+
     /// 获取条件多项式 / Get the condition polynomial.
     pub fn condition_polynomial(&self) -> &Linear<V> {
         &self.condition

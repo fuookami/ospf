@@ -10,10 +10,12 @@ use ospf_rust_core::model::{
 };
 use ospf_rust_core::solver::solvers::GurobiSolver;
 use ospf_rust_core::symbol::function::{
-    BinaryzationMethod, InequalityKind, Point2, Point3, Triangle3, QuadraticBinaryzationFunction,
-    QuadraticBivariateLinearPiecewiseFunction, QuadraticCosFunction, QuadraticInStepRangeFunction,
-    QuadraticInequalityFunction, QuadraticMaskingFunction, QuadraticMaskingRangeFunction,
-    QuadraticMaxFunction, QuadraticMinFunction, QuadraticModFunction, QuadraticRoundingFunction,
+    BinaryzationMethod, ConditionBounds, ConditionRelation, InequalityKind, Point2, Point3,
+    Triangle3, QuadraticBinaryzationFunction, QuadraticBivariateLinearPiecewiseFunction,
+    QuadraticCosFunction, QuadraticIfFunction, QuadraticIfInFunction, QuadraticIfThenFunction,
+    QuadraticInStepRangeFunction, QuadraticInequalityFunction, QuadraticMaskingFunction,
+    QuadraticMaskingRangeFunction, QuadraticMaxFunction, QuadraticMaxMinFunction,
+    QuadraticMinFunction, QuadraticMinMaxFunction, QuadraticModFunction, QuadraticRoundingFunction,
     QuadraticPositivePartFunction, QuadraticLogisticFunction, QuadraticSinFunction,
     QuadraticSlackFunction,
     QuadraticSlackRangeFunction, QuadraticUnivariateLinearPiecewiseFunction,
@@ -1647,6 +1649,425 @@ fn gurobi_solves_quadratic_mod_on_exact_divisor_boundary() {
             1.0,
         ),
         "y_eq_1",
+    ));
+    let infeasible_output = solver
+        .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        infeasible_output.status.is_infeasible(),
+        "expected infeasible-like status, got {:?}",
+        infeasible_output.status
+    );
+}
+
+#[test]
+fn gurobi_solves_quadratic_max_min_with_non_linear_input() {
+    let mut model = MetaModel::<f64>::new("quadratic_max_min_non_linear");
+
+    let x = ContinuousVariableItem::create(VariableId::standalone(2200), "x");
+    let x_index = model.register_variable(x).unwrap();
+
+    // 候选 x^2 与 x；x = 2 时 min(4, 2) = 2 / candidates x^2 and x; min(4, 2) = 2 at x = 2
+    let qmaxmin = QuadraticMaxMinFunction::new(
+        2201,
+        "qmaxmin_non_linear",
+        vec![
+            Quadratic::new(
+                vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
+                0.0,
+            ),
+            Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, x_index)], 0.0),
+        ],
+    );
+    let y_id = qmaxmin.result_variable().id();
+    model.add_symbol(Arc::new(qmaxmin)).unwrap();
+
+    let solver = GurobiSolver::new();
+    let base = model.try_into_mechanism_model().unwrap();
+    let y_index = base.find_token(y_id).unwrap().solver_index;
+
+    let mut feasible = base.clone();
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "x_eq_2",
+    ));
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "y_eq_2",
+    ));
+    let feasible_output = solver
+        .solve_quadratic(&feasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        feasible_output.status.is_feasible(),
+        "status: {:?}",
+        feasible_output.status
+    );
+
+    let mut infeasible = base;
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "x_eq_2",
+    ));
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            4.0,
+        ),
+        "y_eq_4",
+    ));
+    let infeasible_output = solver
+        .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        infeasible_output.status.is_infeasible(),
+        "expected infeasible-like status, got {:?}",
+        infeasible_output.status
+    );
+}
+
+#[test]
+fn gurobi_solves_quadratic_min_max_with_non_linear_input() {
+    let mut model = MetaModel::<f64>::new("quadratic_min_max_non_linear");
+
+    let x = ContinuousVariableItem::create(VariableId::standalone(2210), "x");
+    let x_index = model.register_variable(x).unwrap();
+
+    // 候选 x^2 与 x；x = 0.5 时 max(0.25, 0.5) = 0.5
+    // candidates x^2 and x; max(0.25, 0.5) = 0.5 at x = 0.5
+    let qminmax = QuadraticMinMaxFunction::new(
+        2211,
+        "qminmax_non_linear",
+        vec![
+            Quadratic::new(
+                vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
+                0.0,
+            ),
+            Quadratic::new(vec![QuadraticMonomial::new_linear(1.0, x_index)], 0.0),
+        ],
+    );
+    let y_id = qminmax.result_variable().id();
+    model.add_symbol(Arc::new(qminmax)).unwrap();
+
+    let solver = GurobiSolver::new();
+    let base = model.try_into_mechanism_model().unwrap();
+    let y_index = base.find_token(y_id).unwrap().solver_index;
+
+    let mut feasible = base.clone();
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.5,
+        ),
+        "x_eq_0_5",
+    ));
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.5,
+        ),
+        "y_eq_0_5",
+    ));
+    let feasible_output = solver
+        .solve_quadratic(&feasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        feasible_output.status.is_feasible(),
+        "status: {:?}",
+        feasible_output.status
+    );
+
+    let mut infeasible = base;
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.5,
+        ),
+        "x_eq_0_5",
+    ));
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.25,
+        ),
+        "y_eq_0_25",
+    ));
+    let infeasible_output = solver
+        .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        infeasible_output.status.is_infeasible(),
+        "expected infeasible-like status, got {:?}",
+        infeasible_output.status
+    );
+}
+
+#[test]
+fn gurobi_solves_quadratic_if_with_non_linear_input() {
+    let mut model = MetaModel::<f64>::new("quadratic_if_non_linear");
+
+    let x = ContinuousVariableItem::create(VariableId::standalone(2220), "x");
+    let x_index = model.register_variable(x).unwrap();
+
+    // 条件 x^2 >= 0.5；x = 2 时结果必为 1 / condition x^2 >= 0.5; result forced to 1 at x = 2
+    let qif = QuadraticIfFunction::new(
+        2221,
+        "qif_non_linear",
+        Quadratic::new(
+            vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
+            0.0,
+        ),
+        ConditionRelation::Greater,
+        0.5,
+        ConditionBounds {
+            lower: 0.0,
+            upper: 4.0,
+        },
+    )
+    .unwrap();
+    let y_id = qif.result_variable().id();
+    model.add_symbol(Arc::new(qif)).unwrap();
+
+    let solver = GurobiSolver::new();
+    let base = model.try_into_mechanism_model().unwrap();
+    let y_index = base.find_token(y_id).unwrap().solver_index;
+
+    let mut feasible = base.clone();
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "x_eq_2",
+    ));
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            1.0,
+        ),
+        "y_eq_1",
+    ));
+    let feasible_output = solver
+        .solve_quadratic(&feasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        feasible_output.status.is_feasible(),
+        "status: {:?}",
+        feasible_output.status
+    );
+
+    let mut infeasible = base;
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "x_eq_2",
+    ));
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.0,
+        ),
+        "y_eq_0",
+    ));
+    let infeasible_output = solver
+        .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        infeasible_output.status.is_infeasible(),
+        "expected infeasible-like status, got {:?}",
+        infeasible_output.status
+    );
+}
+
+#[test]
+fn gurobi_solves_quadratic_if_in_with_non_linear_input() {
+    let mut model = MetaModel::<f64>::new("quadratic_if_in_non_linear");
+
+    let x = ContinuousVariableItem::create(VariableId::standalone(2230), "x");
+    let x_index = model.register_variable(x).unwrap();
+
+    // 输入 x^2，闭区间 [1, 4]；x = 1.5 时 x^2 = 2.25 在区间内，结果必为 1
+    // input x^2, closed interval [1, 4]; x^2 = 2.25 inside at x = 1.5, result forced to 1
+    let qifin = QuadraticIfInFunction::new(
+        2231,
+        "qifin_non_linear",
+        Quadratic::new(
+            vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
+            0.0,
+        ),
+        1.0,
+        4.0,
+        0.5,
+        ConditionBounds {
+            lower: 0.0,
+            upper: 4.0,
+        },
+    )
+    .unwrap();
+    let y_id = qifin.result_variable().id();
+    model.add_symbol(Arc::new(qifin)).unwrap();
+
+    let solver = GurobiSolver::new();
+    let base = model.try_into_mechanism_model().unwrap();
+    let y_index = base.find_token(y_id).unwrap().solver_index;
+
+    let mut feasible = base.clone();
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            1.5,
+        ),
+        "x_eq_1_5",
+    ));
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            1.0,
+        ),
+        "y_eq_1",
+    ));
+    let feasible_output = solver
+        .solve_quadratic(&feasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        feasible_output.status.is_feasible(),
+        "status: {:?}",
+        feasible_output.status
+    );
+
+    let mut infeasible = base;
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            1.5,
+        ),
+        "x_eq_1_5",
+    ));
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.0,
+        ),
+        "y_eq_0",
+    ));
+    let infeasible_output = solver
+        .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        infeasible_output.status.is_infeasible(),
+        "expected infeasible-like status, got {:?}",
+        infeasible_output.status
+    );
+}
+
+#[test]
+fn gurobi_solves_quadratic_if_then_with_non_linear_input() {
+    let mut model = MetaModel::<f64>::new("quadratic_if_then_non_linear");
+
+    let x = ContinuousVariableItem::create(VariableId::standalone(2240), "x");
+    let x_index = model.register_variable(x).unwrap();
+
+    // 条件 x^2 - 1 >= 0.5；x = 2 时结果为 then = 2x^2 = 8
+    // condition x^2 - 1 >= 0.5; result equals then = 2x^2 = 8 at x = 2
+    let qifthen = QuadraticIfThenFunction::new(
+        2241,
+        "qifthen_non_linear",
+        Quadratic::new(
+            vec![QuadraticMonomial::new_quadratic(1.0, x_index, x_index)],
+            -1.0,
+        ),
+        Quadratic::new(
+            vec![QuadraticMonomial::new_quadratic(2.0, x_index, x_index)],
+            0.0,
+        ),
+        ConditionRelation::Greater,
+        0.5,
+        ConditionBounds {
+            lower: -1.0,
+            upper: 3.0,
+        },
+        ConditionBounds {
+            lower: 0.0,
+            upper: 8.0,
+        },
+    )
+    .unwrap();
+    let y_id = qifthen.result_variable().id();
+    model.add_symbol(Arc::new(qifthen)).unwrap();
+
+    let solver = GurobiSolver::new();
+    let base = model.try_into_mechanism_model().unwrap();
+    let y_index = base.find_token(y_id).unwrap().solver_index;
+
+    let mut feasible = base.clone();
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "x_eq_2",
+    ));
+    feasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            8.0,
+        ),
+        "y_eq_8",
+    ));
+    let feasible_output = solver
+        .solve_quadratic(&feasible.into_quadratic_tetrad_model())
+        .unwrap();
+    assert!(
+        feasible_output.status.is_feasible(),
+        "status: {:?}",
+        feasible_output.status
+    );
+
+    let mut infeasible = base;
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, x_index)], 0.0),
+            ConstraintRelation::Equal,
+            2.0,
+        ),
+        "x_eq_2",
+    ));
+    infeasible.add_constraint(LinearConstraint::new(
+        LinearInequality::new(
+            Linear::new(vec![LinearMonomial::new(1.0, y_index)], 0.0),
+            ConstraintRelation::Equal,
+            0.0,
+        ),
+        "y_eq_0",
     ));
     let infeasible_output = solver
         .solve_quadratic(&infeasible.into_quadratic_tetrad_model())
