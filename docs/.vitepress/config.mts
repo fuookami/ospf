@@ -104,13 +104,19 @@ export default withMermaid({
                     { text: 'Conditional IF', link: '/guide/linear-functional/if' },
                     { text: 'Conditional Interval', link: '/guide/linear-functional/if-in' },
                     { text: 'Conditional If-Then', link: '/guide/linear-functional/if-then' },
-                    { text: 'One-of Constraint', link: '/guide/linear-functional/one-of' }
+                    { text: 'One-of Constraint', link: '/guide/linear-functional/one-of' },
+                    { text: 'Products, Selection, and Lookup', link: '/guide/linear-functional/products-selection' },
+                    { text: 'Order Statistics', link: '/guide/linear-functional/order-statistics' },
+                    { text: 'Composite Functions and Cardinality', link: '/guide/linear-functional/composite-cardinality' },
+                    { text: 'Nonlinear Approximations and Tariffs', link: '/guide/linear-functional/nonlinear-tariffs' },
+                    { text: 'Risk Measures and Global Constraints', link: '/guide/linear-functional/risk-global-constraints' }
                   ]
                 },
                 { 
                   text: 'Quadratic Model Function Symbols',
                   collapsed: true,
                   items: [
+                    { text: 'Linear Function Compositions', link: '/guide/quadratic-functional/linear-compositions' },
                     { text: 'Slack (Linear Expressions)', link: '/guide/quadratic-functional/slack' },
                     { text: 'Slack Range (Linear Expressions)', link: '/guide/quadratic-functional/slack-range' },
                     { text: 'Positive Part', link: '/guide/quadratic-functional/positive-part' },
@@ -334,13 +340,19 @@ export default withMermaid({
                     { text: '条件 IF', link: '/zh-cn/guide/linear-functional/if' },
                     { text: '条件区间', link: '/zh-cn/guide/linear-functional/if-in' },
                     { text: '条件 If-Then', link: '/zh-cn/guide/linear-functional/if-then' },
-                    { text: '选一约束', link: '/zh-cn/guide/linear-functional/one-of' }
+                    { text: '选一约束', link: '/zh-cn/guide/linear-functional/one-of' },
+                    { text: '乘积、选择与查表', link: '/zh-cn/guide/linear-functional/products-selection' },
+                    { text: '顺序统计', link: '/zh-cn/guide/linear-functional/order-statistics' },
+                    { text: '组合函数与基数约束', link: '/zh-cn/guide/linear-functional/composite-cardinality' },
+                    { text: '非线性近似与阶梯计费', link: '/zh-cn/guide/linear-functional/nonlinear-tariffs' },
+                    { text: '风险度量与全局约束', link: '/zh-cn/guide/linear-functional/risk-global-constraints' }
                   ]
                 },
                 { 
                   text: '二次模型函数符号',
                   collapsed: true,
                   items: [
+                    { text: '二次模型中的线性函数组合', link: '/zh-cn/guide/quadratic-functional/linear-compositions' },
                     { text: '松弛（仅线性表达式）', link: '/zh-cn/guide/quadratic-functional/slack' },
                     { text: '松弛范围（仅线性表达式）', link: '/zh-cn/guide/quadratic-functional/slack-range' },
                     { text: '正部函数', link: '/zh-cn/guide/quadratic-functional/positive-part' },
