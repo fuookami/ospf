@@ -121,6 +121,12 @@ pub struct MipLoweringOptions {
     pub max_table_width: usize,
     /// 允许的绝对 Big-M 上限 / Maximum absolute Big-M value.
     pub max_big_m: i64,
+    /// 是否启用有限整数时域累计约束降维 / Whether finite-horizon cumulative lowering is enabled.
+    pub allow_cumulative: bool,
+    /// 单个累计约束允许的最大离散时隙数 / Maximum discrete time slots in one cumulative constraint.
+    pub max_cumulative_time_slots: usize,
+    /// 单个累计约束允许的最大任务-时隙工作量 / Maximum task-slot work in one cumulative constraint.
+    pub max_cumulative_work: usize,
 }
 
 impl Default for MipLoweringOptions {
@@ -132,6 +138,9 @@ impl Default for MipLoweringOptions {
             max_table_tuples: 10_000,
             max_table_width: 256,
             max_big_m: 9_007_199_254_740_992,
+            allow_cumulative: false,
+            max_cumulative_time_slots: 4_096,
+            max_cumulative_work: 65_536,
         }
     }
 }
@@ -1181,8 +1190,8 @@ impl<'a> LoweringContext<'a> {
             ConstraintProgrammingConstraint::NoOverlap { intervals } => {
                 self.compile_no_overlap(intervals, origin)
             }
-            ConstraintProgrammingConstraint::Cumulative { .. } => {
-                self.unsupported(origin, "cumulative")
+            ConstraintProgrammingConstraint::Cumulative { tasks, capacity } => {
+                self.compile_cumulative(tasks, *capacity, origin)
             }
             ConstraintProgrammingConstraint::Circuit { .. } => self.unsupported(origin, "circuit"),
             ConstraintProgrammingConstraint::Automaton { .. } => {
@@ -1379,6 +1388,112 @@ impl<'a> LoweringContext<'a> {
             }
         }
         self.bool_and(&pairwise, origin)
+    }
+
+    fn compile_cumulative(
+        &mut self,
+        tasks: &[crate::model::constraint_programming::CumulativeTask],
+        capacity: i64,
+        origin: &MipRowOrigin,
+    ) -> Result<BoolForm, MipLoweringError> {
+        if !self.options.allow_cumulative {
+            return self.unsupported(origin, "cumulative");
+        }
+        if capacity < 0 || tasks.iter().any(|task| task.demand < 0) {
+            return Err(MipLoweringError::Invalid {
+                message: "Cumulative capacity and demands must be non-negative".to_owned(),
+            });
+        }
+        if tasks.is_empty() || tasks.iter().all(|task| task.demand == 0) {
+            return Ok(BoolForm::constant(true));
+        }
+
+        let mut prepared = Vec::with_capacity(tasks.len());
+        let mut horizon_start = i128::MAX;
+        let mut horizon_end = i128::MIN;
+        for task in tasks {
+            let interval = self.interval(&task.interval)?.clone();
+            let start = self.expression_form(&interval.start)?;
+            let end = self.expression_form(&interval.end)?;
+            let duration_upper = match &interval.duration {
+                crate::model::constraint_programming::IntervalDuration::Fixed(duration) => {
+                    i128::from(*duration)
+                }
+                crate::model::constraint_programming::IntervalDuration::Variable(variable) => {
+                    self.variable_form(&variable.stable_id)?.upper
+                }
+            };
+            if task.demand == 0 || duration_upper == 0 {
+                continue;
+            }
+            horizon_start = horizon_start.min(start.lower);
+            horizon_end = horizon_end.max(end.upper);
+            let presence = interval
+                .presence
+                .as_ref()
+                .map(|literal| self.literal_form(literal))
+                .transpose()?;
+            prepared.push((task.demand, start, end, presence));
+        }
+        if prepared.is_empty() {
+            return Ok(BoolForm::constant(true));
+        }
+        if horizon_end < horizon_start {
+            return Err(MipLoweringError::Invalid {
+                message: "Cumulative finite horizon is empty or reversed".to_owned(),
+            });
+        }
+        let slot_count = usize::try_from(horizon_end - horizon_start).map_err(|_| {
+            MipLoweringError::BudgetExceeded {
+                resource: "cumulative_time_slots".to_owned(),
+                limit: self.options.max_cumulative_time_slots,
+                actual: usize::MAX,
+            }
+        })?;
+        if slot_count > self.options.max_cumulative_time_slots {
+            return Err(MipLoweringError::BudgetExceeded {
+                resource: "cumulative_time_slots".to_owned(),
+                limit: self.options.max_cumulative_time_slots,
+                actual: slot_count,
+            });
+        }
+        let work = slot_count.checked_mul(tasks.len()).unwrap_or(usize::MAX);
+        if work > self.options.max_cumulative_work {
+            return Err(MipLoweringError::BudgetExceeded {
+                resource: "cumulative_work".to_owned(),
+                limit: self.options.max_cumulative_work,
+                actual: work,
+            });
+        }
+
+        let mut slot_truths = Vec::with_capacity(slot_count);
+        let mut slot = horizon_start;
+        while slot < horizon_end {
+            let slot_end = slot
+                .checked_add(1)
+                .ok_or_else(|| numeric("Cumulative slot endpoint overflow", slot))?;
+            let mut load = LinearForm::constant(0);
+            for (demand, start, end, presence) in &prepared {
+                let starts_before_slot_end =
+                    self.relation_truth(start, IntegerRelation::LessOrEqual, slot, origin)?;
+                let ends_after_slot_start =
+                    self.relation_truth(end, IntegerRelation::GreaterOrEqual, slot_end, origin)?;
+                let mut active_conditions = vec![starts_before_slot_end, ends_after_slot_start];
+                if let Some(presence) = presence {
+                    active_conditions.push(presence.clone());
+                }
+                let active = self.bool_and(&active_conditions, origin)?;
+                load = load.add(&active.form.scale(i128::from(*demand))?)?;
+            }
+            slot_truths.push(self.relation_truth(
+                &load,
+                IntegerRelation::LessOrEqual,
+                i128::from(capacity),
+                origin,
+            )?);
+            slot = slot_end;
+        }
+        self.bool_and(&slot_truths, origin)
     }
 
     fn interval(
@@ -2191,8 +2306,7 @@ fn report_best_bound(report: &SolveReport<f64>) -> Result<Option<f64>> {
                 (Some(typed), Some(value)) => {
                     if !approximately_equal(typed, value, 1e-9) {
                         return Err(CoreError::Solver(SolverError::ContractViolation(
-                            "MIP typed and floating-point best bounds are inconsistent"
-                                .to_owned(),
+                            "MIP typed and floating-point best bounds are inconsistent".to_owned(),
                         )));
                     }
                     Ok(Some(value))
@@ -2251,8 +2365,7 @@ fn remap_cp_infeasibility_evidence(
         .constraint_ids
         .iter()
         .filter_map(|id| {
-            row_id_to_member(id, snapshot, lowering, &mapping)
-                .map(|member| member_key(&member))
+            row_id_to_member(id, snapshot, lowering, &mapping).map(|member| member_key(&member))
         })
         .collect();
     evidence.members = evidence
@@ -2262,20 +2375,12 @@ fn remap_cp_infeasibility_evidence(
             InfeasibilityEvidenceMember::Constraint(id) => {
                 row_id_to_member(id, snapshot, lowering, &mapping)
             }
-            InfeasibilityEvidenceMember::LowerBound(id) => variable_id_to_member(
-                id,
-                BoundSide::Lower,
-                snapshot,
-                lowering,
-                &mapping,
-            ),
-            InfeasibilityEvidenceMember::UpperBound(id) => variable_id_to_member(
-                id,
-                BoundSide::Upper,
-                snapshot,
-                lowering,
-                &mapping,
-            ),
+            InfeasibilityEvidenceMember::LowerBound(id) => {
+                variable_id_to_member(id, BoundSide::Lower, snapshot, lowering, &mapping)
+            }
+            InfeasibilityEvidenceMember::UpperBound(id) => {
+                variable_id_to_member(id, BoundSide::Upper, snapshot, lowering, &mapping)
+            }
             InfeasibilityEvidenceMember::Domain(id) => {
                 variable_id_to_member(id, BoundSide::Domain, snapshot, lowering, &mapping)
             }
@@ -2777,7 +2882,15 @@ mod tests {
     }
 
     fn assert_lowering_matches_source(snapshot: &ConstraintProgrammingSnapshot) {
-        let lowering = lower_constraint_programming(snapshot).expect("exact lowering");
+        assert_lowering_matches_source_with_options(snapshot, MipLoweringOptions::default());
+    }
+
+    fn assert_lowering_matches_source_with_options(
+        snapshot: &ConstraintProgrammingSnapshot,
+        options: MipLoweringOptions,
+    ) {
+        let lowering =
+            lower_constraint_programming_with_options(snapshot, options).expect("exact lowering");
         let mut assignment = BTreeMap::new();
         let mut checked = 0usize;
         enumerate_source_assignments(snapshot, 0, &mut assignment, &mut |assignment| {
@@ -3212,6 +3325,284 @@ mod tests {
             .expect("NoOverlap");
         let snapshot = model.freeze().expect("snapshot");
         assert_lowering_matches_source(&snapshot);
+    }
+
+    #[test]
+    fn cumulative_opt_in_lowering_preserves_optional_and_zero_length_semantics() {
+        let mut model = ConstraintProgrammingModel::new("cumulative-slots-oracle");
+        let presence = variable(&mut model, "presence", IntegerDomain::boolean());
+        let first_start = variable(
+            &mut model,
+            "first-start",
+            IntegerDomain::range(0, 0).expect("domain"),
+        );
+        let first_end = variable(
+            &mut model,
+            "first-end",
+            IntegerDomain::range(1, 1).expect("domain"),
+        );
+        let second_start = variable(
+            &mut model,
+            "second-start",
+            IntegerDomain::range(0, 0).expect("domain"),
+        );
+        let second_end = variable(
+            &mut model,
+            "second-end",
+            IntegerDomain::range(1, 1).expect("domain"),
+        );
+        let zero_start = variable(
+            &mut model,
+            "zero-start",
+            IntegerDomain::range(0, 0).expect("domain"),
+        );
+        let zero_end = variable(
+            &mut model,
+            "zero-end",
+            IntegerDomain::range(0, 0).expect("domain"),
+        );
+        let adjacent_start = variable(
+            &mut model,
+            "adjacent-start",
+            IntegerDomain::range(1, 1).expect("domain"),
+        );
+        let adjacent_end = variable(
+            &mut model,
+            "adjacent-end",
+            IntegerDomain::range(2, 2).expect("domain"),
+        );
+        model
+            .register_interval(
+                IntervalVariable::new(
+                    "mandatory",
+                    expression(&first_start),
+                    IntervalDuration::Fixed(1),
+                    expression(&first_end),
+                    None,
+                )
+                .expect("mandatory interval"),
+            )
+            .expect("register mandatory interval");
+        model
+            .register_interval(
+                IntervalVariable::new(
+                    "optional",
+                    expression(&second_start),
+                    IntervalDuration::Fixed(1),
+                    expression(&second_end),
+                    Some(BooleanLiteral::positive(presence.clone())),
+                )
+                .expect("optional interval"),
+            )
+            .expect("register optional interval");
+        model
+            .register_interval(
+                IntervalVariable::new(
+                    "zero-duration",
+                    expression(&zero_start),
+                    IntervalDuration::Fixed(0),
+                    expression(&zero_end),
+                    Some(BooleanLiteral::positive(presence)),
+                )
+                .expect("zero-duration interval"),
+            )
+            .expect("register zero-duration interval");
+        model
+            .register_interval(
+                IntervalVariable::new(
+                    "adjacent",
+                    expression(&adjacent_start),
+                    IntervalDuration::Fixed(1),
+                    expression(&adjacent_end),
+                    None,
+                )
+                .expect("adjacent interval"),
+            )
+            .expect("register adjacent interval");
+        model
+            .add_constraint(ConstraintDefinition::new(
+                "cumulative",
+                ConstraintProgrammingConstraint::Cumulative {
+                    tasks: vec![
+                        crate::model::constraint_programming::CumulativeTask {
+                            interval: "mandatory".into(),
+                            demand: 1,
+                        },
+                        crate::model::constraint_programming::CumulativeTask {
+                            interval: "optional".into(),
+                            demand: 1,
+                        },
+                        crate::model::constraint_programming::CumulativeTask {
+                            interval: "zero-duration".into(),
+                            demand: 1,
+                        },
+                        crate::model::constraint_programming::CumulativeTask {
+                            interval: "adjacent".into(),
+                            demand: 1,
+                        },
+                    ],
+                    capacity: 1,
+                },
+            ))
+            .expect("add cumulative");
+        let snapshot = model.freeze().expect("snapshot");
+        let options = MipLoweringOptions {
+            allow_cumulative: true,
+            ..MipLoweringOptions::default()
+        };
+        let lowering = lower_constraint_programming_with_options(&snapshot, options)
+            .expect("lower cumulative");
+        let mut assignment = BTreeMap::new();
+        let mut checked = 0usize;
+        enumerate_source_assignments(&snapshot, 0, &mut assignment, &mut |assignment| {
+            let source_feasible = snapshot.validate_assignment(assignment).is_ok();
+            let mip_feasible = has_mip_extension(&lowering, assignment);
+            assert_eq!(mip_feasible, source_feasible, "assignment {assignment:?}");
+            checked = checked.saturating_add(1);
+        });
+        assert_eq!(checked, 2);
+    }
+
+    fn register_fixed_overlapping_intervals(model: &mut ConstraintProgrammingModel) {
+        for id in ["first", "second"] {
+            model
+                .register_interval(
+                    crate::model::constraint_programming::IntervalVariable::new(
+                        id,
+                        IntegerExpression::constant(0),
+                        crate::model::constraint_programming::IntervalDuration::Fixed(1),
+                        IntegerExpression::constant(1),
+                        None,
+                    )
+                    .expect("fixed interval"),
+                )
+                .expect("register fixed interval");
+        }
+    }
+
+    fn overlapping_cumulative_constraint() -> ConstraintProgrammingConstraint {
+        ConstraintProgrammingConstraint::Cumulative {
+            tasks: ["first", "second"]
+                .into_iter()
+                .map(
+                    |interval| crate::model::constraint_programming::CumulativeTask {
+                        interval: interval.into(),
+                        demand: 1,
+                    },
+                )
+                .collect(),
+            capacity: 1,
+        }
+    }
+
+    #[test]
+    fn cumulative_lowering_respects_implication_and_equivalent_reification() {
+        let options = MipLoweringOptions {
+            allow_cumulative: true,
+            ..MipLoweringOptions::default()
+        };
+
+        let mut implication_model = ConstraintProgrammingModel::new("cumulative-implication");
+        let enforcement = variable(
+            &mut implication_model,
+            "enforcement",
+            IntegerDomain::boolean(),
+        );
+        register_fixed_overlapping_intervals(&mut implication_model);
+        implication_model
+            .add_constraint(ConstraintDefinition::new(
+                "implies-cumulative",
+                ConstraintProgrammingConstraint::Implication {
+                    enforcement: BooleanLiteral::positive(enforcement),
+                    constraint: Box::new(overlapping_cumulative_constraint()),
+                },
+            ))
+            .expect("add implication");
+        let implication_snapshot = implication_model.freeze().expect("snapshot");
+        assert_lowering_matches_source_with_options(&implication_snapshot, options);
+
+        let mut equivalent_model = ConstraintProgrammingModel::new("cumulative-equivalent");
+        let truth = variable(&mut equivalent_model, "truth", IntegerDomain::boolean());
+        register_fixed_overlapping_intervals(&mut equivalent_model);
+        equivalent_model
+            .add_constraint(ConstraintDefinition::new(
+                "equivalent-cumulative",
+                ConstraintProgrammingConstraint::Reification {
+                    literal: BooleanLiteral::positive(truth),
+                    constraint: Box::new(overlapping_cumulative_constraint()),
+                    direction:
+                        crate::model::constraint_programming::ReificationDirection::Equivalent,
+                },
+            ))
+            .expect("add reification");
+        let equivalent_snapshot = equivalent_model.freeze().expect("snapshot");
+        assert_lowering_matches_source_with_options(&equivalent_snapshot, options);
+    }
+
+    #[test]
+    fn cumulative_lowering_enforces_slot_and_work_budgets() {
+        let mut model = ConstraintProgrammingModel::new("cumulative-budget");
+        let start = variable(
+            &mut model,
+            "start",
+            IntegerDomain::range(0, 2).expect("domain"),
+        );
+        let end = variable(
+            &mut model,
+            "end",
+            IntegerDomain::range(1, 3).expect("domain"),
+        );
+        model
+            .register_interval(
+                IntervalVariable::new(
+                    "task",
+                    expression(&start),
+                    IntervalDuration::Fixed(1),
+                    expression(&end),
+                    None,
+                )
+                .expect("interval"),
+            )
+            .expect("register interval");
+        model
+            .add_constraint(ConstraintDefinition::new(
+                "cumulative",
+                ConstraintProgrammingConstraint::Cumulative {
+                    tasks: vec![crate::model::constraint_programming::CumulativeTask {
+                        interval: "task".into(),
+                        demand: 1,
+                    }],
+                    capacity: 1,
+                },
+            ))
+            .expect("add cumulative");
+        let snapshot = model.freeze().expect("snapshot");
+        let options = MipLoweringOptions {
+            allow_cumulative: true,
+            max_cumulative_time_slots: 1,
+            ..MipLoweringOptions::default()
+        };
+        assert!(matches!(
+            lower_constraint_programming_with_options(&snapshot, options),
+            Err(MipLoweringError::BudgetExceeded {
+                resource,
+                limit: 1,
+                actual: 3,
+            }) if resource == "cumulative_time_slots"
+        ));
+        let options = MipLoweringOptions {
+            allow_cumulative: true,
+            max_cumulative_work: 1,
+            ..MipLoweringOptions::default()
+        };
+        assert!(matches!(
+            lower_constraint_programming_with_options(&snapshot, options),
+            Err(MipLoweringError::BudgetExceeded {
+                resource,
+                limit: 1,
+                actual: 3,
+            }) if resource == "cumulative_work"
+        ));
     }
 
     #[test]
