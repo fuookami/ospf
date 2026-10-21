@@ -71,6 +71,7 @@
             model_name: "test_final".to_string(),
             primal_solution: vec![0.0, 1.0, 1.0],
             objective: Some(5.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);
@@ -79,7 +80,7 @@
         assert_eq!(diagnostics.model_name, "test_final");
         assert_eq!(diagnostics.variable_count, 3);
         assert_eq!(diagnostics.constraint_count, 6);
-        assert_eq!(diagnostics.bin_count, 1);
+        assert_eq!(diagnostics.container_count, 1);
         assert_eq!(execution.layers.len(), 1);
         assert_eq!(execution.layers[0].from, "seed-b");
         assert_eq!(execution.info["status"], "registered");
@@ -142,6 +143,7 @@
             model_name: "service_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
@@ -186,6 +188,7 @@
             model_name: "render_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
@@ -246,6 +249,7 @@
             model_name: "trace_replay_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);
@@ -309,6 +313,7 @@
             model_name: "block_trace_replay_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);
@@ -423,6 +428,7 @@
             model_name: "no_selection_final".to_string(),
             primal_solution: vec![0.0, 0.0],
             objective: Some(0.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);
@@ -463,6 +469,7 @@
             model_name: "packing_diagnostics_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);
@@ -504,6 +511,7 @@
             model_name: "no_bin_final".to_string(),
             primal_solution: vec![1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);
@@ -567,6 +575,7 @@
             model_name: "trace_mismatch_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let execution = executor.execute(&state);

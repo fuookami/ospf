@@ -214,6 +214,7 @@ l1,b1,4
             model_name: "csv_package_attribute_probe_final".to_string(),
             primal_solution: Vec::new(),
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
@@ -271,6 +272,7 @@ l1,b1,4
             model_name: "csv_diag_final".to_string(),
             primal_solution: vec![1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service

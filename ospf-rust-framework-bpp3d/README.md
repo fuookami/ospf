@@ -158,6 +158,37 @@ Current migration coverage includes:
 
 The manifest mirrors the full Kotlin Gurobi CSV sample set into 22 fixtures, including 19 Kotlin-derived dataset samples plus 3 local regression fixtures. Remaining gaps are tracked in the current-boundaries list above and should be compared with the Kotlin BPP3D README when updating migration coverage.
 
+## Multiple bin types and weighted objectives
+
+BPP3D now supports mixed multi-bin-type supply and per-bin-type weighted objectives:
+
+1. `LayerGenerationRequest.bins` produces candidate columns per bin type, each carrying its type through
+   `BinLayer.bin`. With no bin type specified the request passes through once, so generators that do not
+   depend on a bin type (the historical one) keep working.
+2. `BinLayer::identity_key` includes the bin type: the same layout on a different bin type is a different
+   column, otherwise the multi-type capability would be erased by deduplication.
+3. The primary objective is **minimum bin volume consumption** (`BinVolumeMinimization`). Because the demanded
+   volume is fixed, `total waste = Σ bin volume − demanded volume = Σ bin volume − constant`, so minimising
+   consumed volume minimises waste. Summing "bin volume − loaded layer volume" would be wrong: a fully packed
+   bin would report zero waste and "one full large bin" would beat "several small bins", the opposite of
+   reality.
+4. The secondary `BinAmountMinimization` coefficient defaults to `1e-6` and only breaks ties between equal
+   volumes; `BinTypeCostMinimization` prices per bin type with a default weight of 0 and requires explicit
+   configuration.
+5. `bin_waste_volume` / `bin_waste_ratio` / `per_type_bin_cost` feed KPI and reporting only, never the
+   objective.
+
+Default change: `final_bin_amount_coefficient` moved from a hard-coded `1.0` to `1e-6` and the volume weight
+defaults to `1.0`. This is a **behaviour change**; callers that relied on "minimise bin count" must restore it
+explicitly in the config.
+
+## Solve backend
+
+`MetaModelSolverBackend`, `NoopMetaModelSolverBackend`, `ColumnGenerationSolverMetaModelBackend` and
+`MetaModelExecutionDiagnostics` moved into `ospf-rust-framework` so that BPP2D/BPP3D/CSP1D/CSP2D share one
+solving boundary. This crate keeps compatibility re-exports and exposes `layer_count` / `bin_count` read-only
+aliases plus `write_bpp3d_info` through `Bpp3dExecutionDiagnosticsExt`, leaving the existing info keys unchanged.
+
 ## Related Modules
 
 - [Root README](../README.md)

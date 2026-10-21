@@ -109,6 +109,8 @@ pub struct Csp1dProduceContext<V: SolveValue> {
     pub mode: Csp1dModelingMode,
     /// 是否最终 MILP / Whether final MILP
     pub is_final_milp: bool,
+    /// 是否仅最小化人工短缺的可行性阶段 / Whether this is the artificial-deficit-only feasibility phase
+    pub feasibility_phase: bool,
     /// warm start 方案使用量 / Warm-start plan usages
     pub warm_start_plan_usages: Vec<CuttingPlanUsage<V>>,
     /// 目标策略 / Objective policies
@@ -133,6 +135,7 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dProduceContext<V> {
             .field("incremental_pipelines", &self.incremental_pipelines.len())
             .field("mode", &self.mode)
             .field("is_final_milp", &self.is_final_milp)
+            .field("feasibility_phase", &self.feasibility_phase)
             .finish()
     }
 }
@@ -371,6 +374,8 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
     }
 
     fn register_yield_variables(&mut self, model: &mut MetaModel<f64>) -> crate::Csp1dResult<()> {
+        // 可行性阶段同样需要人工短缺变量：它就是这个阶段唯一的目标项。
+        // The feasibility phase also needs the artificial deficit variables: they are its only objective term.
         let Some(r#yield) = self.r#yield.as_mut() else {
             return Ok(());
         };
@@ -433,6 +438,23 @@ impl<V: SolveValue> Csp1dProduceContext<V> {
     }
 
     fn set_objective(&self, model: &mut MetaModel<f64>) {
+        // 可行性阶段只最小化人工需求短缺：真实方案列在这个阶段的目标系数为零，
+        // 否则「补列」会与业务目标混在一起，无法判断主问题是否只是不可行。
+        // The feasibility phase minimises artificial demand deficits only: real plan columns carry a zero
+        // objective coefficient here, otherwise "adding columns" would be mixed with the business objective and
+        // it would be impossible to tell whether the master was merely infeasible.
+        if self.feasibility_phase {
+            let mut terms = Vec::new();
+            if let Some(r#yield) = &self.r#yield {
+                terms.extend(YieldObjectivePipeline::new(r#yield.clone()).objective_terms());
+            }
+            model.set_linear_objective_input(
+                LinearObjectiveInput::minimize("csp1d_phase_one")
+                    .category(ObjectiveCategory::Minimum)
+                    .terms(terms),
+            );
+            return;
+        }
         let mut terms =
             self.objective_terms_for_plans(self.produce.cutting_plans.iter().enumerate(), 0);
         if let Some(r#yield) = &self.r#yield {

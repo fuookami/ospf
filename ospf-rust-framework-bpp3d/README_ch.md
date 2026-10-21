@@ -157,6 +157,32 @@ cargo test -p ospf-rust-framework-bpp3d --features serde --lib
 
 manifest 已镜像 Kotlin Gurobi CSV 样例全集，共 22 个 fixture，包括 19 个 Kotlin 派生 dataset 样例和 3 个本地回归 fixture。剩余差距以本节的当前边界清单为准；更新迁移覆盖时应同步对照 Kotlin BPP3D README。
 
+## 多箱型与加权目标
+
+BPP3D 现在支持「多箱型混合供给」与「按箱型计价的加权目标」：
+
+1. `LayerGenerationRequest.bins` 让每种箱型分别产出候选列，列通过 `BinLayer.bin` 携带箱型；
+   未指定任何箱型时保持单次直通，使不依赖箱型的历史层生成器仍可工作。
+2. `BinLayer::identity_key` 把箱型纳入列身份：同一排布放在不同箱型上是不同的列，
+   否则多箱型会被去重逻辑直接抹掉。
+3. 主目标改为**箱型体积消耗最小**（`BinVolumeMinimization`）。因为需求体积固定，
+   `总体积浪费 = Σ 箱型体积 − 需求体积 = Σ 箱型体积 − 常数`，所以最小化体积消耗就是最小化浪费。
+   不能对「箱型体积 − 已装层体积」求和：铺满的整箱会记为 0 余料，反而让「一个铺满的大箱」
+   优于「多个小箱」，与真实装载相反。
+4. 次目标 `BinAmountMinimization` 默认系数降为 `1e-6`，仅在体积消耗相同时打破平局；
+   `BinTypeCostMinimization` 按箱型计价，权重默认 0，需调用方显式配置。
+5. `bin_waste_volume` / `bin_waste_ratio` / `per_type_bin_cost` 只用于 KPI 与报告，不作为目标。
+
+默认值与原实现的差异：`final_bin_amount_coefficient` 从硬编码 `1.0` 改为 `1e-6`，
+体积权重默认 `1.0`。这是一次**行为变更**，已有调用方若依赖「最小化箱数」需要在配置中显式恢复。
+
+## 求解后端
+
+`MetaModelSolverBackend`、`NoopMetaModelSolverBackend`、`ColumnGenerationSolverMetaModelBackend`
+与 `MetaModelExecutionDiagnostics` 已上移到 `ospf-rust-framework`，使 BPP2D/BPP3D/CSP1D/CSP2D
+共享同一求解边界。本 crate 保留兼容 re-export，并通过 `Bpp3dExecutionDiagnosticsExt` 提供
+`layer_count` / `bin_count` 只读别名与 `write_bpp3d_info`，既有 info key 保持不变。
+
 ## 相关模块
 
 - [根 README](../README_ch.md)

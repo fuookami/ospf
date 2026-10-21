@@ -26,6 +26,12 @@ use crate::domain::produce::{
     select_termination_by_policies_with_default, should_stop_by_policies,
 };
 
+/// 可行性阶段的目标容差 / Objective tolerance of the feasibility phase
+///
+/// 人工短缺总量降到该值以内即视为原始硬约束已可满足。
+/// Once the total artificial deficit drops to this value the original hard constraints count as satisfiable.
+const FEASIBILITY_TOLERANCE: f64 = 1e-7;
+
 /// 列生成终止原因 / Column generation termination reason
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Csp1dTerminationReason {
@@ -406,6 +412,9 @@ pub struct Csp1dColumnGeneration<V: SolveValue> {
     pub length_config: Option<crate::domain::length_assignment::LengthAssignmentModelingConfig<V>>,
     /// warm start 方案使用量 / Warm start plan usages
     pub warm_start_plan_usages: Vec<crate::domain::produce::CuttingPlanUsage<V>>,
+    /// 真实 LP 求解器；未注入时保持启发式影子价格路径
+    /// / Real LP solver; when absent the heuristic shadow-price path is kept
+    pub lp_solver: Option<std::sync::Arc<dyn crate::application::lp_solver::Csp1dLpSolver<V>>>,
 }
 
 impl<V: SolveValue> std::fmt::Debug for Csp1dColumnGeneration<V> {
@@ -416,6 +425,7 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dColumnGeneration<V> {
             .field("has_waste_config", &self.waste_config.is_some())
             .field("has_length_config", &self.length_config.is_some())
             .field("warm_start_plan_usages", &self.warm_start_plan_usages.len())
+            .field("has_lp_solver", &self.lp_solver.is_some())
             .finish()
     }
 }
@@ -432,6 +442,7 @@ impl<V: SolveValue> Default for Csp1dColumnGeneration<V> {
             waste_config: None,
             length_config: None,
             warm_start_plan_usages: Vec::new(),
+            lp_solver: None,
         }
     }
 }
@@ -577,10 +588,201 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         let mut iteration_records = Vec::new();
         let mut pricing_statistics = None;
         let mut termination_reason = Csp1dTerminationReason::PricingConverged;
+        // 可行性阶段状态：初始受限主问题不可行时切到「只最小化人工短缺」的 master，
+        // 恢复后丢弃它并重建原始业务 master。人工短缺永远不会成为业务产出。
+        // Feasibility-phase state: when the initial restricted master is infeasible, switch to a master that
+        // minimises artificial deficits only; once restored, discard it and rebuild the original business
+        // master. Artificial deficits never become business output.
+        let mut feasibility_phase = false;
+        let mut has_valid_lp_result = false;
+        let mut lp_failure_message: Option<String> = None;
+        // 重建后的原始 master 解：本轮定价应使用它的对偶，而不是可行性 master 的对偶。
+        // The rebuilt business master solution: this round's pricing must use its duals, not the feasibility
+        // master's.
+        let mut restored_solution: Option<crate::application::lp_solver::LpMasterSolution> = None;
+        // 由「不可行重试」得到的可行性解，需在本轮末尾按目标判断是否已恢复。
+        // The feasibility solution obtained by the infeasibility retry, judged at the end of the iteration.
+        let mut phase_one_solution: Option<crate::application::lp_solver::LpMasterSolution> = None;
         for iteration in 0..resolved_config.column_generation.iteration_limit {
-            let shadow_prices = self
-                .extract_lp_shadow_prices(&problem, &current_plans, &resolved_config)
-                .unwrap_or_else(|| optimistic_shadow_prices(&problem));
+            let lp_solution = match self.solve_lp_master(
+                &problem,
+                &current_plans,
+                &resolved_config,
+                feasibility_phase,
+                &format!("csp1d-rmp-{iteration}"),
+            ) {
+                Ok(solution) => solution,
+                Err(error) => {
+                    lp_failure_message = Some(error.to_string());
+                    termination_reason = Csp1dTerminationReason::LpSolveFailed;
+                    break;
+                }
+            };
+            // 本轮由「不可行重试」拿到的可行性解优先于首次解，避免恢复分支被跳过。
+            // A feasibility solution obtained through the infeasibility retry takes precedence over the first
+            // solution so the restoration branch is never skipped.
+            let effective_solution = phase_one_solution.take().or(lp_solution);
+            if let Some(solution) = effective_solution.as_ref() {
+                use crate::application::lp_solver::LpTerminalStatus;
+                match solution.status {
+                    LpTerminalStatus::Optimal => {
+                        if let Err(error) =
+                            crate::application::lp_solver::require_pricing_ready(solution)
+                        {
+                            lp_failure_message = Some(error.to_string());
+                            termination_reason = Csp1dTerminationReason::LpSolveFailed;
+                            break;
+                        }
+                        if feasibility_phase {
+                            // 可行性阶段的最优目标就是人工短缺总量：降到容差内说明原始硬约束已可满足，
+                            // 此时必须丢弃人工短缺并重建原始业务 master，否则短缺会继续留在模型里。
+                            // The feasibility phase's optimal objective is the total artificial deficit: once it
+                            // drops to the tolerance the original hard constraints are satisfiable, so the
+                            // deficits must be discarded and the business master rebuilt, otherwise they would
+                            // stay in the model.
+                            if solution.objective <= FEASIBILITY_TOLERANCE {
+                                match self.solve_lp_master(
+                                    &problem,
+                                    &current_plans,
+                                    &resolved_config,
+                                    false,
+                                    &format!("csp1d-restored-{iteration}"),
+                                ) {
+                                    Ok(Some(restored))
+                                        if restored.status == LpTerminalStatus::Optimal =>
+                                    {
+                                        feasibility_phase = false;
+                                        has_valid_lp_result = true;
+                                        restored_solution = Some(restored);
+                                    }
+                                    Ok(_) => {
+                                        // 重建后仍不可行或终态异常：保留失败，不声称已恢复。
+                                        // Still infeasible or abnormal after rebuilding: keep the failure and do
+                                        // not claim restoration.
+                                        lp_failure_message = Some(
+                                            "可行性已恢复但原始主问题重建后仍不可行 / Feasibility was restored but the rebuilt business master is still infeasible"
+                                                .to_string(),
+                                        );
+                                        termination_reason =
+                                            Csp1dTerminationReason::LpInfeasible;
+                                        break;
+                                    }
+                                    Err(error) => {
+                                        lp_failure_message = Some(error.to_string());
+                                        termination_reason =
+                                            Csp1dTerminationReason::LpSolveFailed;
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            has_valid_lp_result = true;
+                        }
+                    }
+                    LpTerminalStatus::Infeasible => {
+                        if !feasibility_phase && !has_valid_lp_result {
+                            // 首次不可行：切到可行性 master 重解一次。
+                            // First infeasibility: switch to the feasibility master and retry once.
+                            feasibility_phase = true;
+                            let retry = match self.solve_lp_master(
+                                &problem,
+                                &current_plans,
+                                &resolved_config,
+                                true,
+                                &format!("csp1d-phase-one-{iteration}"),
+                            ) {
+                                Ok(retry) => retry,
+                                Err(error) => {
+                                    lp_failure_message = Some(error.to_string());
+                                    termination_reason = Csp1dTerminationReason::LpSolveFailed;
+                                    break;
+                                }
+                            };
+                            match retry.as_ref().map(|retry| retry.status) {
+                                Some(LpTerminalStatus::Optimal) => {
+                                    // 重试成功只说明可行性 master 可解；必须立刻按它的目标判断短缺是否已
+                                    // 消除。若已消除，就丢弃人工短缺并重建原始 master，否则短缺会留在模型里。
+                                    // A successful retry only shows the feasibility master is solvable; its
+                                    // objective must immediately decide whether the deficits are gone. When they
+                                    // are, the deficits are discarded and the business master is rebuilt,
+                                    // otherwise they would stay in the model.
+                                    let phase_one = retry.expect("optimal retry must carry a solution");
+                                    if phase_one.objective > FEASIBILITY_TOLERANCE {
+                                        // 短缺仍在：继续在可行性 master 上定价补列。
+                                        // Deficits remain: keep pricing on the feasibility master.
+                                        phase_one_solution = Some(phase_one);
+                                    } else {
+                                        match self.solve_lp_master(
+                                            &problem,
+                                            &current_plans,
+                                            &resolved_config,
+                                            false,
+                                            &format!("csp1d-restored-{iteration}"),
+                                        ) {
+                                            Ok(Some(restored))
+                                                if restored.status
+                                                    == LpTerminalStatus::Optimal =>
+                                            {
+                                                feasibility_phase = false;
+                                                has_valid_lp_result = true;
+                                                restored_solution = Some(restored);
+                                            }
+                                            Ok(_) => {
+                                                lp_failure_message = Some(
+                                                    "可行性已恢复但原始主问题重建后仍不可行 / Feasibility was restored but the rebuilt business master is still infeasible"
+                                                        .to_string(),
+                                                );
+                                                termination_reason =
+                                                    Csp1dTerminationReason::LpInfeasible;
+                                                break;
+                                            }
+                                            Err(error) => {
+                                                lp_failure_message = Some(error.to_string());
+                                                termination_reason =
+                                                    Csp1dTerminationReason::LpSolveFailed;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    // 可行性 master 仍不可行：保留失败，不把短缺当成产出。
+                                    // The feasibility master is still infeasible: keep the failure and never
+                                    // report deficits as output.
+                                    lp_failure_message = Some(
+                                        "初始受限主问题不可行，且可行性阶段未能恢复 / The initial restricted master is infeasible and the feasibility phase could not restore it"
+                                            .to_string(),
+                                    );
+                                    termination_reason = Csp1dTerminationReason::LpInfeasible;
+                                    break;
+                                }
+                            }
+                        } else {
+                            lp_failure_message = Some(
+                                "LP 主问题不可行 / The LP master is infeasible".to_string(),
+                            );
+                            termination_reason = Csp1dTerminationReason::LpInfeasible;
+                            break;
+                        }
+                    }
+                    LpTerminalStatus::Unbounded | LpTerminalStatus::Other => {
+                        lp_failure_message = Some(format!(
+                            "LP 主问题终态非最优：{:?} / The LP master has a non-optimal terminal state: {:?}",
+                            solution.status, solution.status
+                        ));
+                        termination_reason = Csp1dTerminationReason::LpSolveFailed;
+                        break;
+                    }
+                }
+            }
+            let shadow_prices = match restored_solution.take() {
+                Some(restored) => self
+                    .shadow_prices_from_duals(&problem, &current_plans, &resolved_config, &restored)
+                    .unwrap_or_else(|| optimistic_shadow_prices(&problem)),
+                None => self
+                    .extract_lp_shadow_prices(&problem, &current_plans, &resolved_config)
+                    .unwrap_or_else(|| optimistic_shadow_prices(&problem)),
+            };
             let pricing_input = Csp1dPricingInput {
                 generation_input: CuttingPlanGenerationInput {
                     existing_plans: current_plans.clone(),
@@ -685,7 +887,39 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
             &resolved_config,
             warm_start_plan_usages,
         );
+        // 最终 MILP 无可行解时必须拒绝提取业务产出，不得把空解当作 Solved。
+        // 对应 Kotlin `Csp1dMilpSolver` 中 `output.solution == null` 的显式失败。
+        // A final MILP without a feasible solution must refuse to extract business output and must never be
+        // reported as `Solved`, matching the explicit failure on `output.solution == null` in Kotlin
+        // `Csp1dMilpSolver`.
+        let final_result = if final_result.status == Csp1dFinalMilpStatus::Solved
+            && final_result.produce.cutting_plans.is_empty()
+        {
+            HeuristicMilpResult {
+                status: Csp1dFinalMilpStatus::Failed,
+                produce: empty_produce(&problem),
+                yield_result: None,
+                waste_result: None,
+                length_result: None,
+                failure_message: Some(
+                    "最终 MILP 没有可提取的可行解 / Final MILP has no feasible solution to extract"
+                        .to_string(),
+                ),
+            }
+        } else {
+            final_result
+        };
         let top_plans = top_cutting_plans(&current_plans, resolved_config.top_k_plan_limit);
+        // 无业务产出的失败是硬失败，不参与 partial 放宽：把空解报告成 Partial 等于伪造业务结果。
+        // A failure without business output is a hard failure and is never relaxed to partial: reporting an
+        // empty extraction as `Partial` would fabricate a business result.
+        let no_extracted_output = final_result.produce.cutting_plans.is_empty()
+            && final_result
+                .failure_message
+                .as_deref()
+                .is_some_and(|message| {
+                    message.contains("没有可提取的可行解") || message.contains("no feasible solution")
+                });
         let mut base_solution =
             self.analyzer
                 .analyze(&problem, final_result.produce, current_plans.clone());
@@ -693,11 +927,11 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         base_solution.waste_result = final_result.waste_result;
         base_solution.length_result = final_result.length_result;
         let final_status = final_result.status;
-        let allow_partial = if final_status == Csp1dFinalMilpStatus::Failed {
+        let allow_partial = if final_status == Csp1dFinalMilpStatus::Failed && !no_extracted_output {
             accept_partial_by_policies(&flow_context, &resolved_config.extension_set.flow_policies)
                 && resolved_config.allow_partial_solution
         } else {
-            resolved_config.allow_partial_solution
+            resolved_config.allow_partial_solution && !no_extracted_output
         };
         let solution_status = match final_status {
             Csp1dFinalMilpStatus::Solved => Csp1dSolutionStatus::Feasible,
@@ -716,7 +950,12 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
                 partial_solution_available: final_status == Csp1dFinalMilpStatus::Failed,
                 initial_statistics: Some(initial_report.statistics.clone()),
                 pricing_statistics: pricing_statistics.clone(),
-                lp_failure_message: None,
+                // LP 失败原因必须透传到 trace 与 solution：最终 MILP 可能仍用初始方案成功，
+                // 此时业务状态可行，失败原因只能通过这条信息暴露。
+                // The LP failure reason must reach both the trace and the solution: the final MILP may still
+                // succeed with the initial pool, in which case the business status is feasible and the reason is
+                // only visible through this message.
+                lp_failure_message: lp_failure_message.clone(),
                 iteration_records: iteration_records.clone(),
                 extraction_policies: &resolved_config.extension_set.extraction_policies,
                 demands: &problem.demands,
@@ -738,9 +977,106 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
                 partial_solution_available: final_status == Csp1dFinalMilpStatus::Failed,
                 failure_message: final_result.failure_message,
                 pricing_generation_statistics: pricing_statistics,
-                lp_failure_message: None,
+                lp_failure_message,
             },
         }
+    }
+
+    /// 构建并求解真实 LP 主问题 / Build and solve the real LP master
+    ///
+    /// `feasibility_phase` 为真时只最小化人工需求短缺：真实方案列的目标系数为零，这样主问题不可行
+    /// 时能通过补列恢复，而不会把业务目标混进「恢复可行性」这件事里。
+    /// With `feasibility_phase` set, only artificial demand deficits are minimised: real plan columns carry a
+    /// zero objective coefficient, so an infeasible master can be restored by adding columns without mixing the
+    /// business objective into "restore feasibility".
+    ///
+    /// 未注入 LP 求解器时返回 `Ok(None)`，由调用方退回启发式路径。
+    /// Returns `Ok(None)` when no LP solver is injected, letting the caller fall back to the heuristic path.
+    fn solve_lp_master(
+        &self,
+        problem: &Csp1dProblem<V>,
+        cutting_plans: &[CuttingPlan<V>],
+        solve_config: &Csp1dSolveConfig<V>,
+        feasibility_phase: bool,
+        name: &str,
+    ) -> crate::Csp1dResult<Option<crate::application::lp_solver::LpMasterSolution>> {
+        let Some(solver) = self.lp_solver.as_ref() else {
+            return Ok(None);
+        };
+        let input = ProduceInput {
+            cutting_plans: cutting_plans.to_vec(),
+            demands: problem.demands.clone(),
+            materials: problem.materials.clone(),
+            machines: problem.machines.clone(),
+            warm_start_plan_usages: Vec::new(),
+        };
+        let mut builder = Csp1dProduceContextBuilder::new(input);
+        builder.mode(Csp1dModelingMode::LP);
+        if feasibility_phase {
+            builder.feasibility_phase();
+            // 可行性阶段的人工短缺权重固定为 1、超产为 0：短缺是唯一需要被消除的不可行来源。
+            // The feasibility phase fixes the deficit weight to 1 and over-production to 0: a deficit is the only
+            // source of infeasibility that has to be removed.
+            let unit_symbol = problem
+                .demands
+                .first()
+                .map(|demand| {
+                    crate::domain::material::shadow_price_unit_symbol(&demand.quantity.unit)
+                })
+                .unwrap_or_default();
+            let mut under = std::collections::BTreeMap::new();
+            let mut over = std::collections::BTreeMap::new();
+            for demand in &problem.demands {
+                let key = crate::domain::material::ProductDemandShadowPriceKey {
+                    product_id: demand.product.id.clone(),
+                    unit_symbol: unit_symbol.clone(),
+                };
+                let sample = demand.quantity.value.clone();
+                under.insert(key.clone(), self.domain_unit(&sample));
+                over.insert(key, self.domain_zero(&sample));
+            }
+            builder.yield_config(crate::domain::r#yield::YieldModelingConfig {
+                under_production_penalty: under,
+                over_production_penalty: over,
+                over_production_upper_bound: std::collections::BTreeMap::new(),
+            });
+        }
+        for extension in solve_config.all_extensions() {
+            builder.extension(extension);
+        }
+        for policy in &solve_config.extension_set.objective_policies {
+            builder.objective_policy(policy.clone());
+        }
+        let mut context = builder.build().map_err(|error| {
+            crate::Csp1dError::Calculation {
+                message: format!("构建 LP 主问题上下文失败 / Failed to build the LP master context: {error}"),
+            }
+        })?;
+        let mut model = ospf_rust_core::model::MetaModel::<f64>::new(name);
+        context
+            .register(&mut model)
+            .map_err(|error| crate::Csp1dError::Calculation {
+                message: format!("注册 LP 主问题失败 / Failed to register the LP master: {error}"),
+            })?;
+        let solution = solver
+            .solve_lp(name, &model)
+            .map_err(|error| crate::Csp1dError::Calculation {
+                message: format!("LP 主问题求解失败 / LP master solve failed: {error}"),
+            })?;
+        Ok(Some(solution))
+    }
+
+    /// 领域单位 1 / The domain unit value 1
+    ///
+    /// 经 `from_f64` 转换，避免对 `V` 追加额外的算术约束。
+    /// Converted through `from_f64` so no extra arithmetic bound is imposed on `V`.
+    fn domain_unit(&self, sample: &V) -> V {
+        crate::domain::material::from_f64(1.0).unwrap_or_else(|| sample.clone())
+    }
+
+    /// 领域零值 / The domain zero value
+    fn domain_zero(&self, sample: &V) -> V {
+        crate::domain::material::from_f64(0.0).unwrap_or_else(|| sample.clone())
     }
 
     fn extract_lp_shadow_prices(
@@ -769,6 +1105,50 @@ impl<V: SolveValue> Csp1dColumnGeneration<V> {
         context.register(&mut model).ok()?;
         let duals = optimistic_dual_solution(problem, &model);
         context.extract_shadow_price(&model, &duals).ok()
+    }
+
+    /// 由真实 LP 对偶提取影子价格 / Extract shadow prices from the real LP duals
+    ///
+    /// 与 `extract_lp_shadow_prices` 的区别只在对偶来源：这里用求解器返回的真实对偶，
+    /// 而不是乐观构造的对偶。重建原始 master 之后必须走这条路径，否则定价依据仍是占位值。
+    /// Differs from `extract_lp_shadow_prices` only in where the duals come from: the solver's real duals
+    /// instead of the optimistically constructed ones. After rebuilding the business master this path is
+    /// mandatory, otherwise pricing would still rest on placeholder values.
+    fn shadow_prices_from_duals(
+        &self,
+        problem: &Csp1dProblem<V>,
+        cutting_plans: &[CuttingPlan<V>],
+        solve_config: &Csp1dSolveConfig<V>,
+        solution: &crate::application::lp_solver::LpMasterSolution,
+    ) -> Option<crate::domain::material::ShadowPriceMap<V>> {
+        if solution.duals.is_empty() {
+            return None;
+        }
+        let input = ProduceInput {
+            cutting_plans: cutting_plans.to_vec(),
+            demands: problem.demands.clone(),
+            materials: problem.materials.clone(),
+            machines: problem.machines.clone(),
+            warm_start_plan_usages: Vec::new(),
+        };
+        let mut builder = Csp1dProduceContextBuilder::new(input);
+        builder.mode(Csp1dModelingMode::LP);
+        for extension in solve_config.all_extensions() {
+            builder.extension(extension);
+        }
+        for policy in &solve_config.extension_set.objective_policies {
+            builder.objective_policy(policy.clone());
+        }
+        let mut context = builder.build().ok()?;
+        let mut model = ospf_rust_core::model::MetaModel::<f64>::new("csp1d_real_dual_shadow_price");
+        context.register(&mut model).ok()?;
+        // 对偶长度必须覆盖全部约束，否则下标会错位，宁可返回 None 也不做部分映射。
+        // The dual vector must cover every constraint; a short vector would misalign the indices, so `None` is
+        // returned rather than mapping a prefix.
+        if solution.duals.len() < model.constraints().len() {
+            return None;
+        }
+        context.extract_shadow_price(&model, &solution.duals).ok()
     }
 
     fn resolve_solve_config(
@@ -868,6 +1248,9 @@ pub struct Csp1dMilp<V: SolveValue> {
     pub length_config: Option<crate::domain::length_assignment::LengthAssignmentModelingConfig<V>>,
     /// warm start 方案使用量 / Warm start plan usages
     pub warm_start_plan_usages: Vec<crate::domain::produce::CuttingPlanUsage<V>>,
+    /// 真实 LP 求解器；未注入时保持启发式影子价格路径
+    /// / Real LP solver; when absent the heuristic shadow-price path is kept
+    pub lp_solver: Option<std::sync::Arc<dyn crate::application::lp_solver::Csp1dLpSolver<V>>>,
 }
 
 impl<V: SolveValue> std::fmt::Debug for Csp1dMilp<V> {
@@ -878,6 +1261,7 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dMilp<V> {
             .field("has_waste_config", &self.waste_config.is_some())
             .field("has_length_config", &self.length_config.is_some())
             .field("warm_start_plan_usages", &self.warm_start_plan_usages.len())
+            .field("has_lp_solver", &self.lp_solver.is_some())
             .finish()
     }
 }
@@ -892,6 +1276,7 @@ impl<V: SolveValue> Default for Csp1dMilp<V> {
             waste_config: None,
             length_config: None,
             warm_start_plan_usages: Vec::new(),
+            lp_solver: None,
         }
     }
 }
@@ -1065,6 +1450,50 @@ impl<V: SolveValue> Csp1dMilp<V> {
                 lp_failure_message: None,
             },
         }
+    }
+
+    /// 由真实 LP 对偶提取影子价格 / Extract shadow prices from the real LP duals
+    ///
+    /// 与 `extract_lp_shadow_prices` 的区别只在对偶来源：这里用求解器返回的真实对偶，
+    /// 而不是乐观构造的对偶。重建原始 master 之后必须走这条路径，否则定价依据仍是占位值。
+    /// Differs from `extract_lp_shadow_prices` only in where the duals come from: the solver's real duals
+    /// instead of the optimistically constructed ones. After rebuilding the business master this path is
+    /// mandatory, otherwise pricing would still rest on placeholder values.
+    fn shadow_prices_from_duals(
+        &self,
+        problem: &Csp1dProblem<V>,
+        cutting_plans: &[CuttingPlan<V>],
+        solve_config: &Csp1dSolveConfig<V>,
+        solution: &crate::application::lp_solver::LpMasterSolution,
+    ) -> Option<crate::domain::material::ShadowPriceMap<V>> {
+        if solution.duals.is_empty() {
+            return None;
+        }
+        let input = ProduceInput {
+            cutting_plans: cutting_plans.to_vec(),
+            demands: problem.demands.clone(),
+            materials: problem.materials.clone(),
+            machines: problem.machines.clone(),
+            warm_start_plan_usages: Vec::new(),
+        };
+        let mut builder = Csp1dProduceContextBuilder::new(input);
+        builder.mode(Csp1dModelingMode::LP);
+        for extension in solve_config.all_extensions() {
+            builder.extension(extension);
+        }
+        for policy in &solve_config.extension_set.objective_policies {
+            builder.objective_policy(policy.clone());
+        }
+        let mut context = builder.build().ok()?;
+        let mut model = ospf_rust_core::model::MetaModel::<f64>::new("csp1d_real_dual_shadow_price");
+        context.register(&mut model).ok()?;
+        // 对偶长度必须覆盖全部约束，否则下标会错位，宁可返回 None 也不做部分映射。
+        // The dual vector must cover every constraint; a short vector would misalign the indices, so `None` is
+        // returned rather than mapping a prefix.
+        if solution.duals.len() < model.constraints().len() {
+            return None;
+        }
+        context.extract_shadow_price(&model, &solution.duals).ok()
     }
 
     fn resolve_solve_config(
@@ -2370,7 +2799,16 @@ fn enrich_solution<V: SolveValue>(
     input: EnrichmentInput<'_, V>,
 ) -> Csp1dSolution<V> {
     solution.status = input.status;
-    solution.failure_message = input.failure_message.clone();
+    // LP 失败信息必须合流到 solution.failureMessage：服务层已经终止定价循环，但最终 MILP 可能仍用
+    // 初始方案成功，此时业务状态是可行的，而失败原因只能通过 failureMessage 暴露。
+    // The LP failure message must be merged into `solution.failureMessage`: the service stops the pricing
+    // loop, yet the final MILP may still succeed with the initial pool, so the business status stays feasible
+    // and the failure reason is only visible through `failureMessage`.
+    solution.failure_message = match (&input.failure_message, &input.lp_failure_message) {
+        (Some(message), _) => Some(message.clone()),
+        (None, Some(lp_message)) => Some(lp_message.clone()),
+        (None, None) => None,
+    };
     solution.top_plans = input.top_plans;
     solution.kpi.top_plan_count = solution.top_plans.len() as u64;
     solution.kpi.yield_metric_count = solution

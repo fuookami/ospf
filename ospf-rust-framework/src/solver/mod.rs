@@ -36,6 +36,7 @@ pub mod logic_based_benders;
 #[cfg(feature = "serde")]
 pub mod logic_based_benders_checkpoint;
 pub mod logic_based_benders_context;
+pub mod meta_model_backend;
 #[doc(hidden)]
 pub mod options;
 #[doc(hidden)]
@@ -79,6 +80,7 @@ pub use logic_based_benders::*;
 #[cfg(feature = "serde")]
 pub use logic_based_benders_checkpoint::*;
 pub use logic_based_benders_context::*;
+pub use meta_model_backend::*;
 // 兼容别名：保留 `SolveOptions`
 // Compatibility alias: keep `SolveOptions`.
 #[doc(hidden)]

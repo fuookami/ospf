@@ -254,6 +254,10 @@ where
             .with_package_attributes(package_attributes)
             .with_max_candidates(self.config.max_candidates_per_iteration);
         request.bin = bins.first().cloned();
+        // 多箱型：把全部候选箱型交给层生成，使每种箱型都能产出候选列；列通过 `BinLayer.bin` 携带箱型。
+        // Multiple bin types: hand every candidate bin type to layer generation so each type produces
+        // candidates; each column carries its type through `BinLayer.bin`.
+        request.bins = layer_generation_candidate_bins(&bins);
         request.existing_layers = algorithm.active_layers();
         let generated = algorithm.layer_generation.generate(&request);
         let generated_block_trace_by_key = generated

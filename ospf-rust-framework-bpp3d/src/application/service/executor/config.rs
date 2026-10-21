@@ -23,6 +23,11 @@ impl Default for MetaModelRmpExecutorConfig {
 }
 
 /// MetaModel final executor 配置 / MetaModel final executor config
+///
+/// 目标分层：体积消耗为主目标（等价于体积浪费最少），箱数与箱型成本为可配次级权重。
+/// 默认值与 BPP2D 对齐。
+/// Layered objectives: volume consumption is primary (equivalent to minimum volume waste), while bin amount
+/// and per-bin-type cost are configurable secondary weights. Defaults are aligned with BPP2D.
 #[derive(Debug, Clone)]
 pub struct MetaModelFinalExecutorConfig {
     /// 模型名称 / Model name
@@ -31,6 +36,14 @@ pub struct MetaModelFinalExecutorConfig {
     pub primal_solution: Vec<f64>,
     /// 空操作目标值 / No-op objective
     pub objective: Option<f64>,
+    /// 箱型体积消耗权重（主目标）/ Bin volume consumption weight (primary)
+    pub final_bin_volume_weight: f64,
+    /// 箱数系数（默认极小，仅用于平局裁决）/ Bin amount coefficient (tiny by default, tie breaker only)
+    pub final_bin_amount_coefficient: f64,
+    /// 箱型成本权重 / Per-bin-type cost weight
+    pub final_bin_type_cost_weight: f64,
+    /// 箱型到成本的映射 / Bin type to cost mapping
+    pub final_bin_type_costs: HashMap<BinTypeId, f64>,
 }
 
 impl Default for MetaModelFinalExecutorConfig {
@@ -39,21 +52,17 @@ impl Default for MetaModelFinalExecutorConfig {
             model_name: "bpp3d_final_milp".to_string(),
             primal_solution: Vec::new(),
             objective: None,
+            final_bin_volume_weight: 1.0,
+            // 体积为主目标；箱数系数极小，仅用于在「体积消耗相同」的解之间打破平局，避免多选零余料的整箱。
+            // Volume is primary; the bin amount coefficient is tiny and only breaks ties between equal-volume
+            // solutions, so the model does not add perfectly filled bins for free.
+            final_bin_amount_coefficient: 1e-6,
+            final_bin_type_cost_weight: 0.0,
+            final_bin_type_costs: HashMap::new(),
         }
     }
 }
 
-/// MetaModel executor 求解结果 / MetaModel executor solve result
-#[derive(Debug, Clone, Default)]
-pub struct MetaModelExecutorSolveResult {
-    /// 目标值 / Objective
-    pub objective: Option<f64>,
-    /// 原始解向量 / Primal solution vector
-    pub primal_solution: Vec<f64>,
-    /// 对偶解向量 / Dual solution vector
-    pub dual_solution: Vec<f64>,
-    /// 扩展影子价格 / Additional typed shadow prices
-    pub additional_shadow_prices: HashMap<String, f64>,
-    /// 附加信息 / Additional information
-    pub info: HashMap<String, String>,
-}
+// MetaModel executor 求解结果已上移到 `ospf-rust-framework`，见 `executor/backend.rs` 的兼容 re-export。
+// MetaModel executor solve result moved to `ospf-rust-framework`; see `executor/backend.rs` for the
+// compatibility re-export.

@@ -30,6 +30,8 @@ pub struct Csp1dProduceContextBuilder<V: SolveValue> {
     mode: Csp1dModelingMode,
     /// 是否最终 MILP / Whether final MILP
     is_final_milp: bool,
+    /// 是否仅最小化人工短缺的可行性阶段 / Whether this is the artificial-deficit-only feasibility phase
+    feasibility_phase: bool,
     /// 额外管线 / Extra pipelines
     extra_pipelines: Vec<Arc<dyn Pipeline<MetaModel<f64>> + Send + Sync>>,
     /// 增量扩展管线 / Incremental extension pipelines
@@ -49,6 +51,7 @@ impl<V: SolveValue> std::fmt::Debug for Csp1dProduceContextBuilder<V> {
             .field("has_length_config", &self.length_config.is_some())
             .field("mode", &self.mode)
             .field("is_final_milp", &self.is_final_milp)
+            .field("feasibility_phase", &self.feasibility_phase)
             .field("extra_pipelines", &self.extra_pipelines.len())
             .field("incremental_pipelines", &self.incremental_pipelines.len())
             .field("objective_policies", &self.objective_policies.len())
@@ -67,6 +70,7 @@ impl<V: SolveValue> Csp1dProduceContextBuilder<V> {
             length_config: None,
             mode: Csp1dModelingMode::MILP,
             is_final_milp: false,
+            feasibility_phase: false,
             extra_pipelines: Vec::new(),
             incremental_pipelines: Vec::new(),
             objective_policies: Vec::new(),
@@ -101,6 +105,16 @@ impl<V: SolveValue> Csp1dProduceContextBuilder<V> {
     /// 设置最终 MILP 标记 / Set final MILP flag
     pub fn is_final_milp(&mut self, is_final_milp: bool) -> &mut Self {
         self.is_final_milp = is_final_milp;
+        self
+    }
+
+    /// 启用仅最小化人工需求短缺的可行性阶段 / Enable the artificial-deficit-only feasibility phase
+    ///
+    /// 该阶段与 LP 模式配合使用：注册人工短缺变量并只把它们放进目标，真实方案列系数为零。
+    /// This phase is used together with LP mode: artificial deficit variables are registered and only they enter
+    /// the objective, while real plan columns carry a zero coefficient.
+    pub fn feasibility_phase(&mut self) -> &mut Self {
+        self.feasibility_phase = true;
         self
     }
 
@@ -159,7 +173,7 @@ impl<V: SolveValue> Csp1dProduceContextBuilder<V> {
             r#yield: self
                 .yield_config
                 .as_ref()
-                .filter(|_| self.mode == Csp1dModelingMode::MILP)
+                .filter(|_| self.mode == Csp1dModelingMode::MILP || self.feasibility_phase)
                 .map(|config| {
                     YieldSlackAggregation::new(
                         config.clone(),
@@ -185,6 +199,7 @@ impl<V: SolveValue> Csp1dProduceContextBuilder<V> {
             incremental_pipelines: self.incremental_pipelines.clone(),
             mode: self.mode,
             is_final_milp: self.is_final_milp,
+            feasibility_phase: self.feasibility_phase,
             warm_start_plan_usages: self.input.warm_start_plan_usages.clone(),
             objective_policies: self.objective_policies.clone(),
             domain_value_sample,

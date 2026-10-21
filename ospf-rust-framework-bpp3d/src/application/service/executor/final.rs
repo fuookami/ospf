@@ -140,9 +140,24 @@ impl MetaModelFinalExecutor {
             layer_depths(&registered.layers),
             &Default::default(),
         )));
+        // 目标分层（加权和）：体积消耗为主目标（等价于体积浪费最少），箱数与箱型成本为可配次级权重。
+        // Layered objective (weighted sum): volume consumption is primary (equivalent to minimum volume waste),
+        // while bin amount and per-bin-type cost are configurable secondary weights.
+        let v_indices = final_bin_marker_indices(&registered);
+        context.add_objective(Box::new(BinVolumeMinimization::from_bins(
+            &registered.bins,
+            v_indices.clone(),
+            self.config.final_bin_volume_weight,
+        )));
         context.add_objective(Box::new(BinAmountMinimization::new(
-            final_bin_marker_indices(&registered),
-            1.0,
+            v_indices.clone(),
+            self.config.final_bin_amount_coefficient,
+        )));
+        context.add_objective(Box::new(BinTypeCostMinimization::from_bins(
+            &registered.bins,
+            v_indices,
+            &self.config.final_bin_type_costs,
+            self.config.final_bin_type_cost_weight,
         )));
 
         // Step 4: Register limits and invoke
@@ -379,7 +394,7 @@ impl MetaModelFinalExecutor {
             );
         }
         info.extend(solve.info);
-        diagnostics.write_info(&mut info);
+        diagnostics.write_bpp3d_info(&mut info);
         ColumnGenerationFinalExecution {
             layers: output_layers,
             packed_bins,

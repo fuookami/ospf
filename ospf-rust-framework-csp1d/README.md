@@ -205,6 +205,60 @@ Known pending work:
 3. Finish the full Kotlin generator statistics and large-scale/parallel cache behavior.
 4. Expand Kotlin fixture parity, real-solver warm-start smoke coverage, and module-level README files.
 
+## Initial restricted-master feasibility and LP terminal states
+
+When the initial LP is infeasible because its columns do not cover every demand, column generation switches to
+a separate **feasibility master**:
+
+1. Its objective minimises artificial demand deficits only (`csp1d_phase_one`); real plan columns carry a zero
+   objective coefficient. Otherwise "adding columns" would be mixed with the business objective and it would be
+   impossible to tell whether the master was merely infeasible.
+2. The deficit weight is fixed at 1 and over-production at 0: a deficit is the only source of infeasibility
+   that has to be removed.
+3. If the feasibility master is still infeasible, or pricing finds no restoring columns, or the iteration limit
+   is reached, the failure is kept and flagged as `LpInfeasible`. Artificial deficits are **never** reported as
+   production or as an optimal pricing certificate.
+4. This only shows that the current generation scope cannot restore feasibility; it does not prove that no
+   feasible column exists outside the generator's search.
+
+LP terminal validation (`application::lp_solver`):
+
+1. A pricing-ready LP result requires an **optimal solution with real duals**.
+2. Infeasible, unbounded and any other non-optimal terminal state return an explicit error that keeps the
+   original terminal description.
+3. Missing duals return an explicit error; zeros are never fabricated.
+
+The LP failure reason is written to both `trace.lp_failure_message` and `solution.failureMessage`: the final
+MILP may still succeed with the initial pool, in which case the business status is feasible and the reason is
+only visible through this message.
+
+### Solver injection boundary
+
+`Csp1dLpSolver` is an injectable interface: an implementation hands the registered `MetaModel` to a real solver
+and reports the terminal state, objective and duals faithfully. When nothing is injected, column generation
+keeps the existing heuristic shadow-price path, so this crate pulls in no solver dependency; Gurobi/SCIP access
+stays behind the feature-gated core/framework backends.
+
+### Rebuilding after restoration
+
+When the feasibility master is optimal with an objective at or below `1e-7` (deficits removed), the deficits
+are discarded, the **business master is rebuilt** from the accumulated columns and solved again; after a
+successful rebuild this round's pricing uses the rebuilt master's **real duals**. If the rebuild is still
+infeasible or abnormal the failure is kept and restoration is not claimed.
+
+### Solver terminal-state adaptation
+
+`application::solver_adapter` is the single adaptation point for real backends: it groups backend terminal
+strings into four semantic classes (infeasible, unbounded, optimal, other), allows only optimal to deliver a
+pricing result, and explicitly rejects unrecognised and sub-optimal states. Missing duals produce an explicit
+message instead of fabricated zeros.
+
+### Not yet done
+
+Real Gurobi/SCIP dual extraction is still limited by the core crate not exposing a dual API; the adapter has
+already fixed the two failure paths ("terminal state unusable" and "duals missing"), so wiring a backend only
+requires filling in the dual source.
+
 ## Related Modules
 
 - [Root README](../README.md)

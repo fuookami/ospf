@@ -3456,3 +3456,46 @@ fn lifecycle_symbols_and_shadow_prices_consistent_after_column_changes() {
         "material shadow price should be 0.5 after column changes"
     );
 }
+
+// ============================================================================
+// 求解终态校验 / Solve terminal-state validation
+// ============================================================================
+
+/// 最终 MILP 无产出时必须报告失败而不是可行 / A final MILP without output must report failure
+///
+/// 对应 Kotlin `Csp1dMilpSolver` 在 `output.solution == null` 时返回显式失败、拒绝提取业务产出。
+/// Mirrors Kotlin `Csp1dMilpSolver` returning an explicit failure on `output.solution == null` and refusing
+/// to extract business output.
+#[test]
+fn empty_final_produce_is_reported_as_failed_with_explicit_message() {
+    // 需求为 0 时没有任何列会被选中，最终 MILP 提取不到业务产出。
+    // With a zero demand no column is selected, so the final MILP extracts no business output.
+    let zero_demand = ProductDemand {
+        product: product(),
+        quantity: quantity(0.0),
+        mode: Some(DemandMode::Roll),
+    };
+    let problem = csp1d_problem::<f64, _>(|builder| {
+        builder
+            .product(product())
+            .material(material())
+            .machine(machine())
+            .demand(zero_demand);
+    });
+    let service = Csp1dColumnGeneration::with_generators(
+        Box::new(FixedPlanEnumerator {
+            plans: vec![cutting_plan("unused-plan")],
+        }),
+        Box::new(EmptyPricingGenerator),
+    );
+
+    let result = service.solve_with_trace(problem, None);
+
+    assert_eq!(result.trace.final_milp_status, Csp1dFinalMilpStatus::Failed);
+    assert_eq!(result.solution.status, Csp1dSolutionStatus::Failed);
+    let message = result.solution.failure_message.unwrap_or_default();
+    assert!(
+        message.contains("没有可提取的可行解") || message.contains("no feasible solution"),
+        "unexpected failure message: {message}"
+    );
+}

@@ -73,6 +73,7 @@
             model_name: "shadow_round_final".to_string(),
             primal_solution: Vec::new(),
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
@@ -160,6 +161,7 @@
             model_name: "trace_round_final".to_string(),
             primal_solution: vec![0.0, 1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
@@ -203,6 +205,7 @@
             model_name: "block_round_final".to_string(),
             primal_solution: vec![0.0, 1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
@@ -245,6 +248,7 @@
             model_name: "empty_generation_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
 
         let result = service
