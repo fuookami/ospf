@@ -31,8 +31,11 @@
 | [`ospf-rust-quantities`](ospf-rust-quantities/README_ch.md) | `ospf-kotlin-quantities` | 物理维度、单位、编译时/运行时物理量和物理量算术。 |
 | [`ospf-rust-core`](ospf-rust-core/README_ch.md) | `ospf-kotlin-core` | 变量、token、symbol、`MetaModel`、flatten、solver trait、solver output、IIS 和 backend adapter。 |
 | [`ospf-rust-framework`](ospf-rust-framework/README_ch.md) | `ospf-kotlin-framework` | pipeline 建模、shadow price、列生成、Benders、组合求解器、持久化契约、远程求解客户端和心跳工具。 |
+| [`ospf-rust-framework-geometry2d`](ospf-rust-framework-geometry2d/README_ch.md) | `ospf-kotlin-framework-geometry2d` | 共享二维量纲几何内核：量值算术、点与形状、放置、包围盒重叠、板材几何与刀缝，供 BPP2D 与 CSP2D 共用。 |
+| [`ospf-rust-framework-bpp2d`](ospf-rust-framework-bpp2d/README_ch.md) | `ospf-kotlin-framework-bpp2d` | 可复用二维装箱框架，包括物品/板材/层模型、BLA 与块装载、候选层生成、层分配、装箱余料与列生成应用流程。 |
 | [`ospf-rust-framework-bpp3d`](ospf-rust-framework-bpp3d/README_ch.md) | `ospf-kotlin-framework-bpp3d` | 可复用三维装箱框架，包括 BPP3D context、层生成/分配、packing、CSV fixture 和 renderer DTO。 |
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README_ch.md) | `ospf-kotlin-framework-csp1d` | 可复用一维分切框架，包括 material、generation、produce、yield、waste、length 和 application flow。 |
+| [`ospf-rust-framework-csp2d`](ospf-rust-framework-csp2d/README_ch.md) | `ospf-kotlin-framework-csp2d` | 可复用二维套裁框架，包括双模式物料、断头台切分树、图案生成、主问题、余料良率与双路径求解。 |
 | [`ospf-rust-framework-gantt-scheduling`](ospf-rust-framework-gantt-scheduling/README_ch.md) | `ospf-kotlin-framework-gantt-scheduling` | 可复用 Gantt 排程框架，包括 task、bunch、capacity、resource、produce 和 branch-and-price flow。 |
 | [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README_ch.md) | `ospf-kotlin-framework-network-scheduling` | 通用 network flow、VRPTW、ESPPRC 定价、路线编译和 Branch-and-Price 框架。 |
 | [`ospf-rust-example`](ospf-rust-example/README_ch.md) | `ospf-kotlin-example` | 可运行示例和迁移兼容 demo。 |
@@ -85,7 +88,10 @@ ospf-rust-framework = { path = "../ospf-rust-framework" }
 
 ```toml
 [dependencies]
+ospf-rust-framework-geometry2d = { path = "../ospf-rust-framework-geometry2d" }
+ospf-rust-framework-bpp2d = { path = "../ospf-rust-framework-bpp2d" }
 ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d" }
+ospf-rust-framework-csp2d = { path = "../ospf-rust-framework-csp2d" }
 ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
 ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling" }
 ```

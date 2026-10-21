@@ -31,8 +31,11 @@ Explicit non-goals:
 | [`ospf-rust-quantities`](ospf-rust-quantities/README.md) | `ospf-kotlin-quantities` | Physical dimensions, units, compile-time/runtime quantities, and quantity-aware arithmetic. |
 | [`ospf-rust-core`](ospf-rust-core/README.md) | `ospf-kotlin-core` | Variables, tokens, symbols, `MetaModel`, flattening, solver traits, solver output, IIS, and backend adapters. |
 | [`ospf-rust-framework`](ospf-rust-framework/README.md) | `ospf-kotlin-framework` | Pipeline modeling, shadow prices, column generation, Benders, combinatorial solvers, persistence contracts, remote solver client, and heartbeat utilities. |
+| [`ospf-rust-framework-geometry2d`](ospf-rust-framework-geometry2d/README.md) | `ospf-kotlin-framework-geometry2d` | Shared 2D quantity geometry kernel: quantity arithmetic, points and shapes, placements, bounding-box overlap, sheet geometry and kerf, used by both BPP2D and CSP2D. |
+| [`ospf-rust-framework-bpp2d`](ospf-rust-framework-bpp2d/README.md) | `ospf-kotlin-framework-bpp2d` | Reusable 2D packing framework with item/sheet/layer models, BLA and block loading, candidate generation, layer assignment, packing with remnants, and the column-generation flow. |
 | [`ospf-rust-framework-bpp3d`](ospf-rust-framework-bpp3d/README.md) | `ospf-kotlin-framework-bpp3d` | Reusable 3D bin-packing framework with BPP3D contexts, layer generation/assignment, packing, CSV fixtures, and renderer DTOs. |
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README.md) | `ospf-kotlin-framework-csp1d` | Reusable one-dimensional cutting-stock framework with material, generation, produce, yield, waste, length, and application flows. |
+| [`ospf-rust-framework-csp2d`](ospf-rust-framework-csp2d/README.md) | `ospf-kotlin-framework-csp2d` | Reusable 2D cutting-stock framework with dual-mode materials, guillotine cut trees, pattern generation, the master problem, waste/yield analysis and both solve paths. |
 | [`ospf-rust-framework-gantt-scheduling`](ospf-rust-framework-gantt-scheduling/README.md) | `ospf-kotlin-framework-gantt-scheduling` | Reusable Gantt scheduling framework with task, bunch, capacity, resource, produce, and branch-and-price flows. |
 | [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README.md) | `ospf-kotlin-framework-network-scheduling` | Generic network flow, VRPTW, ESPPRC pricing, route compilation, and Branch-and-Price framework. |
 | [`ospf-rust-example`](ospf-rust-example/README.md) | `ospf-kotlin-example` | Runnable examples and migration compatibility demos. |
@@ -87,7 +90,10 @@ Domain frameworks can be enabled directly:
 
 ```toml
 [dependencies]
+ospf-rust-framework-geometry2d = { path = "../ospf-rust-framework-geometry2d" }
+ospf-rust-framework-bpp2d = { path = "../ospf-rust-framework-bpp2d" }
 ospf-rust-framework-csp1d = { path = "../ospf-rust-framework-csp1d" }
+ospf-rust-framework-csp2d = { path = "../ospf-rust-framework-csp2d" }
 ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling" }
 ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling" }
 ```
