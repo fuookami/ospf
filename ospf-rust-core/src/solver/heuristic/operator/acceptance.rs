@@ -1,6 +1,6 @@
 //! 接受判据算子 / Acceptance criterion operators
 
-use super::compare_strictly;
+use super::compare_individuals;
 use super::evolution::{GeometricSource, ParameterSource};
 use crate::solver::heuristic::entropy::{Entropy, unit};
 use crate::solver::heuristic::individual::Individual;
@@ -43,7 +43,7 @@ where
         candidate: &Individual<O, V>,
         _entropy: &mut dyn Entropy,
     ) -> bool {
-        compare_strictly(model, &candidate.fitness, &current.fitness) == std::cmp::Ordering::Less
+        compare_individuals(model, &candidate, &current) == std::cmp::Ordering::Less
     }
 }
 
@@ -63,7 +63,7 @@ where
         candidate: &Individual<O, V>,
         _entropy: &mut dyn Entropy,
     ) -> bool {
-        compare_strictly(model, &candidate.fitness, &current.fitness)
+        compare_individuals(model, &candidate, &current)
             != std::cmp::Ordering::Greater
     }
 }
@@ -78,13 +78,13 @@ where
 {
     fn accept(
         &mut self,
-        _model: &dyn ObjectiveModel<O, V>,
+        model: &dyn ObjectiveModel<O, V>,
         _iteration: &Iteration,
-        _current: &Individual<O, V>,
-        _candidate: &Individual<O, V>,
+        current: &Individual<O, V>,
+        candidate: &Individual<O, V>,
         _entropy: &mut dyn Entropy,
     ) -> bool {
-        true
+        model.compare_constraint_tiers(&candidate.solution, &current.solution) != std::cmp::Ordering::Greater
     }
 }
 
@@ -122,7 +122,9 @@ where
         candidate: &Individual<V, V>,
         entropy: &mut dyn Entropy,
     ) -> bool {
-        if compare_strictly(model, &candidate.fitness, &current.fitness)
+        let tier = model.compare_constraint_tiers(&candidate.solution, &current.solution);
+        if tier != std::cmp::Ordering::Equal { return tier == std::cmp::Ordering::Less; }
+        if compare_individuals(model, &candidate, &current)
             == std::cmp::Ordering::Less
         {
             return true;

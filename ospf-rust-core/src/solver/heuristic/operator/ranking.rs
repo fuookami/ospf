@@ -2,7 +2,7 @@
 
 use super::super::individual::Individual;
 use super::super::model::{HeuristicValue, ObjectiveModel};
-use super::compare_strictly;
+use super::rank_individuals;
 
 /// 排序算子契约 / Ranking contract
 pub trait Ranking<O, V>
@@ -39,9 +39,7 @@ where
         model: &dyn ObjectiveModel<O, V>,
         individuals: &[Individual<O, V>],
     ) -> Vec<Individual<O, V>> {
-        let mut ranked = individuals.to_vec();
-        ranked.sort_by(|lhs, rhs| compare_strictly(model, &lhs.fitness, &rhs.fitness));
-        ranked
+        rank_individuals(model, individuals)
     }
 }
 
@@ -55,8 +53,8 @@ where
         model: &dyn ObjectiveModel<O, V>,
         individuals: &[Individual<O, V>],
     ) -> Vec<Individual<O, V>> {
-        let mut ranked = individuals.to_vec();
-        ranked.sort_by(|lhs, rhs| compare_strictly(model, &rhs.fitness, &lhs.fitness));
+        let mut ranked = rank_individuals(model, individuals);
+        ranked.reverse();
         ranked
     }
 }

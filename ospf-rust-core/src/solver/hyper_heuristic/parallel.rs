@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::model::callback::Solution;
@@ -57,6 +57,8 @@ struct Metadata {
     encoding: SearchEncoding,
     multi_objective: bool,
     supports_import: bool,
+    has_objective_coordinates: bool,
+    has_constraint_violation: bool,
 }
 
 enum Command<V> {
@@ -83,6 +85,7 @@ struct WireReport {
     iteration: u64,
     stagnation: u64,
     active_nanos: u64,
+    execution_nanos: u64,
     transitions: Vec<SelectionTransition>,
 }
 
@@ -138,6 +141,10 @@ impl<O: Clone, V: HeuristicValue> SearchProblem<O, V> for RemoteProblem<V> {
     fn objective(&self, _: &Solution<V>) -> Option<O> { None }
     fn dominates(&self, _: &O, _: &O) -> bool { false }
     fn multi_objective(&self) -> bool { self.metadata.multi_objective }
+    fn has_objective_coordinates(&self) -> bool { self.metadata.has_objective_coordinates }
+    fn objective_coordinates(&self, _: &O) -> Result<Vec<f64>> { Err(invalid("remote metadata cannot execute coordinate callbacks")) }
+    fn has_constraint_violation(&self) -> bool { self.metadata.has_constraint_violation }
+    fn constraint_violation(&self, _: &Solution<V>) -> Result<f64> { Err(invalid("remote metadata cannot execute violation callbacks")) }
     fn encoding(&self) -> SearchEncoding { self.metadata.encoding }
     fn save_state(&self) -> Result<Value> { self.handle.call(Command::SaveProblem) }
     fn load_state(&mut self, state: &Value) -> Result<()> { self.handle.call(Command::LoadProblem(state.clone())).map(|_| ()) }
@@ -149,6 +156,7 @@ struct RemoteSession<O, V> {
     codec: Box<dyn SearchCodec<Vec<Individual<O, V>>>>,
     iteration: Iteration,
     transitions: Vec<SelectionTransition>,
+    execution_nanos: u64,
 }
 
 impl<O: Clone, V: HeuristicValue> SearchSession<O, V> for RemoteSession<O, V> {
@@ -173,13 +181,17 @@ impl<O: Clone, V: HeuristicValue> PolicySession<O, V> for RemoteSession<O, V> {
     }
 
     fn receive(&mut self) -> Result<SearchStepResult<O, V>> {
+        self.execution_nanos = 0;
         let report: WireReport = serde_json::from_value(self.handle.receive()?).map_err(|error| invalid(error.to_string()))?;
         self.iteration = Iteration::with_counts(report.iteration, report.stagnation);
         self.iteration.restore_time(Duration::from_nanos(report.active_nanos));
         self.transitions.extend(report.transitions);
+        self.execution_nanos = report.execution_nanos;
         Ok(SearchStepResult { candidates: self.codec.decode(&report.candidates)?, evaluations: report.evaluations,
             steps: report.steps, termination: report.termination, diagnostics: report.diagnostics })
     }
+
+    fn execution_nanos(&self) -> u64 { self.execution_nanos }
 
     fn policies(&self) -> Result<BTreeMap<String, PolicySnapshot>> {
         serde_json::from_value(self.handle.call(Command::Policies)?).map_err(|error| invalid(error.to_string()))
@@ -218,7 +230,8 @@ pub(crate) fn spawn<O: ObjectiveComponents + 'static, V: HeuristicValue>(
             Err(error) => { let _ = ready.send(Err(error)); return; }
         };
         let metadata = Metadata { id: problem.id().into(), fingerprint: problem.fingerprint().into(), order: problem.variable_order(),
-            encoding: problem.encoding(), multi_objective: problem.multi_objective(), supports_import: session.supports_import() };
+            encoding: problem.encoding(), multi_objective: problem.multi_objective(), supports_import: session.supports_import(),
+            has_objective_coordinates: problem.has_objective_coordinates(), has_constraint_violation: problem.has_constraint_violation() };
         if ready.send(Ok(metadata)).is_err() { let _ = boundary(|| session.close()); return; }
         while let Ok(request) = commands.recv() {
             random.restore(request.random);
@@ -226,11 +239,13 @@ pub(crate) fn spawn<O: ObjectiveComponents + 'static, V: HeuristicValue>(
             let closing = matches!(&request.command, Command::Close);
             let result = boundary(|| match request.command {
                 Command::Advance { mut slice, seeds, initialized } => {
+                    let started = Instant::now();
                     let report = execute(session.as_mut(), &mut slice, seeds, initialized);
+                    let execution_nanos = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
                     let wire = WireReport { candidates: codec.encode(&report.candidates)?, evaluations: slice.used(), steps: report.steps,
                         termination: report.termination, diagnostics: report.diagnostics, iteration: session.iteration().iteration(),
                         stagnation: session.iteration().not_better_iteration(), active_nanos: session.iteration().time().as_nanos().min(u64::MAX as u128) as u64,
-                        transitions: session.drain_transitions() };
+                        transitions: session.drain_transitions(), execution_nanos };
                     serde_json::to_value(wire).map_err(|error| invalid(error.to_string()))
                 }
                 Command::Snapshot => serde_json::to_value(session.snapshot()?).map_err(|error| invalid(error.to_string())),
@@ -258,6 +273,6 @@ pub(crate) fn spawn<O: ObjectiveComponents + 'static, V: HeuristicValue>(
     let handle = Rc::new(RemoteHandle { sender, receiver: RefCell::new(receiver), thread: RefCell::new(Some(thread)),
         random: local_random.clone(), pending: Cell::new(false), closed: Cell::new(false) });
     let problem = ProblemHandle::new(Box::new(RemoteProblem { handle: handle.clone(), metadata: metadata.clone() }));
-    let session = Box::new(RemoteSession { handle, metadata, codec, iteration: Iteration::new(), transitions: Vec::new() });
+    let session = Box::new(RemoteSession { handle, metadata, codec, iteration: Iteration::new(), transitions: Vec::new(), execution_nanos: 0 });
     Ok((problem, session, local_random))
 }

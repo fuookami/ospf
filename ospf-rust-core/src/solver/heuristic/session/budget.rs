@@ -99,6 +99,7 @@ pub struct SearchSlice {
     used: Arc<AtomicU64>,
     parent: Option<Arc<SearchSlice>>,
     denied: Arc<AtomicBool>,
+    prepaid: Arc<AtomicBool>,
 }
 
 impl SearchSlice {
@@ -113,6 +114,7 @@ impl SearchSlice {
             used: Arc::new(AtomicU64::new(0)),
             parent: None,
             denied: Arc::new(AtomicBool::new(false)),
+            prepaid: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -136,6 +138,7 @@ impl SearchSlice {
             used: Arc::new(AtomicU64::new(0)),
             parent: Some(Arc::clone(parent)),
             denied: Arc::new(AtomicBool::new(false)),
+            prepaid: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -184,6 +187,7 @@ impl SearchSlice {
 
     /// 以共享引用申请评估 / Admit one evaluation through a shared reference
     pub fn acquire_shared(&self) -> bool {
+        if self.prepaid.swap(false, Ordering::AcqRel) { return true; }
         if self.expired() {
             self.denied.store(true, Ordering::Relaxed);
             return false;
@@ -218,6 +222,11 @@ impl SearchSlice {
             self.denied.store(true, Ordering::Relaxed);
             false
         }
+    }
+
+    /// 转交已领取的一次请求，后续额外请求仍正常计费 / Forward one already acquired request; additional requests remain metered
+    pub(crate) fn with_prepaid_request(&self) -> Self {
+        Self { prepaid: Arc::new(AtomicBool::new(true)), ..self.clone() }
     }
 }
 
@@ -324,5 +333,22 @@ mod tests {
             SearchRandom::new(7).split("island-0"),
             SearchRandom::new(7).split("island-1")
         );
+    }
+
+    #[test]
+    fn reserved_request_is_forwarded_once_even_when_cloned_and_nested() {
+        let budget = Arc::new(SearchBudget::new(3));
+        let parent = Arc::new(SearchSlice::new(budget.clone(), 3, 1));
+        let child = SearchSlice::child(&parent, 2, 1);
+        assert!(child.acquire_shared());
+        let forwarded = child.with_prepaid_request();
+        let cloned = forwarded.clone();
+        assert!(forwarded.acquire_shared());
+        assert_eq!((child.used(), parent.used(), budget.used()), (1, 1, 1));
+        assert!(cloned.acquire_shared());
+        assert_eq!((child.used(), parent.used(), budget.used()), (2, 2, 2));
+        assert!(!forwarded.acquire_shared());
+        assert!(child.denied());
+        assert_eq!(budget.used(), 2);
     }
 }

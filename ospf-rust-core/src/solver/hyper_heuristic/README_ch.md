@@ -4,10 +4,12 @@
 
 迁移基线为 `ospf-kotlin` 的 `2eb7943`。本模块位于 `ospf-rust-core::solver::hyper_heuristic`，依赖已有 `heuristic` 原生骨架，不新增 crate，也不通过反复执行完整 solver 模拟会话。
 
+自适应扩展基线为 `c66cd7f`，保留较新的共享 CMA 与异步重放修复。
+
 ## 使用入口
 
 1. 使用 `SearchRegistry::with_builtins()` 注册单目标原生算法，使用 `register_problem` 提供独立问题工厂。
-2. 使用 `HyperHeuristicConfig::new(...).algorithm(...)` 创建配置，或通过 `ConfigurationFormats` 读取 JSON/YAML。
+2. 使用 `HyperHeuristicConfig::new(...).algorithm(...)` 创建配置，或通过 `ConfigurationFormats` 读取 JSON/YAML/TOML。
 3. `HyperHeuristicSolver::open` 创建独立运行；`advance` 推进串行片段、同步批次或一个异步完成事件，`run` 推进至停止，`close` 幂等关闭。
 4. `result` 不触发评估；失败时可读取已经消费的成本、有效档案及诊断。
 
@@ -118,3 +120,167 @@ worker，即使自然完成先后反转也不改变归并顺序；不是重放�
 **完整源日志**继续重放，或显式继续录制；源日志须匹配该前缀，检查点身份及完成计数须与运行一致。
 已覆盖停止及 worker 失败排空。原始 Kotlin 导出保护拒绝该新状态。自定义回调和组件仍须有
 相同的确定性语义，依赖时钟的奖励及外部副作用不在契约内；普通未录制的异步模式仍然非确定。
+
+## 业务坐标与搜索域
+
+`SearchProblem` 分开定义编码有效性（`valid_solution`）、可搜索域（`admissible`）和严格可行性
+（`feasible`）。`admissible` 默认调用 `feasible`，既有问题无需修改。显式覆盖后可允许不可行候选
+参与原生搜索，但全局及受控记忆的有效档案、工作集、奖励坐标和恢复校验仍同时要求严格可行且不在
+业务禁区。`evaluate` 先消费一次请求令牌；只有编码有效且可搜索时才增加 objective 调用计数。
+
+信用坐标必须由问题显式提供：同时实现 `has_objective_coordinates() -> true` 和
+`objective_coordinates(&O) -> Result<Vec<f64>>`。坐标应按固定业务尺度归一化、越小越优；最大化需
+显式取反，不能默认对向量求和或把业务目标覆盖为惩罚值。`checked_objective_coordinates` 拒绝空、
+非有限及单目标多维坐标，奖励输入进一步校验参考档案与候选的维度一致。标量化原生状态保持标量，
+两层奖励仍使用规范问题的原始目标向量投影，不使用标量化结果冒充原目标坐标。
+
+`has_constraint_violation` 和 `constraint_violation` 提供独立的业务违约度回调；
+`checked_constraint_violation` 拒绝缺失、错误、负值或非有限值。违约度不能绕过预算调用完整目标，
+也不能由 `violation == 0` 推断严格可行。叶 `AlgorithmConfig.constraints` 现支持
+`FeasibilityFirst`、`Epsilon`、`StochasticRanking` 及独立可恢复状态；组合根拒绝此字段，
+应分别配置各叶。自定义工厂通过 `register_algorithm_with_constraints(id, true, factory)`
+显式声明支持，且必须遵守约束事务协议。
+
+Rust 无法判断 trait 方法是否被覆盖，因此装配约束策略时默认保留 `admissible`，不会自动设为
+`true`。若要放宽默认的严格可行过滤，显式覆盖 `constraint_admissible` 并保留业务禁区，或直接
+定义明确的 `admissible` 搜索域。原搜索域内仍执行自定义 `evaluate`，且只计费一次；显式扩展域
+若还需要专用评估/缓存语义，应覆盖 `evaluate_constraint_admissible`。该方法默认在原可搜索域
+调用原 `evaluate`，仅在明确新增域中调用计费后的 `objective`。
+
+原生比较保留完整个体和原始 fitness；随机排序使用有界批量扫描，绝不作为随机比较器，成对历史
+最优和接受判断仍确定。严格可行优先于零违约。epsilon 初值为空时只在首个完整提交步校准，随后
+按 `horizon` 和 `exponent` 收紧。部分步/失败步恢复原生状态、局部档案、校准和约束随机流，
+不退还已消耗请求，也不删除报告中已完成候选。导入不推进 epsilon；失败回滚约束状态，成功的
+部分导入保留已获额度前缀。原生及受控检查点保留 `constraints`；旧 Kotlin 2eb7943 导出保护
+明确拒绝该新状态，不通过删除状态伪装兼容。
+
+`operator::fitness` 另提供 `ConstraintAssessment<T>`、`EpsilonConstraintEvaluator`、
+`StochasticRanking`，只排序已计费的业务评估，不消费目标令牌，也不证明可行或放宽全局严格档案。
+
+`RewardPolicy::requires_coordinates` 在打开运行时检查能力，不隐式推导标量坐标。`RewardContext`
+包含实际动作 ID、评估请求数、worker 内执行耗时，以及派发前冻结的 `reference` 和完成后过滤的
+`candidates` 坐标；投影不调用 objective，也不消费目标评估令牌。每个组合叶子仍持有独立奖励实例。
+坐标回调失败会产生失败反馈，但不删除已经评估的有效候选。
+
+依赖真实耗时的自定义奖励必须声明 `requires_elapsed_time() -> true`，当前调度录制/精确重放会在
+绑定前拒绝该组合；普通执行仍支持。只有这种显式耗时依赖才写入转移的耗时元数据，其他策略保留
+零值，避免破坏既有确定性轨迹。`RewardContext.elapsed_nanos` 始终是实际测量，不能在未声明依赖时
+暗中使用它更新策略。新增内置策略如下。
+
+## 自适应信用与接受
+
+`learning.reward` 支持 `time-normalized`（epsilonSeconds=1e-9）、`extreme-value`
+（window=50）、`dominance` 和 `hypervolume-delta`。前两者要求显式投影的单目标标量坐标；
+dominance 使用有效新贡献。Extreme 通过全局动作窗口使旧信用过期，不保存无限期的动作极值。
+根及每个叶拥有独立奖励状态。真实耗时奖励可用于普通运行，但明确拒绝 E4 精确录制/重放。
+
+超体积使用任意受支持维数的越小越优坐标。`reference` 为有限数值数组，或成对配置
+`referenceX`/`referenceY`，不能混用。未指定参考点时，默认收集32个有效候选后加余量冻结；
+校准阶段及冻结动作信用均为0。精确递归切片默认 `maxWork=1000000`，深度上限256；
+额度耗尽明确失败，绝不静默转采样。显式 `mode="sampled"` 默认 samples=16384、seed=1，
+使用共同随机数并报告标准误差和99% Hoeffding绝对误差界。校准状态与 `last_measurement()`
+随检查点恢复，几何失败不部分提交校准或覆盖最近成功诊断。
+
+`memory.acceptance` 新增 `late`（length=50）、`record-to-record`（initialRatio=0.05、
+horizon=1000）和 `auto`（无组件参数）。Late拒绝也推进原目标历史；Record要求标量最小化
+坐标并将容差收紧到0。Auto按首个可用的decision/step/evaluation预算推导容量，只用严格改善
+调整跨度，正比例缩放和平移目标不改变决策；预算提示不是停止条件。Late和Record仍有显式参数，
+不能宣称无参数策略。
+
+自定义业务目标使用Late或Auto前须注册 `SearchRegistry::set_objective_codec`；历史保存原始
+业务O而非投影坐标，不要求 `O: Serialize`。标量与向量内置注册表已提供原生codec。
+接受策略只改变工作集：拒绝的有效候选仍可进入档案，不回滚算法私有状态。
+旧Kotlin 2eb7943导出保护明确拒绝这些新组件，不删除状态伪装兼容。
+
+## 非平稳选择
+
+高层 `selection` 和算法槽位 `selection` 均支持 `frr-mab`（window=50、exploration=0.5、
+decay=0.8）、`choice-function`（rate=0.2、recencyWeight=0.1）和 `adaptive-pursuit`
+（rate=0.2、minimumProbability=0.01）。可用动作掩码保留规范动作顺序，概率追逐在掩码内重新归一。
+
+快照保留完整窗口、质量、转移对、概率、lastUsed、前驱、pending 决策及 clock；恢复按动作 ID
+匹配，并验证定义与概率下界。`LearningMode::Frozen` 不更新信用。Choice function 在派发时冻结
+前驱，包括“无前驱”，异步乱序完成不能偷偷改变归因。旧 Kotlin 2eb7943 导出保护明确拒绝这些
+新状态，不删除学习状态伪装兼容。
+
+`SelectionPolicy::predecessor` 和 `discard` 提供兼容默认实现。准备失败及未执行槽位清理
+pending，不伪造反馈；每个真实执行的槽位只观察一次。本地 terminal 仅依据自身执行结果，
+不读取有竞态的共享全局计数器。停止/失败排空、E4 调度重放及静止检查点保留完整选择器状态。
+共同固定数值向量与跨端完整轨迹覆盖代表性binary64互通，不仅依靠Rust自身续跑；
+不据此认证全部平台、回调或参数组合。
+
+## 原生导入同步
+
+PSO/APSO/CLPSO通过 `runner::ContextStateSynchronizer` 导入：每个已计费候选匹配原目的状态中
+最近的粒子，按规范变量顺序计算并夹紧位移速度；来源粒子的真实历史best更优时保留。按个人best
+排序后从最差槽位倒序替换，不再一律将速度清零。CLPSO同步后重建合法的自示范索引。
+
+SHADE/L-SHADE合并种群去重排序，将被淘汰的目的成员放入有界external archive，并保留真实
+`M_F`、`M_CR`和记忆游标，绝不为导入解伪造成功参数样本。CMA继续沿用完整协方差重启协议，
+单解导入保留原协方差。导入仍走普通评估预算，算法切换不清空暂停状态。
+
+## 局部搜索与正交动作集
+
+更新槽位支持 `pattern-search`（`initialStep=0.1`、`contraction=0.5`、`sweeps=32`）、`opposition`、
+`mutation-stage`（`operator`、`rate=1`）、`neighborhood-stage`（`operator`），以及
+`pipeline`、`vnd`（`maxTrials=50`）、`elite-local`（`amount=1`）。三个组合使用非空 `stages` 数组。
+VND严格改善后回到首邻域；elite-local仅处理调用方已排序的Top-K并保留其余父代。
+opposition仅反射具有有限上下界的维度，未界定维度不变。
+
+`VariableModel::local_evaluation`默认不提供能力；原生单目标及NSGA会话显式提供带生命周期的
+`LocalEvaluation`/`EvaluatedSolution`账本，目标类型保留在模型内。局部seed、坐标/模式试探及
+流水线每阶段产物都经同一完整评估入口计费；排序不调用目标，句柄不能跨账本比较或保存为跨步缓存。
+最终输出仍由外层重新评估，不贴旧fitness。pattern剩余额度不超过2时停止试探，给外层保留空间。
+没有显式账本的普通变量模型不能执行需要目标判断的局部动作，不隐式绕过预算调用目标。
+
+嵌套深度最多16、每个组合1..64阶段、每棵动作树最多1024节点。自定义子算子须通过
+`register_*_with_capabilities`声明无状态和兼容编码，返回实例也须声明`stateless`；旧注册方式保留
+连续顶层使用，但不能被默认为可嵌套或兼容排列。有状态组合应独立实现可恢复组件，不能套无状态包装丢状态。
+
+`OrthogonalOperatorPortfolio::continuous(size)`要求至少4个体，构建分布、自适应差分、围捕、逃逸、
+局部精调五生态位；`permutation(size)`要求正规模，仅用order及inversion/swap。两者都返回普通
+`AlgorithmConfig`列表，业务模型仍负责合法初始解。每个槽位不超过两个动作，不混用连续与排列编码。
+
+## 业务破坏修复扩展
+
+`heuristic::operator::neighborhood`提供泛型`RuinResult<T>`、`Ruin<T>`、`RandomRuin`、
+`WorstCostRuin<T>`、`RelatednessRuin<T>`、`InsertionCost<T>`、`Repair<T>`、
+`RegretKInsertRepair<T>`、`GreedyInsertRepair<T>`和`RuinRecreateOperator<T>`。
+`T: Clone + PartialEq`的等价关系须代表稳定唯一身份；重复或非自反身份（例如NaN）被拒绝。
+移除无放回，保留/移除结果保持原顺序；动作还检查自定义破坏和修复没有复制、丢失或替换元素。
+
+移除收益、相关距离和插入增量代价均由类型化回调注入，不序列化闭包，也不隐式调用完整目标。
+收益/代价必须有限，相关距离还须非负；插入代价返回`None`表示不可插入。Regret-K先处理可选位置
+不足K的元素，再按遗憾值及最低代价选择，K=1为全局贪心。不可修复、遗憾值溢出或回调失败显式报错，
+不会静默丢弃元素。有限代价排序保留JVM的正负零顺序与稳定同值位置。
+
+`runner::RuinRecreateSearchSession`接收独占`SearchProblem`、破坏修复动作、原O个体codec和
+`RuinRecreateSessionConfig { amount, random, stateless_estimates }`。仅接受合法移除数的排列问题；
+通过普通`SearchRegistry::register_algorithm`注册，无需修改协调器或硬编码业务算法。
+该直接会话不声明原生约束事务能力，不能通过自定义注册的能力标志绕过事务预检。
+完整邻居和导入均调用`SearchProblem::evaluate`计费，部分估计不能用作未计费的完整业务目标。
+失败报告保留已完成前缀、已评估候选和真实请求数，不退款、不重复反馈。
+
+会话保存current、迭代和独立随机流；估计须显式无状态，或用`with_estimate_state`提供`EstimateState`。
+估计恢复失败会尝试回滚旧估计状态，拒绝意外状态；恢复不调用目标。问题回调状态沿现有外层
+problem-state协议独立保存，直接使用会话时通过`problem()`/`problem_mut()`保存/恢复；amount等配置
+由外层配置指纹保护。原O不要求Serde，codec不能用标量化替换业务目标。
+
+## 配置与自适应数值
+
+`ConfigurationFormats::encode_format` / `decode_format`支持`Json`、`Yaml`、`Toml`，
+共用结构校验和显式版本迁移；组件参数、版本、能力、编码及嵌套stages在首次评估前由注册表校验。
+输入上限为4MiB UTF-8，拒绝重复键及非有限数。TOML省略模型声明的缺省Option，
+业务参数中的null则报错，不静默丢失；日期时间值转ISO字符串，普通字符串不变。
+约束配置/快照压缩声明的默认值，但必须保留steps、可空scale和独立约束random。
+
+新增FRR-MAB的log/pow、epsilon的pow、采样HV误差及Auto的sqrt固定为fdlibm运算，
+对应Kotlin的StrictMath，而非平台原生近似。共同探针实测发现过1ULP差异，固定实现后
+50000个原语/公式结果及容量边界具有共同黄金向量；不据此认证任意回调算术或全部机器/工具链。
+原有显式CMA/SHADE数值模式不变。历史档案使用稳定的完整个体比较，
+不消费仅用于种群随机排序的独立约束流。
+
+注册了无损archive codec的自定义算法与Kotlin共用空槽位控制层，保留局部档案和决策历史。
+当前Rust自定义工厂API不暴露operator bindings，因此显式拒绝配置但不会消费的slots。
+旧Rust裸自定义检查点仍按原直通模式恢复，不伪造未保存的控制层历史；
+未提供archive codec的会话保留非恢复直通路径。

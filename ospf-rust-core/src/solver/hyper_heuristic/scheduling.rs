@@ -127,7 +127,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Composit
         };
         Ok(SearchSessionSnapshot { version: 1, initialized: self.initialized.iter().any(|initialized| *initialized),
             iteration: self.iteration.iteration(), stagnation: self.iteration.not_better_iteration(), active_nanos: 0,
-            state: serde_json::to_value(state).map_err(|error| invalid(error.to_string()))?, archive })
+            state: serde_json::to_value(state).map_err(|error| invalid(error.to_string()))?, archive, constraints: JsonValue::Null })
     }
 
     fn restore(&mut self, snapshot: &SearchSessionSnapshot) -> Result<()> {

@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "ospf-rust-core"
 version = "1.1.0"
 edition = "2024"
@@ -24,6 +24,7 @@ serde = { version = "1.0.229", features = ["derive"] }
 # 无损浮点读取，并保留校验和中的原始数值文本 / Read floats losslessly and retain raw numeric text for checksums
 serde_json = { version = "1.0.151", features = ["preserve_order", "float_roundtrip", "raw_value"] }
 serde_yaml_ng = "0.10.0"
+toml = "0.9"
 
 # 错误处理 / Error handling
 thiserror = "2.0.20"

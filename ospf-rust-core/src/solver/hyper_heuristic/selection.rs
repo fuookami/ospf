@@ -10,6 +10,10 @@ use crate::solver::heuristic::session::SearchRandom;
 use crate::solver::hyper_heuristic::config::ComponentSpec;
 use crate::solver::hyper_heuristic::invalid;
 
+mod non_stationary;
+
+pub use non_stationary::NonStationarySelector;
+
 /// 选择时观察到的离散状态与特征 / Discrete state and features observed at selection
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -126,6 +130,19 @@ pub trait SelectionPolicy {
     fn snapshot(&self) -> Result<PolicySnapshot>;
     /// 按稳定动作 ID 恢复 / Restore by stable action IDs
     fn restore(&mut self, snapshot: &PolicySnapshot) -> Result<()>;
+    /// 丢弃未执行决策，不学习虚构反馈 / Discard an unexecuted decision without learning fabricated feedback
+    fn discard(&mut self, _decision: u64) {}
+    /// 返回派发时冻结的前驱，不使用完成时当前动作 / Return the dispatch-frozen predecessor, never the current completion-time action
+    fn predecessor(&self, _decision: u64) -> Option<String> { None }
+}
+
+pub(crate) fn builtin_selector(
+    spec: &ComponentSpec,
+    actions: Vec<String>,
+    learning: bool,
+) -> Result<Box<dyn SelectionPolicy>> {
+    if NonStationarySelector::supports(&spec.r#type) { Ok(Box::new(NonStationarySelector::new(spec, actions, learning)?)) }
+    else { Ok(Box::new(TabularSelectionPolicy::new(spec, actions, learning)?)) }
 }
 
 /// 内置表格学习与规则策略 / Built-in tabular and rule policies

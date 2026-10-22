@@ -115,25 +115,19 @@ where
     {
         let previous_best = self.entries.first().cloned();
         self.entries.extend(candidates);
-        self.entries.sort_by(|lhs, rhs| {
-            if problem.dominates(&lhs.fitness, &rhs.fitness) {
-                std::cmp::Ordering::Less
-            } else if problem.dominates(&rhs.fitness, &lhs.fitness) {
-                std::cmp::Ordering::Greater
-            } else {
-                std::cmp::Ordering::Equal
-            }
-        });
+        // 历史档案稳定排序，不消费用于种群选择的随机约束流 / Historical archives sort stably without consuming the population's stochastic constraint stream.
+        self.entries.sort_by(|lhs, rhs| problem.compare_individuals(lhs, rhs));
         if !self.preserve_equivalent {
             self.entries.dedup_by(|lhs, rhs| {
-                problem.equivalent(&lhs.fitness, &rhs.fitness)
+                problem.constraint_tier(&lhs.solution) == problem.constraint_tier(&rhs.solution)
+                    && problem.equivalent(&lhs.fitness, &rhs.fitness)
             });
         }
         self.entries.truncate(self.capacity);
 
         match (previous_best, self.entries.first()) {
             (None, Some(_)) => true,
-            (Some(previous), Some(current)) => problem.dominates(&current.fitness, &previous.fitness),
+            (Some(previous), Some(current)) => problem.compare_individuals(current, &previous) == std::cmp::Ordering::Less,
             _ => false,
         }
     }
@@ -151,16 +145,12 @@ where
         // Structurally identical to Kotlin's `ParetoArchive.offer`; "improved" follows Kotlin's
         // `ParetoSearchArchive.update`: the candidate is neither dominated by nor equal to a member of the archive as it was
         // before this round.
-        let previous: Vec<O> = self
-            .entries
-            .iter()
-            .map(|entry| entry.fitness.clone())
-            .collect();
+        let previous = self.entries.clone();
         for candidate in candidates {
             // 已被档案成员支配：丢弃（实时检查，不能用本轮开始前的快照）。
             // Dominated by a member of the archive: discard. Checked live, not against the round-start snapshot.
             if self.entries.iter().any(|entry| {
-                problem.dominates(&entry.fitness, &candidate.fitness)
+                problem.compare_individuals(entry, &candidate) == std::cmp::Ordering::Less
             }) {
                 continue;
             }
@@ -169,7 +159,8 @@ where
             if self
                 .entries
                 .iter()
-                .any(|entry| same_objective(&entry.fitness, &candidate.fitness))
+                .any(|entry| problem.constraint_tier(&entry.solution) == problem.constraint_tier(&candidate.solution)
+                    && same_objective(&entry.fitness, &candidate.fitness))
             {
                 continue;
             }
@@ -177,13 +168,15 @@ where
             // 新解支配档案成员：淘汰它们。
             // The newcomer dominates some members: evict them.
             self.entries
-                .retain(|entry| !problem.dominates(&candidate.fitness, &entry.fitness));
+                .retain(|entry| problem.compare_individuals(&candidate, entry) != std::cmp::Ordering::Less);
             self.entries.push(candidate);
         }
 
         self.trim_entries();
         self.entries.iter().any(|candidate| previous.iter().all(|entry|
-            !same_objective(entry, &candidate.fitness) && !problem.dominates(entry, &candidate.fitness)))
+            !(problem.constraint_tier(&entry.solution) == problem.constraint_tier(&candidate.solution)
+                && same_objective(&entry.fitness, &candidate.fitness))
+                && problem.compare_individuals(entry, candidate) != std::cmp::Ordering::Less))
     }
 
     /// 按容量裁剪：多目标按拥挤距离从大到小，单目标按目标值顺序 / Trim to capacity: crowding distance for multi-objective, objective order for single-objective

@@ -16,7 +16,7 @@ use crate::solver::heuristic::model::{
 };
 use crate::solver::heuristic::operator::archive::BestArchive;
 use crate::solver::heuristic::operator::clamped_value;
-use crate::solver::heuristic::operator::compare_strictly;
+use crate::solver::heuristic::operator::compare_individuals;
 use crate::solver::heuristic::operator::evolution::{ConstantSource, ParameterSource};
 use crate::solver::heuristic::operator::fitness::{
     DefaultOnMissFitnessEvaluator, FitnessEvaluator,
@@ -279,12 +279,15 @@ fn keep_best<V>(
 where
     V: HeuristicValue,
 {
+    if model.stochastic_constraints() {
+        return crate::solver::heuristic::operator::rank_individuals(model, individuals).into_iter().take(amount).collect();
+    }
     let mut remaining = individuals.to_vec();
     let mut kept = Vec::with_capacity(amount.min(remaining.len()));
     while kept.len() < amount && !remaining.is_empty() {
         let mut best_index = 0;
         for index in 1..remaining.len() {
-            if compare_strictly(model, &remaining[index].fitness, &remaining[best_index].fitness)
+            if compare_individuals(model, &remaining[index], &remaining[best_index])
                 == std::cmp::Ordering::Less
             {
                 best_index = index;
@@ -382,8 +385,7 @@ where
 
         let order = model.variable_order();
         let dimension = order.len();
-        let mut sorted = state.population.clone();
-        sorted.sort_by(|lhs, rhs| compare_strictly(model, &lhs.fitness, &rhs.fitness));
+        let sorted = crate::solver::heuristic::operator::rank_individuals(model, &state.population);
         let p_best_amount = ((sorted.len() as f64 * p_best_rate) as usize).max(1);
         let p_best_pool = &sorted[..p_best_amount.min(sorted.len())];
 
@@ -474,11 +476,7 @@ where
             match fitness_evaluator.evaluate(model, &trial) {
                 None => next_population.push(target.clone()),
                 Some(candidate) => {
-                    if compare_strictly(
-                        model,
-                        &candidate.fitness,
-                        &target.fitness,
-                    ) != std::cmp::Ordering::Greater
+                    if compare_individuals(model, &candidate, &target) != std::cmp::Ordering::Greater
                     {
                         next_population.push(candidate);
                         next_archive.push(target.solution.clone());

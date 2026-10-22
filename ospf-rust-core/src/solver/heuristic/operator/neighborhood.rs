@@ -13,6 +13,10 @@ use super::super::iteration::Iteration;
 use super::super::model::{HeuristicValue, VariableModel, from_f64, to_f64};
 use super::unit;
 
+pub mod ruin_recreate;
+
+pub use ruin_recreate::{GreedyInsertRepair, InsertionCost, RandomRuin, RegretKInsertRepair, RelatednessRuin, Repair, Ruin, RuinRecreateOperator, RuinResult, WorstCostRuin};
+
 /// 邻域算子契约 / Neighbourhood contract
 pub trait Neighborhood<V>
 where

@@ -8,15 +8,17 @@ pub mod adapters;
 pub mod archive;
 pub mod budget;
 pub mod codecs;
+pub mod constraints;
 pub mod json;
 pub mod native;
 pub mod protocol;
 pub mod runner_session;
 
 pub use archive::{ObjectiveComponents, SessionArchive};
+pub use constraints::{ConstraintHandlingConfig, ConstraintMode, ConstraintProblem};
 pub use adapters::{
     MultiObjectiveProblemModel, NsgaSessionHooks, PopulationHooks, ProblemModel, replace_worst,
-    select_front,
+    select_constrained_front, select_front,
 };
 pub use budget::{SearchBudget, SearchRandom, SearchSlice};
 pub use codecs::{

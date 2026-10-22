@@ -108,6 +108,9 @@ pub struct AlgorithmConfig {
     /// 显式标量化标识 / Explicit scalarization identifier
     #[serde(default)]
     pub scalarization: Option<String>,
+    /// 叶会话原生约束策略 / Native constraint handling of a leaf session
+    #[serde(default)]
+    pub constraints: Option<crate::solver::heuristic::session::ConstraintHandlingConfig>,
     /// 组合子会话 / Composite child sessions
     #[serde(default)]
     pub children: Vec<AlgorithmConfig>,
@@ -125,7 +128,7 @@ impl AlgorithmConfig {
         Self {
             id: id.into(), algorithm: ComponentSpec::new(algorithm), size: size(),
             updates: Vec::new(), mutations: Vec::new(), neighborhoods: Vec::new(),
-            parameters: BTreeMap::new(), selection: round_robin(), scalarization: None,
+            parameters: BTreeMap::new(), selection: round_robin(), scalarization: None, constraints: None,
             children: Vec::new(), initialization: InitializationMode::Model, import_mode: ImportMode::Native,
         }
     }
@@ -301,7 +304,8 @@ impl HyperHeuristicConfig {
                 let valid = !value.id.is_empty() && value.id.bytes().next().is_some_and(|byte| byte.is_ascii_alphanumeric())
                     && value.id.bytes().all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte));
                 valid && value.size > 0 && ids.insert(&value.id)
-                    && (value.children.is_empty() || algorithms(&value.children))
+                    && value.constraints.as_ref().is_none_or(|config| config.validate().is_ok())
+                    && (value.children.is_empty() || value.constraints.is_none() && algorithms(&value.children))
             })
         }
         if self.version != 1 || !algorithms(&self.algorithms) { return Err(invalid("invalid configuration version or algorithms")); }
@@ -320,7 +324,7 @@ impl HyperHeuristicConfig {
     }
 }
 
-/// JSON 配置格式 / JSON configuration format
+/// 共用校验的配置文本入口 / Configuration text entry points sharing validation
 pub struct ConfigurationFormats;
 
 /// 配置文本格式 / Configuration text format
@@ -330,6 +334,8 @@ pub enum ConfigurationFormat {
     Json,
     /// YAML 文本 / YAML text
     Yaml,
+    /// TOML 文本；日期时间映射为ISO文本，非有限数拒绝 / TOML text; datetimes map to ISO text and non-finite numbers are rejected
+    Toml,
 }
 
 impl ConfigurationFormats {
@@ -350,6 +356,7 @@ impl ConfigurationFormats {
         match format {
             ConfigurationFormat::Json => Self::encode(config),
             ConfigurationFormat::Yaml => serde_yaml_ng::to_string(config).map_err(|error| invalid(error.to_string())),
+            ConfigurationFormat::Toml => toml::to_string_pretty(config).map_err(|error| invalid(error.to_string())),
         }
     }
 
@@ -368,12 +375,26 @@ impl ConfigurationFormats {
         let document: StrictValue = match format {
             ConfigurationFormat::Json => serde_json::from_str(text).map_err(|error| invalid(error.to_string()))?,
             ConfigurationFormat::Yaml => serde_yaml_ng::from_str(text).map_err(|error| invalid(error.to_string()))?,
+            ConfigurationFormat::Toml => StrictValue(toml_value(toml::from_str(text).map_err(|error| invalid(error.to_string()))?)?),
         };
         let document = super::persistence::migrate_document(document.0, migrations)?;
         let config: HyperHeuristicConfig = serde_json::from_value(document).map_err(|error| invalid(error.to_string()))?;
         config.validate()?;
         Ok(config)
     }
+}
+
+fn toml_value(value: toml::Value) -> Result<Value> {
+    Ok(match value {
+        toml::Value::String(value) => Value::String(value),
+        toml::Value::Integer(value) => value.into(),
+        toml::Value::Float(value) => serde_json::Number::from_f64(value).map(Value::Number)
+            .ok_or_else(|| invalid("non-finite configuration number"))?,
+        toml::Value::Boolean(value) => value.into(),
+        toml::Value::Datetime(value) => Value::String(value.to_string()),
+        toml::Value::Array(values) => Value::Array(values.into_iter().map(toml_value).collect::<Result<_>>()?),
+        toml::Value::Table(values) => Value::Object(values.into_iter().map(|(key, value)| Ok((key, toml_value(value)?))).collect::<Result<_>>()?),
+    })
 }
 
 struct StrictValue(Value);
@@ -429,11 +450,18 @@ pub(crate) fn compact_algorithm(algorithm: &AlgorithmConfig) -> Result<Value> {
     if let Some(Value::Object(parameters)) = value.get_mut("parameters") {
         for specs in parameters.values_mut() { if let Value::Array(specs) = specs { for spec in specs { compact_component(spec); } } }
     }
+    if let Some(constraints) = value.get_mut("constraints") {
+        let defaults = serde_json::to_value(crate::solver::heuristic::session::ConstraintHandlingConfig::default()).map_err(|error| invalid(error.to_string()))?;
+        remove_defaults(constraints, &defaults);
+    }
     if !algorithm.children.is_empty() {
         value["children"] = Value::Array(algorithm.children.iter().map(compact_algorithm).collect::<Result<_>>()?);
     }
     Ok(value)
 }
+
+#[cfg(test)]
+mod tests;
 
 pub(crate) fn compact_component(value: &mut Value) {
     if let Some(fields) = value.as_object_mut() {

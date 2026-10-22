@@ -11,6 +11,10 @@ use crate::variable::VariableId;
 use num_traits::{Float, NumCast};
 use std::cmp::Ordering;
 
+pub mod local_evaluation;
+
+pub use local_evaluation::{EvaluatedSolution, LocalEvaluation};
+
 /// 启发式值类型约束 / Heuristic value type bound
 ///
 /// 要求浮点语义（`Float` 同时提供 `NumCast`/`ToPrimitive`/`PartialOrd`），从而可以安全地在 `f64`
@@ -31,6 +35,8 @@ impl<T> HeuristicValue for T where T: Float + Default + Send + Sync + 'static {}
 /// # 类型参数 / Type parameters
 /// - `V`: 值类型 / Value type
 pub trait VariableModel<V: HeuristicValue> {
+    /// 显式已计费局部评估能力；普通变量模型默认不提供 / Explicit metered local evaluation, absent by default for ordinary variable models
+    fn local_evaluation(&self) -> Option<&dyn LocalEvaluation<V>> { None }
     /// 变量数量 / Variable count
     fn num_variables(&self) -> usize;
 
@@ -94,6 +100,33 @@ pub trait ObjectiveModel<O, V: HeuristicValue>: VariableModel<V> {
 
     /// 比较目标值，`Some(Ordering::Less)` 表示左侧更优 / Compare objectives; `Some(Ordering::Less)` means left is better
     fn compare_objective(&self, lhs: &O, rhs: &O) -> Option<Ordering>;
+
+    /// 完整个体比较，约束视图可保留解相关信息 / Compare complete individuals, retaining solution-dependent information in constraint views
+    fn compare_individuals(
+        &self,
+        lhs: &crate::solver::heuristic::individual::Individual<O, V>,
+        rhs: &crate::solver::heuristic::individual::Individual<O, V>,
+    ) -> Ordering {
+        match (self.compare_objective(&lhs.fitness, &rhs.fitness), self.compare_objective(&rhs.fitness, &lhs.fitness)) {
+            (Some(Ordering::Less), Some(Ordering::Less)) => Ordering::Equal,
+            (Some(Ordering::Less), _) => Ordering::Less,
+            (_, Some(Ordering::Less)) => Ordering::Greater,
+            _ => Ordering::Equal,
+        }
+    }
+
+    /// 批量排序下标；允许独立随机扫描而非随机比较器 / Batch rank indices, permitting independent random scans rather than random comparators
+    fn rank_indices(&self, entries: &[crate::solver::heuristic::individual::Individual<O, V>]) -> Vec<usize> {
+        let mut indices: Vec<usize> = (0..entries.len()).collect();
+        indices.sort_by(|&a, &b| self.compare_individuals(&entries[a], &entries[b]));
+        indices
+    }
+
+    /// 是否必须使用批量排序进行环境选择 / Whether survivor selection must use batch ordering
+    fn stochastic_constraints(&self) -> bool { false }
+
+    /// 仅比较约束层级，供接受策略保护可行域 / Compare constraint tiers alone so acceptance protects feasibility
+    fn compare_constraint_tiers(&self, _lhs: &Solution<V>, _rhs: &Solution<V>) -> Ordering { Ordering::Equal }
 }
 
 /// 模型变量顺序辅助 / Model variable order helper
@@ -428,4 +461,3 @@ mod tests {
         assert_eq!(model.constraint_satisfied(&solutions[0]), Some(true));
     }
 }
-

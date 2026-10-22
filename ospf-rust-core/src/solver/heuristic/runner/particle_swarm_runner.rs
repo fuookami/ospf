@@ -16,7 +16,7 @@ use crate::solver::heuristic::model::{
 };
 use crate::solver::heuristic::operator::archive::BestArchive;
 use crate::solver::heuristic::operator::clamped_value;
-use crate::solver::heuristic::operator::compare_strictly;
+use crate::solver::heuristic::operator::compare_individuals;
 use crate::solver::heuristic::operator::evolution::{ConstantSource, ParameterSource};
 use crate::solver::heuristic::operator::fitness::{DefaultOnMissFitnessEvaluator, FitnessEvaluator};
 use crate::solver::heuristic::operator::initializer::{Initializer, ModelInitializer};
@@ -209,11 +209,7 @@ where
 
         let mut best_index = 0;
         for index in 1..state.len() {
-            if compare_strictly(
-                model,
-                &state[index].individual.fitness,
-                &state[best_index].individual.fitness,
-            ) == std::cmp::Ordering::Less
+            if compare_individuals(model, &state[index].individual, &state[best_index].individual) == std::cmp::Ordering::Less
             {
                 best_index = index;
             }
@@ -261,11 +257,7 @@ where
 
                 match fitness_evaluator.evaluate(model, &solution) {
                     Some(candidate) => {
-                        let improved = compare_strictly(
-                            model,
-                            &candidate.fitness,
-                            &particle.best.fitness,
-                        ) == std::cmp::Ordering::Less;
+                        let improved = compare_individuals(model, &candidate, &particle.best) == std::cmp::Ordering::Less;
                         let best = if improved {
                             candidate.clone()
                         } else {

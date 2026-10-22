@@ -13,7 +13,7 @@ use crate::solver::heuristic::iteration::Iteration;
 use crate::solver::heuristic::model::{HeuristicValue, ObjectiveModel, to_f64};
 use crate::solver::heuristic::operator::archive::BestArchive;
 use crate::solver::heuristic::operator::clamped_value;
-use crate::solver::heuristic::operator::compare_strictly;
+use crate::solver::heuristic::operator::compare_individuals;
 use crate::solver::heuristic::operator::fitness::{
     DefaultOnMissFitnessEvaluator, FitnessEvaluator,
 };
@@ -291,9 +291,8 @@ where
             return Ok(state);
         }
 
-        samples.sort_by(|lhs, rhs| {
-            compare_strictly(model, &lhs.1.fitness, &rhs.1.fitness)
-        });
+        let individuals: Vec<_> = samples.iter().map(|sample| sample.1.clone()).collect();
+        samples = model.rank_indices(&individuals).into_iter().map(|index| samples[index].clone()).collect();
 
         // —— 重加权并移动均值—— / Reweighting and mean shift
         let mut new_mean = vec![0.0; dimension];
@@ -398,7 +397,7 @@ where
             (None, best) => best.clone(),
             (Some(candidate), None) => Some(candidate),
             (Some(candidate), Some(current)) => {
-                if compare_strictly(model, &candidate.fitness, &current.fitness)
+                if compare_individuals(model, &candidate, &current)
                     == std::cmp::Ordering::Less
                 {
                     Some(candidate)

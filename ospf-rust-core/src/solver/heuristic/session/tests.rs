@@ -760,6 +760,7 @@ mod snapshot_persistence {
             stagnation: value["stagnation"].as_u64().expect("stagnation"),
             state: value["state"].clone(),
             archive: value["archive"].clone(),
+            constraints: serde_json::Value::Null,
             active_nanos: value["active_nanos"].as_u64().expect("active_nanos"),
         };
 

@@ -11,7 +11,7 @@ use crate::variable::VariableId;
 use crate::solver::heuristic::entropy::Entropy;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::iteration::Iteration;
-use crate::solver::heuristic::model::{HeuristicValue, ObjectiveModel, VariableModel, to_f64};
+use crate::solver::heuristic::model::{HeuristicValue, LocalEvaluation, ObjectiveModel, VariableModel, to_f64};
 use crate::solver::heuristic::operator::multi_objective::{
     CrowdingDistance, Dominance, FastNonDominatedSort, ReferencePoints,
 };
@@ -81,6 +81,8 @@ where
     P: SearchProblem<f64, V>,
     V: HeuristicValue,
 {
+    fn local_evaluation(&self) -> Option<&dyn LocalEvaluation<V>> { self.meter.is_some().then_some(self) }
+
     fn num_variables(&self) -> usize {
         self.order.len()
     }
@@ -106,7 +108,35 @@ where
     }
 
     fn constraint_satisfied(&self, solution: &Solution<V>) -> Option<bool> {
-        Some(self.problem.feasible(solution))
+        Some(self.problem.valid_solution(solution) && self.problem.admissible(solution))
+    }
+}
+
+impl<P: SearchProblem<f64, V>, V: HeuristicValue> LocalEvaluation<V> for ProblemModel<'_, P, V> {
+    fn remaining(&self) -> u64 { self.meter.map_or(0, |(slice, _)| slice.remaining()) }
+
+    fn evaluate(&self, solution: &Solution<V>) -> Option<usize> {
+        if self.errors.is_some_and(|errors| !errors.borrow().is_empty()) { return None; }
+        let (slice, candidates) = self.meter?;
+        let evaluated = match self.problem.evaluate(solution.clone(), slice) {
+            Ok(result) => result.candidate?,
+            Err(error) => { if let Some(errors) = self.errors { errors.borrow_mut().push(error.to_string()); } return None; }
+        };
+        if !evaluated.fitness.is_finite() { return None; }
+        let mut entries = candidates.borrow_mut();
+        let key = entries.len(); entries.push(evaluated);
+        Some(key)
+    }
+
+    fn compare(&self, lhs: usize, rhs: usize) -> Option<std::cmp::Ordering> {
+        let entries = self.meter?.1.borrow();
+        Some(self.problem.compare_individuals(entries.get(lhs)?, entries.get(rhs)?))
+    }
+
+    fn rank(&self, indices: &[usize]) -> Option<Vec<usize>> {
+        let entries = self.meter?.1.borrow();
+        let values = indices.iter().map(|index| entries.get(*index).cloned()).collect::<Option<Vec<_>>>()?;
+        Some(self.problem.rank_indices(&values))
     }
 }
 
@@ -121,15 +151,9 @@ where
 
     fn objective(&self, solution: &Solution<V>) -> Option<V> {
         if self.errors.is_some_and(|errors| !errors.borrow().is_empty()) { return None; }
-        let objective = if let Some((slice, candidates)) = self.meter {
-            let evaluated = match self.problem.evaluate(solution.clone(), slice) {
-                Ok(result) => result.candidate?,
-                Err(error) => { if let Some(errors) = self.errors { errors.borrow_mut().push(error.to_string()); } return None; }
-            };
-            let objective = evaluated.fitness;
-            if !objective.is_finite() { return None; }
-            candidates.borrow_mut().push(evaluated);
-            Some(objective)
+        let objective = if let Some((_, candidates)) = self.meter {
+            let key = LocalEvaluation::evaluate(self, solution)?;
+            Some(candidates.borrow().get(key)?.fitness)
         } else {
             self.problem.objective(solution)
         };
@@ -147,6 +171,27 @@ where
             Some(std::cmp::Ordering::Equal)
         }
     }
+
+    fn compare_individuals(&self, lhs: &Individual<V, V>, rhs: &Individual<V, V>) -> std::cmp::Ordering {
+        self.problem.compare_individuals(
+            &Individual::new(lhs.solution.clone(), to_f64(&lhs.fitness)),
+            &Individual::new(rhs.solution.clone(), to_f64(&rhs.fitness)),
+        )
+    }
+
+    fn rank_indices(&self, entries: &[Individual<V, V>]) -> Vec<usize> {
+        let entries: Vec<_> = entries.iter().map(|entry| Individual::new(entry.solution.clone(), to_f64(&entry.fitness))).collect();
+        self.problem.rank_indices(&entries)
+    }
+
+    fn stochastic_constraints(&self) -> bool { self.problem.stochastic_constraints() }
+
+    fn compare_constraint_tiers(&self, lhs: &Solution<V>, rhs: &Solution<V>) -> std::cmp::Ordering {
+        match (self.problem.constraint_tier(lhs), self.problem.constraint_tier(rhs)) {
+            (Some(a), Some(b)) => a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)),
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
 }
 
 /// 多目标问题适配器：实现 `ObjectiveModel<Vec<f64>, V>` / Multi-objective adapter implementing `ObjectiveModel<Vec<f64>, V>`
@@ -156,6 +201,8 @@ where
     V: HeuristicValue,
 {
     problem: &'p P,
+    meter: Option<(&'p SearchSlice, &'p RefCell<Vec<Individual<Vec<f64>, V>>>)>,
+    errors: Option<&'p RefCell<Vec<String>>>,
     order: Vec<VariableId>,
     marker: std::marker::PhantomData<fn() -> V>,
 }
@@ -170,9 +217,21 @@ where
         Self {
             order: problem.variable_order(),
             problem,
+            meter: None,
+            errors: None,
             marker: std::marker::PhantomData,
         }
     }
+
+    /// 共享完整向量目标的计费账本 / Share a metered ledger retaining complete vector objectives
+    pub fn metered(
+        problem: &'p P,
+        slice: &'p SearchSlice,
+        candidates: &'p RefCell<Vec<Individual<Vec<f64>, V>>>,
+    ) -> Self { Self { meter: Some((slice, candidates)), ..Self::new(problem) } }
+
+    /// 共享原生会话错误通道 / Share the native session error channel
+    pub fn with_errors(mut self, errors: &'p RefCell<Vec<String>>) -> Self { self.errors = Some(errors); self }
 }
 
 impl<'p, P, V> VariableModel<V> for MultiObjectiveProblemModel<'p, P, V>
@@ -180,6 +239,8 @@ where
     P: SearchProblem<Vec<f64>, V>,
     V: HeuristicValue,
 {
+    fn local_evaluation(&self) -> Option<&dyn LocalEvaluation<V>> { self.meter.is_some().then_some(self) }
+
     fn num_variables(&self) -> usize {
         self.order.len()
     }
@@ -205,7 +266,35 @@ where
     }
 
     fn constraint_satisfied(&self, solution: &Solution<V>) -> Option<bool> {
-        Some(self.problem.feasible(solution))
+        Some(self.problem.valid_solution(solution) && self.problem.admissible(solution))
+    }
+}
+
+impl<P: SearchProblem<Vec<f64>, V>, V: HeuristicValue> LocalEvaluation<V> for MultiObjectiveProblemModel<'_, P, V> {
+    fn remaining(&self) -> u64 { self.meter.map_or(0, |(slice, _)| slice.remaining()) }
+
+    fn evaluate(&self, solution: &Solution<V>) -> Option<usize> {
+        if self.errors.is_some_and(|errors| !errors.borrow().is_empty()) { return None; }
+        let (slice, candidates) = self.meter?;
+        let evaluated = match self.problem.evaluate(solution.clone(), slice) {
+            Ok(result) => result.candidate?,
+            Err(error) => { if let Some(errors) = self.errors { errors.borrow_mut().push(error.to_string()); } return None; }
+        };
+        if evaluated.fitness.is_empty() || evaluated.fitness.iter().any(|value| !value.is_finite()) { return None; }
+        let mut entries = candidates.borrow_mut();
+        let key = entries.len(); entries.push(evaluated);
+        Some(key)
+    }
+
+    fn compare(&self, lhs: usize, rhs: usize) -> Option<std::cmp::Ordering> {
+        let entries = self.meter?.1.borrow();
+        Some(self.problem.compare_individuals(entries.get(lhs)?, entries.get(rhs)?))
+    }
+
+    fn rank(&self, indices: &[usize]) -> Option<Vec<usize>> {
+        let entries = self.meter?.1.borrow();
+        let values = indices.iter().map(|index| entries.get(*index).cloned()).collect::<Option<Vec<_>>>()?;
+        Some(self.problem.rank_indices(&values))
     }
 }
 
@@ -219,7 +308,10 @@ where
     }
 
     fn objective(&self, solution: &Solution<V>) -> Option<Vec<f64>> {
-        self.problem.objective(solution)
+        if let Some((_, candidates)) = self.meter {
+            let key = LocalEvaluation::evaluate(self, solution)?;
+            Some(candidates.borrow().get(key)?.fitness.clone())
+        } else { self.problem.objective(solution) }
     }
 
     fn compare_objective(&self, lhs: &Vec<f64>, rhs: &Vec<f64>) -> Option<std::cmp::Ordering> {
@@ -229,6 +321,21 @@ where
             Some(std::cmp::Ordering::Greater)
         } else {
             Some(std::cmp::Ordering::Equal)
+        }
+    }
+
+    fn compare_individuals(&self, lhs: &Individual<Vec<f64>, V>, rhs: &Individual<Vec<f64>, V>) -> std::cmp::Ordering {
+        self.problem.compare_individuals(lhs, rhs)
+    }
+
+    fn rank_indices(&self, entries: &[Individual<Vec<f64>, V>]) -> Vec<usize> { self.problem.rank_indices(entries) }
+
+    fn stochastic_constraints(&self) -> bool { self.problem.stochastic_constraints() }
+
+    fn compare_constraint_tiers(&self, lhs: &Solution<V>, rhs: &Solution<V>) -> std::cmp::Ordering {
+        match (self.problem.constraint_tier(lhs), self.problem.constraint_tier(rhs)) {
+            (Some(a), Some(b)) => a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1)),
+            _ => std::cmp::Ordering::Equal,
         }
     }
 }
@@ -432,6 +539,38 @@ where
     selected
 }
 
+/// 先按约束层级分组，再保留各组的原始 Pareto 几何 / Group by constraint tiers before preserving each group's original Pareto geometry
+pub fn select_constrained_front<P, V>(
+    problem: &P,
+    candidates: Vec<Individual<Vec<f64>, V>>,
+    amount: usize,
+    dominance: &dyn Dominance,
+    divisions: Option<usize>,
+) -> Vec<Individual<Vec<f64>, V>>
+where
+    P: SearchProblem<Vec<f64>, V>,
+    V: HeuristicValue,
+{
+    if !problem.has_constraints() { return select_front(candidates, amount, dominance, divisions); }
+    if problem.stochastic_constraints() {
+        return problem.rank_indices(&candidates).into_iter().take(amount).map(|index| candidates[index].clone()).collect();
+    }
+    let mut tiers: Vec<_> = candidates.into_iter().map(|individual| {
+        (problem.constraint_tier(&individual.solution).unwrap_or((1, f64::INFINITY)), individual)
+    }).collect();
+    tiers.sort_by(|a, b| a.0.0.cmp(&b.0.0).then_with(|| a.0.1.total_cmp(&b.0.1)));
+    let mut selected = Vec::new();
+    let mut offset = 0;
+    while offset < tiers.len() && selected.len() < amount {
+        let mut end = offset + 1;
+        while end < tiers.len() && tiers[end].0 == tiers[offset].0 { end += 1; }
+        let group = tiers[offset..end].iter().map(|(_, individual)| individual.clone()).collect();
+        selected.extend(select_front(group, amount - selected.len(), dominance, divisions));
+        offset = end;
+    }
+    selected
+}
+
 /// 按参考方向补足末层 / Fill the last front by reference directions
 fn fill_by_reference<V>(
     selected: &mut Vec<Individual<Vec<f64>, V>>,
@@ -626,7 +765,7 @@ where
                 population[index].solution.clone(),
                 population[(index + 1) % population.len()].solution.clone(),
             ];
-            let model = MultiObjectiveProblemModel::<P, V>::new(problem);
+            let model = MultiObjectiveProblemModel::<P, V>::metered(problem, slice, &self.candidates).with_errors(&self.errors);
             for solution in self
                 .update
                 .update(&model, iteration, &parents, self.entropy.as_mut())
@@ -638,7 +777,7 @@ where
         }
 
         for individual in population {
-            let model = MultiObjectiveProblemModel::<P, V>::new(problem);
+            let model = MultiObjectiveProblemModel::<P, V>::metered(problem, slice, &self.candidates).with_errors(&self.errors);
             let solution = self.mutation.mutate(
                 &model,
                 iteration,
@@ -675,7 +814,8 @@ where
         if population.is_empty() {
             return Err(HeuristicError::NoIndividual);
         }
-        let selected = select_front(
+        let selected = select_constrained_front(
+            problem,
             population,
             self.size,
             self.dominance.as_ref(),
@@ -695,7 +835,8 @@ where
         let offspring = self.breed(problem, iteration, state, slice);
         let mut candidates = state.clone();
         candidates.extend(offspring);
-        let selected = select_front(
+        let selected = select_constrained_front(
+            problem,
             candidates,
             self.size,
             self.dominance.as_ref(),

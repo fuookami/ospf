@@ -56,6 +56,23 @@ where
     }
 }
 
+/// 比较完整个体，成对约束比较始终确定 / Compare complete individuals; pairwise constraint comparison is always deterministic
+pub fn compare_individuals<O, V: HeuristicValue>(
+    model: &dyn ObjectiveModel<O, V>,
+    lhs: &crate::solver::heuristic::individual::Individual<O, V>,
+    rhs: &crate::solver::heuristic::individual::Individual<O, V>,
+) -> Ordering {
+    model.compare_individuals(lhs, rhs)
+}
+
+/// 按模型批量排序，不把随机选择传入排序比较器 / Batch rank through the model without putting random choices in a sort comparator
+pub fn rank_individuals<O: Clone, V: HeuristicValue>(
+    model: &dyn ObjectiveModel<O, V>,
+    entries: &[crate::solver::heuristic::individual::Individual<O, V>],
+) -> Vec<crate::solver::heuristic::individual::Individual<O, V>> {
+    model.rank_indices(entries).into_iter().map(|index| entries[index].clone()).collect()
+}
+
 /// 按规范顺序读取解值 / Read a solution value by canonical order
 pub fn value_at<V: HeuristicValue>(
     solution: &Solution<V>,

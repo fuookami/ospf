@@ -15,7 +15,7 @@ use crate::solver::heuristic::iteration::Iteration;
 use crate::solver::heuristic::model::{HeuristicValue, ObjectiveModel, to_f64};
 use crate::solver::heuristic::operator::archive::BestArchive;
 use crate::solver::heuristic::operator::clamped_value;
-use crate::solver::heuristic::operator::compare_strictly;
+use crate::solver::heuristic::operator::compare_individuals;
 use crate::solver::heuristic::operator::evolution::{LinearSource, ParameterSource};
 use crate::solver::heuristic::operator::fitness::{
     DefaultOnMissFitnessEvaluator, FitnessEvaluator,
@@ -304,11 +304,7 @@ where
                     Some(candidate) => candidate,
                 };
 
-                let improved = compare_strictly(
-                    model,
-                    &candidate.fitness,
-                    &particle.best.fitness,
-                ) == std::cmp::Ordering::Less;
+                let improved = compare_individuals(model, &candidate, &particle.best) == std::cmp::Ordering::Less;
 
                 if improved {
                     ClpsoParticle {

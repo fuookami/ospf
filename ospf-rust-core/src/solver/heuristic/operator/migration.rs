@@ -1,6 +1,6 @@
 //! 岛屿迁移算子 / Island migration operators
 
-use super::compare_strictly;
+use super::compare_individuals;
 use crate::solver::heuristic::entropy::Entropy;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::iteration::Iteration;
@@ -30,12 +30,13 @@ where
     V: HeuristicValue,
     O: Clone,
 {
+    if model.stochastic_constraints() { return super::rank_individuals(model, island); }
     let mut remaining = island.to_vec();
     let mut ranked = Vec::with_capacity(remaining.len());
     while !remaining.is_empty() {
         let mut best_index = 0;
         for index in 1..remaining.len() {
-            if compare_strictly(model, &remaining[index].fitness, &remaining[best_index].fitness)
+            if compare_individuals(model, &remaining[index], &remaining[best_index])
                 == std::cmp::Ordering::Less
             {
                 best_index = index;
@@ -176,12 +177,12 @@ where
         let mut source = 0;
         let mut target = 0;
         for index in 0..leaders.len() {
-            if compare_strictly(model, &leaders[index].fitness, &leaders[source].fitness)
+            if compare_individuals(model, &leaders[index], &leaders[source])
                 == std::cmp::Ordering::Less
             {
                 source = index;
             }
-            if compare_strictly(model, &leaders[index].fitness, &leaders[target].fitness)
+            if compare_individuals(model, &leaders[index], &leaders[target])
                 == std::cmp::Ordering::Greater
             {
                 target = index;

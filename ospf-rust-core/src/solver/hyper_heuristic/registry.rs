@@ -1,6 +1,6 @@
 //! 显式组件注册与原生会话装配 / Explicit component registration and native session assembly
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use serde_json::Value;
 use crate::solver::heuristic::entropy::SeededEntropy;
@@ -37,6 +37,7 @@ pub struct AlgorithmContext<O, V> {
 type ProblemFactory<O, V> = Arc<dyn Fn(&ComponentSpec, SearchRandom) -> Result<Box<dyn SearchProblem<O, V>>> + Send + Sync>;
 type AlgorithmFactory<O, V> = Arc<dyn Fn(AlgorithmContext<O, V>, bool, &OperatorRegistry<V>, &BTreeMap<String, SelectorFactory>, Box<dyn RewardPolicy>) -> Result<Box<dyn PolicySession<O, V>>> + Send + Sync>;
 type ArchiveCodecFactory<O, V> = Arc<dyn Fn(Vec<VariableId>) -> Box<dyn SearchCodec<Vec<crate::solver::heuristic::Individual<O, V>>>> + Send + Sync>;
+type ObjectiveCodecFactory<O> = Arc<dyn Fn() -> Box<dyn SearchCodec<O>> + Send + Sync>;
 pub(crate) type Scalarization<O> = Arc<dyn Fn(&O) -> Result<f64> + Send + Sync>;
 type ScalarAdapter<O, V> = Arc<dyn Fn(AlgorithmContext<O, V>, Scalarization<O>, bool, &OperatorRegistry<V>, &BTreeMap<String, SelectorFactory>, Box<dyn RewardPolicy>) -> Result<Box<dyn PolicySession<O, V>>> + Send + Sync>;
 
@@ -48,14 +49,17 @@ pub struct SearchRegistry<O, V> {
     pub operators: OperatorRegistry<V>,
     problems: BTreeMap<String, ProblemFactory<O, V>>,
     algorithms: BTreeMap<String, AlgorithmFactory<O, V>>,
+    constrained_algorithms: BTreeSet<String>,
+    custom_algorithms: BTreeSet<String>,
     archive_codec: Option<ArchiveCodecFactory<O, V>>,
+    objective_codec: Option<ObjectiveCodecFactory<O>>,
     scalarizations: BTreeMap<String, Scalarization<O>>,
     scalar_adapter: Option<ScalarAdapter<O, V>>,
 }
 
 impl<O, V> Clone for SearchRegistry<O, V> {
-    fn clone(&self) -> Self { Self { components: self.components.clone(), operators: self.operators.clone(), problems: self.problems.clone(), algorithms: self.algorithms.clone(), archive_codec: self.archive_codec.clone(),
-        scalarizations: self.scalarizations.clone(), scalar_adapter: self.scalar_adapter.clone() } }
+    fn clone(&self) -> Self { Self { components: self.components.clone(), operators: self.operators.clone(), problems: self.problems.clone(), algorithms: self.algorithms.clone(), constrained_algorithms: self.constrained_algorithms.clone(), custom_algorithms: self.custom_algorithms.clone(), archive_codec: self.archive_codec.clone(),
+        objective_codec: self.objective_codec.clone(), scalarizations: self.scalarizations.clone(), scalar_adapter: self.scalar_adapter.clone() } }
 }
 
 impl<O: Clone + 'static, V: HeuristicValue> Default for SearchRegistry<O, V> {
@@ -64,8 +68,8 @@ impl<O: Clone + 'static, V: HeuristicValue> Default for SearchRegistry<O, V> {
 
 impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
     /// 创建空注册表，供自定义值与目标类型扩展 / Create an empty registry for custom value and objective types
-    pub fn new() -> Self { Self { components: super::components::ComponentRegistry::new(), operators: OperatorRegistry::new(), problems: BTreeMap::new(), algorithms: BTreeMap::new(), archive_codec: None,
-        scalarizations: BTreeMap::new(), scalar_adapter: None } }
+    pub fn new() -> Self { Self { components: super::components::ComponentRegistry::new(), operators: OperatorRegistry::new(), problems: BTreeMap::new(), algorithms: BTreeMap::new(), constrained_algorithms: BTreeSet::new(), custom_algorithms: BTreeSet::new(), archive_codec: None,
+        objective_codec: None, scalarizations: BTreeMap::new(), scalar_adapter: None } }
 
     /// 注册显式无状态标量化，越小越优；其语义必须包含在问题指纹中 / Register a stateless smaller-is-better scalarization; include its semantics in the problem fingerprint
     pub fn register_scalarization(
@@ -91,6 +95,15 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
         self.archive_codec.as_ref().map(|factory| factory(order))
     }
 
+    /// 设置原始业务目标的无损编码，用于接受历史；不要求目标实现Serde / Set a lossless original-objective codec for acceptance history without requiring Serde
+    pub fn set_objective_codec(&mut self, factory: impl Fn() -> Box<dyn SearchCodec<O>> + Send + Sync + 'static) {
+        self.objective_codec = Some(Arc::new(factory));
+    }
+
+    pub(crate) fn objective_codec(&self) -> Option<Box<dyn SearchCodec<O>>> {
+        self.objective_codec.as_ref().map(|factory| factory())
+    }
+
     /// 注册独立问题工厂，不能返回共享模型 / Register an independent problem factory, never a shared model
     pub fn register_problem(
         &mut self,
@@ -109,8 +122,20 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
         id: impl Into<String>,
         factory: impl Fn(AlgorithmContext<O, V>) -> Result<Box<dyn SearchSession<O, V>>> + Send + Sync + 'static,
     ) -> Result<()> {
+        self.register_algorithm_with_constraints(id, false, factory)
+    }
+
+    /// 注册声明原生约束事务能力的自定义工厂 / Register a custom factory declaring native constraint transaction support
+    pub fn register_algorithm_with_constraints(
+        &mut self,
+        id: impl Into<String>,
+        supports_constraints: bool,
+        factory: impl Fn(AlgorithmContext<O, V>) -> Result<Box<dyn SearchSession<O, V>>> + Send + Sync + 'static,
+    ) -> Result<()> {
         let id = id.into();
         if id.is_empty() || self.algorithms.contains_key(&id) { return Err(invalid("duplicate or empty algorithm ID")); }
+        if supports_constraints { self.constrained_algorithms.insert(id.clone()); }
+        self.custom_algorithms.insert(id.clone());
         self.algorithms.insert(id, Arc::new(move |context, _, _, _, _| Ok(Box::new(UncontrolledSession(factory(context)?)))));
         Ok(())
     }
@@ -138,7 +163,7 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
 
     pub(crate) fn session_configured(
         &self,
-        context: AlgorithmContext<O, V>,
+        mut context: AlgorithmContext<O, V>,
         learning: bool,
         reward_spec: &ComponentSpec,
     ) -> Result<Box<dyn PolicySession<O, V>>>
@@ -151,7 +176,7 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
             let parameter = if sequential { "phaseSteps" } else { "migrationPeriod" };
             config.algorithm.validate_parameters(&[parameter])?;
             if config.import_mode == ImportMode::Disabled || !config.updates.is_empty() || !config.mutations.is_empty()
-                || !config.neighborhoods.is_empty() || !config.parameters.is_empty() || config.scalarization.is_some() {
+                || !config.neighborhoods.is_empty() || !config.parameters.is_empty() || config.scalarization.is_some() || config.constraints.is_some() {
                 return Err(invalid("composites require native imports and child-local operator bindings"));
             }
             let period = config.algorithm.integer(parameter, 5)?;
@@ -164,16 +189,39 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
             let codec = self.archive_codec(context.problem.variable_order());
             return Ok(Box::new(super::scheduling::CompositeSearchSession::new(children, context.problem, sequential, period, codec)?));
         }
+        if let Some(config) = &context.config.constraints {
+            let scalar_builtin = self.scalar_adapter.is_some() && BUILTIN_ALGORITHMS.contains(&context.config.algorithm.r#type.as_str());
+            if !scalar_builtin && !self.constrained_algorithms.contains(&context.config.algorithm.r#type) {
+                return Err(invalid("algorithm factory does not support native constraints / 算法工厂不支持原生约束"));
+            }
+            let random = SearchRandom::new(context.random.state() as u64).split("constraints");
+            context.problem = ProblemHandle::new(Box::new(ConstraintProblem::new(context.problem, config.clone(), random)?));
+        }
+        let reward = self.components.reward(reward_spec)?;
+        reward.validate_mode(context.problem.multi_objective(), context.problem.has_objective_coordinates())?;
         if let Some(adapter) = &self.scalar_adapter {
             if BUILTIN_ALGORITHMS.contains(&context.config.algorithm.r#type.as_str()) {
                 let id = context.config.scalarization.as_ref().ok_or_else(|| invalid("multi-objective scalar algorithms require an explicit scalarization"))?;
                 let projection = self.scalarizations.get(id).ok_or_else(|| invalid("unknown scalarization"))?.clone();
-                return super::boundary(|| adapter(context, projection, learning, &self.operators, &self.components.selectors, self.components.reward(reward_spec)?));
+                return super::boundary(|| adapter(context, projection, learning, &self.operators, &self.components.selectors, reward));
             }
         }
         let factory = self.algorithms.get(&context.config.algorithm.r#type)
             .ok_or_else(|| invalid(format!("unknown algorithm: {}", context.config.algorithm.r#type)))?;
-        crate::solver::hyper_heuristic::boundary(|| factory(context, learning, &self.operators, &self.components.selectors, self.components.reward(reward_spec)?))
+        if self.custom_algorithms.contains(&context.config.algorithm.r#type) {
+            if !context.config.updates.is_empty() || !context.config.mutations.is_empty()
+                || !context.config.neighborhoods.is_empty() || !context.config.parameters.is_empty() {
+                return Err(invalid("custom factory does not expose operator bindings"));
+            }
+            if let Some(codec) = self.archive_codec(context.problem.variable_order()) {
+                let problem = context.problem.clone();
+                let local_reward = self.components.reward(reward_spec)?;
+                let delegate = crate::solver::hyper_heuristic::boundary(|| factory(context, learning, &self.operators, &self.components.selectors, reward))?;
+                // 自定义可恢复会话也保留控制层历史，与Kotlin普通注册协议一致 / Restorable custom sessions retain control-layer history, matching Kotlin's ordinary registration protocol.
+                return Ok(ControlledSession::wrap_custom(delegate, problem, codec, local_reward));
+            }
+        }
+        crate::solver::hyper_heuristic::boundary(|| factory(context, learning, &self.operators, &self.components.selectors, reward))
     }
 }
 
@@ -183,8 +231,10 @@ impl SearchRegistry<f64, f64> {
     pub fn with_builtins() -> Self {
         let mut registry = Self::new();
         registry.set_archive_codec(|order| Box::new(IndividualListCodec::new(order)));
+        registry.set_objective_codec(|| Box::new(TextNumberCodec));
         for id in BUILTIN_ALGORITHMS {
             registry.algorithms.insert((*id).into(), Arc::new(native_session));
+            registry.constrained_algorithms.insert((*id).into());
         }
         registry
     }
@@ -195,8 +245,10 @@ impl SearchRegistry<Vec<f64>, f64> {
     pub fn with_multi_objective_builtins() -> Self {
         let mut registry = Self::new();
         registry.set_archive_codec(|order| Box::new(MultiObjectiveArchiveCodec::new(order)));
+        registry.set_objective_codec(|| Box::new(ObjectiveVectorCodec));
         registry.scalar_adapter = Some(Arc::new(projected_session));
         for id in ["nsga-ii", "nsga-iii"] {
+            registry.constrained_algorithms.insert(id.into());
             registry.algorithms.insert(id.into(), Arc::new(|context, learning, operators, selectors, reward| {
                 let config = &context.config;
                 config.algorithm.validate_parameters(&["divisions", "mutationRate"])?;
@@ -214,7 +266,7 @@ impl SearchRegistry<Vec<f64>, f64> {
                 let problem = context.problem.clone();
                 let dominance = Box::new(ProblemDominance(problem));
                 OperatorBindings::validate_encoding(config, context.problem.encoding(), operators)?;
-                let bindings = OperatorBindings::new(config, &SearchRandom::new(context.random.state() as u64), learning, operators, selectors)?;
+                let bindings = OperatorBindings::new(config, &SearchRandom::new(context.random.state() as u64), learning, operators, selectors, context.problem.encoding())?;
                 let hooks = NsgaSessionHooks::new(config.size, dominance, bindings.update(Box::new(SimulatedBinaryCrossover::default())),
                     bindings.mutation(Box::new(PolynomialMutation::default())), Box::new(context.random), divisions).with_mutation_rate(rate);
                 let order = context.problem.variable_order();
@@ -227,7 +279,7 @@ impl SearchRegistry<Vec<f64>, f64> {
                 let problem = context.problem.clone();
                 let session = session.with_importer(move |state, candidates| {
                     let mut merged = state.clone(); merged.extend(candidates.iter().cloned());
-                    Ok(crate::solver::heuristic::session::select_front(merged, amount, &ProblemDominance(problem.clone()), divisions))
+                    Ok(crate::solver::heuristic::session::select_constrained_front(&problem, merged, amount, &ProblemDominance(problem.clone()), divisions))
                 });
                 Ok(ControlledSession::wrap(Box::new(session), context.problem, bindings, archive_codec, reward))
             }));
@@ -288,8 +340,31 @@ impl SearchProblem<f64, f64> for ProjectedProblem {
     fn dominates(&self, lhs: &f64, rhs: &f64) -> bool { lhs < rhs }
     fn valid_objective(&self, objective: &f64) -> bool { objective.is_finite() }
     fn feasible(&self, solution: &crate::model::callback::Solution<f64>) -> bool { self.canonical.feasible(solution) }
+    fn admissible(&self, solution: &crate::model::callback::Solution<f64>) -> bool { self.canonical.admissible(solution) }
+    fn constraint_admissible(&self, solution: &crate::model::callback::Solution<f64>) -> bool { self.canonical.constraint_admissible(solution) }
+    fn has_constraints(&self) -> bool { self.canonical.has_constraints() }
+    fn stochastic_constraints(&self) -> bool { self.canonical.stochastic_constraints() }
+    fn observe_constraints(&self, solution: &crate::model::callback::Solution<f64>) -> Result<()> { self.canonical.observe_constraints(solution) }
+    fn constraint_failure(&self) -> Option<String> { self.canonical.constraint_failure() }
+    fn constraint_tier(&self, solution: &crate::model::callback::Solution<f64>) -> Option<(u8, f64)> { self.canonical.constraint_tier(solution) }
+    fn begin_constraints(&self) { self.canonical.begin_constraints(); }
+    fn commit_constraints(&self) -> Result<()> { self.canonical.commit_constraints() }
+    fn save_constraints(&self) -> Result<JsonValue> { self.canonical.save_constraints() }
+    fn load_constraints(&self, state: &JsonValue) -> Result<()> { self.canonical.load_constraints(state) }
+    fn rank_constraints(
+        &self,
+        solutions: &[crate::model::callback::Solution<f64>],
+        objective: &dyn Fn(usize, usize) -> std::cmp::Ordering,
+    ) -> Option<Vec<usize>> { self.canonical.rank_constraints(solutions, objective) }
+    fn has_objective_coordinates(&self) -> bool { true }
+    fn objective_coordinates(&self, objective: &f64) -> Result<Vec<f64>> { Ok(vec![*objective]) }
+    fn has_constraint_violation(&self) -> bool { self.canonical.has_constraint_violation() }
+    fn constraint_violation(&self, solution: &crate::model::callback::Solution<f64>) -> Result<f64> { self.canonical.constraint_violation(solution) }
     fn valid_solution(&self, solution: &crate::model::callback::Solution<f64>) -> bool { self.canonical.valid_solution(solution) }
     fn encoding(&self) -> SearchEncoding { self.canonical.encoding() }
+    fn stateless(&self) -> bool { self.canonical.stateless() }
+    fn save_state(&self) -> Result<Value> { self.canonical.save_state() }
+    fn load_state(&mut self, state: &Value) -> Result<()> { self.canonical.load_state(state) }
     fn flush(&mut self) { self.canonical.flush(); }
 }
 
@@ -431,7 +506,7 @@ fn native_session_parts(
         return Err(invalid("native population is too small for the configured algorithm"));
     }
     if !config.children.is_empty() || config.scalarization.is_some() { return Err(invalid("this native algorithm does not support children or scalarization")); }
-    let bindings = OperatorBindings::new(config, &SearchRandom::new(context.random.state() as u64), learning, operators, selectors)?;
+    let bindings = OperatorBindings::new(config, &SearchRandom::new(context.random.state() as u64), learning, operators, selectors, context.problem.encoding())?;
     let order = context.problem.variable_order();
     let size = config.size;
     let session = match kind {
@@ -449,13 +524,7 @@ fn native_session_parts(
                 .with_social_weight(bindings.parameter("socialWeight", social));
             let problem = context.problem.clone();
             assemble(context, runner, Box::new(ParticleStateCodec::new(order)), Some(Box::new(move |state, candidates| {
-                let mut result = state.clone();
-                result.sort_by(|lhs, rhs| objective_order(&problem, &lhs.best.fitness, &rhs.best.fitness));
-                result.truncate(state.len().saturating_sub(candidates.len()));
-                result.extend(candidates.iter().take(state.len()).map(|candidate| ParticleState {
-                    individual: candidate.clone(), best: candidate.clone(), velocity: vec![0.0; candidate.solution.len()],
-                }));
-                Ok(result)
+                ContextStateSynchronizer::new(&problem, velocity)?.particles(state, candidates)
             })))
         }
         "clpso" => {
@@ -468,22 +537,13 @@ fn native_session_parts(
             if clpso.learning_weight <= 0.0 || clpso.max_velocity <= 0.0 || clpso.refresh_interval == 0 || clpso.stagnation_limit == 0 {
                 return Err(invalid("invalid CLPSO parameters"));
             }
+            let max_velocity = clpso.max_velocity;
             let clpso = ClpsoRunner::new(clpso, dummy_entropy())
                 .with_inertia(bindings.parameter("inertia", Box::new(LinearSource::new(0.9, 0.4, 1000))));
             let problem = context.problem.clone();
             assemble(context, clpso, Box::new(ClpsoStateCodec::new(order)),
                 Some(Box::new(move |state, candidates| {
-                    let mut result = state.clone();
-                    result.sort_by(|lhs, rhs| objective_order(&problem, &lhs.best.fitness, &rhs.best.fitness));
-                    result.truncate(state.len().saturating_sub(candidates.len()));
-                    result.extend(candidates.iter().take(state.len()).map(|candidate| ClpsoParticle {
-                        individual: candidate.clone(), best: candidate.clone(), velocity: vec![0.0; candidate.solution.len()],
-                        exemplars: vec![0; candidate.solution.len()], stagnation: 0,
-                    }));
-                    for (index, particle) in result.iter_mut().enumerate() {
-                        particle.exemplars.fill(index); particle.stagnation = 0;
-                    }
-                    Ok(result)
+                    ContextStateSynchronizer::new(&problem, max_velocity)?.clpso(state, candidates)
                 })))
         }
         "shade" | "l-shade" => {
@@ -511,9 +571,7 @@ fn native_session_parts(
             shade.size_ratio = bindings.parameter("sizeRatio", shade.size_ratio);
             let problem = context.problem.clone();
             assemble(context, ShadeRunner::new(shade, dummy_entropy()), Box::new(ShadeStateCodec::new(order)), Some(Box::new(move |state, candidates| {
-                let mut result = state.clone();
-                result.population = import_population(&problem, &state.population, candidates);
-                Ok(result)
+                ContextStateSynchronizer::new(&problem, 10_000.0)?.shade(state, candidates)
             })))
         }
         "cma-es" => {
@@ -534,9 +592,7 @@ fn native_session_parts(
             let import_problem = context.problem.clone();
             let importer: Box<dyn Fn(&CmaEsState<f64>, &[crate::solver::heuristic::Individual<f64, f64>]) -> Result<CmaEsState<f64>>> = Box::new(move |state, candidates| {
                 if candidates.is_empty() { return Ok(state.clone()); }
-                let mut ranked = candidates.to_vec();
-                ranked.sort_by(|lhs, rhs| if import_problem.dominates(&lhs.fitness, &rhs.fitness) { std::cmp::Ordering::Less }
-                    else if import_problem.dominates(&rhs.fitness, &lhs.fitness) { std::cmp::Ordering::Greater } else { std::cmp::Ordering::Equal });
+                let ranked: Vec<_> = import_problem.rank_indices(candidates).into_iter().map(|index| candidates[index].clone()).collect();
                 let dimension = import_order.len();
                 let mean: Vec<_> = import_order.iter().map(|id| ranked.iter().map(|value| value.solution[id] / ranked.len() as f64)
                     .fold(0.0, |total, value| total + value)).collect();
@@ -547,7 +603,7 @@ fn native_session_parts(
                         sum / (ranked.len() - 1) as f64 / (sigma * sigma) + if row == column { 1e-10 } else { 0.0 }
                     }).collect()).collect()
                 };
-                let best = state.best.as_ref().filter(|best| import_problem.dominates(&best.fitness, &ranked[0].fitness)).cloned().unwrap_or_else(|| ranked[0].clone());
+                let best = state.best.as_ref().filter(|best| import_problem.compare_individuals(best, &ranked[0]) == std::cmp::Ordering::Less).cloned().unwrap_or_else(|| ranked[0].clone());
                 Ok(CmaEsState { mean, sigma, covariance, path_sigma: vec![0.0; dimension], path_covariance: vec![0.0; dimension], generation: 0, best: Some(best) })
             });
             assemble(context, CmaEsRunner::new(dummy_entropy(), sigma).with_numerics(numerics), Box::new(CmaEsStateCodec::new(order)), if restart { Some(importer) } else { None })
@@ -602,21 +658,18 @@ fn import_population(
 ) -> Vec<crate::solver::heuristic::Individual<f64, f64>> {
     let mut remaining = state.to_vec();
     remaining.extend_from_slice(candidates);
+    if problem.stochastic_constraints() {
+        return problem.rank_indices(&remaining).into_iter().take(state.len()).map(|index| remaining[index].clone()).collect();
+    }
     let mut selected = Vec::with_capacity(state.len());
     // 与精英生存选择一致，按优度输出；原地替换最差成员会改变后续基于下标的随机选择。
     // Match elitist survival order; replacing worst entries in place changes subsequent index-based random choices.
     while selected.len() < state.len() && !remaining.is_empty() {
         let mut best = 0;
         for index in 1..remaining.len() {
-            if problem.dominates(&remaining[index].fitness, &remaining[best].fitness) { best = index; }
+            if problem.compare_individuals(&remaining[index], &remaining[best]) == std::cmp::Ordering::Less { best = index; }
         }
         selected.push(remaining.remove(best));
     }
     selected
-}
-
-fn objective_order(problem: &ProblemHandle<f64, f64>, lhs: &f64, rhs: &f64) -> std::cmp::Ordering {
-    if problem.dominates(lhs, rhs) { std::cmp::Ordering::Less }
-    else if problem.dominates(rhs, lhs) { std::cmp::Ordering::Greater }
-    else { std::cmp::Ordering::Equal }
 }

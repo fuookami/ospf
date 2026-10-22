@@ -303,13 +303,7 @@ where
     O: Clone,
     V: HeuristicValue,
 {
-    if problem.dominates(&lhs.fitness, &rhs.fitness) {
-        std::cmp::Ordering::Less
-    } else if problem.dominates(&rhs.fitness, &lhs.fitness) {
-        std::cmp::Ordering::Greater
-    } else {
-        std::cmp::Ordering::Equal
-    }
+    problem.compare_individuals(lhs, rhs)
 }
 
 impl<P, O, V, S> SearchSession<O, V> for RunnerSession<P, O, V, S>
@@ -327,8 +321,13 @@ where
         let start_used = slice.used();
         let mut report = SearchStepResult::empty(SearchTermination::SliceComplete);
         self.iteration.resume();
+        let mut constraint_transaction = None;
         let execution = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             while report.steps < slice.steps() && !slice.expired() {
+                if self.problem.has_constraints() {
+                    constraint_transaction = Some((self.problem.save_constraints()?, self.archive.items().to_vec()));
+                    self.problem.begin_constraints();
+                }
                 let result = match &self.state {
                     None => self.hooks.initialize(&self.problem, slice),
                     Some(state) => self.hooks.advance(&mut self.problem, &self.iteration, state, slice),
@@ -339,6 +338,7 @@ where
                 report.candidates.extend(evaluated);
                 let errors = self.hooks.drain_errors();
                 if !errors.is_empty() { return Err(HeuristicError::Model(errors.join("; "))); }
+                if let Some(error) = self.problem.constraint_failure() { return Err(HeuristicError::Model(error)); }
                 if slice.denied() {
                     report.termination = if slice.expired() { SearchTermination::TimeLimit }
                         else { SearchTermination::EvaluationLimit };
@@ -350,6 +350,9 @@ where
                     Err(error) => return Err(error),
                 };
                 let members = self.hooks.members(&advanced);
+                for member in members.iter().chain(self.archive.items()) {
+                    self.problem.observe_constraints(&member.solution)?;
+                }
                 let improved = self.refresh_archive(&members) || evaluated_improved;
                 // 无评估的自定义状态钩子仍可报告其成员 / Pure custom hooks can still report their members
                 if no_evaluations {
@@ -358,7 +361,9 @@ where
                 for observer in &mut self.observers {
                     observer.observe(&self.iteration, &members, improved);
                 }
+                self.problem.commit_constraints()?;
                 self.state = Some(advanced);
+                constraint_transaction = None;
                 self.iteration.next(improved);
                 report.steps += 1;
                 self.problem.flush();
@@ -370,9 +375,16 @@ where
             Ok::<(), HeuristicError>(())
         }));
         self.iteration.pause();
+        if let Some((constraints, archive)) = constraint_transaction {
+            self.archive.replace(archive);
+            if let Err(error) = self.problem.load_constraints(&constraints) {
+                report.diagnostics.push(error.to_string());
+                report.termination = SearchTermination::Failed;
+            }
+        }
         self.active_nanos = self.iteration.time().as_nanos().min(u64::MAX as u128) as u64;
         let evaluated = self.hooks.drain_candidates();
-        if self.archive_evaluations { self.refresh_archive(&evaluated); }
+        if self.archive_evaluations && !self.problem.has_constraints() { self.refresh_archive(&evaluated); }
         report.candidates.extend(evaluated);
         let errors = self.hooks.drain_errors();
         if !errors.is_empty() { report.diagnostics.extend(errors); report.termination = SearchTermination::Failed; }
@@ -413,13 +425,20 @@ where
         let start_used = slice.used();
         let mut candidates = Vec::new();
         let mut exhausted = false;
+        let constraint_state = self.problem.save_constraints()?;
+        self.problem.begin_constraints();
         let execution = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             for solution in solutions {
                 let evaluated = self.problem.evaluate(solution, slice)?;
                 if !evaluated.admitted { exhausted = true; break; }
                 if let Some(individual) = evaluated.candidate { candidates.push(individual); }
             }
-            importer(&state, &candidates)
+            let imported = importer(&state, &candidates)?;
+            for member in self.hooks.members(&imported).iter().chain(self.archive.items()) {
+                self.problem.observe_constraints(&member.solution)?;
+            }
+            if let Some(error) = self.problem.constraint_failure() { return Err(HeuristicError::Model(error)); }
+            Ok(imported)
         }));
         let mut diagnostics = Vec::new();
         match execution {
@@ -431,7 +450,11 @@ where
             Ok(Err(error)) => diagnostics.push(error.to_string()),
             Err(_) => diagnostics.push("import callback panicked / 导入回调异常".into()),
         }
-        self.refresh_archive(&candidates);
+        if diagnostics.is_empty() || !self.problem.has_constraints() { self.refresh_archive(&candidates); }
+        // 导入不推进 epsilon；只有失败才回滚随机流，成功后丢弃临时读数。 / Imports never advance epsilon; only failures roll back the stream, success drops temporary readings.
+        if !diagnostics.is_empty() {
+            if let Err(error) = self.problem.load_constraints(&constraint_state) { diagnostics.push(error.to_string()); }
+        } else { self.problem.begin_constraints(); }
         let termination = if !diagnostics.is_empty() { SearchTermination::Failed }
             else if slice.expired() { SearchTermination::TimeLimit }
             else if exhausted { SearchTermination::EvaluationLimit }
@@ -463,6 +486,7 @@ where
             stagnation: self.iteration.not_better_iteration(),
             state,
             archive: self.encode_archive()?,
+            constraints: self.problem.save_constraints()?,
             active_nanos: self.active_nanos,
         })
     }
@@ -489,6 +513,10 @@ where
             None
         };
 
+        if self.problem.has_constraints() == snapshot.constraints.is_null() {
+            return Err(HeuristicError::InvalidArgument("约束检查点能力不匹配 / Constraint checkpoint capability mismatch".into()));
+        }
+        self.problem.load_constraints(&snapshot.constraints)?;
         self.state = state;
         self.archive.replace(archive);
         self.iteration =

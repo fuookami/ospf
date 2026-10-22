@@ -1,6 +1,6 @@
 //! 环境选择算子 / Survivor selection operators
 
-use super::compare_strictly;
+use super::compare_individuals;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::model::{HeuristicValue, ObjectiveModel};
 
@@ -34,12 +34,15 @@ where
     V: HeuristicValue,
     O: Clone,
 {
+    if model.stochastic_constraints() {
+        return super::rank_individuals(model, individuals).into_iter().take(amount).collect();
+    }
     let mut remaining: Vec<Individual<O, V>> = individuals.to_vec();
     let mut kept = Vec::with_capacity(amount.min(remaining.len()));
     while kept.len() < amount && !remaining.is_empty() {
         let mut best_index = 0;
         for index in 1..remaining.len() {
-            if compare_strictly(model, &remaining[index].fitness, &remaining[best_index].fitness)
+            if compare_individuals(model, &remaining[index], &remaining[best_index])
                 == std::cmp::Ordering::Less
             {
                 best_index = index;

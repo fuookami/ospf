@@ -18,6 +18,7 @@ pub mod advanced_crossovers;
 pub mod bio_updates;
 pub mod grey_wolf_update;
 pub mod harmony_search_update;
+pub mod local_search;
 pub mod niche_updates;
 pub mod point_crossovers;
 pub mod swarm_tier1_updates;
@@ -31,6 +32,10 @@ pub use advanced_crossovers::{
 pub use bio_updates::{ArithmeticOptimizationUpdate, HarrisHawkUpdate, WhaleOptimizationUpdate};
 pub use grey_wolf_update::GreyWolfUpdate;
 pub use harmony_search_update::HarmonySearchUpdate;
+pub use local_search::{
+    EliteLocalSearchWrapper, MutationUpdate, NeighborhoodUpdate, OppositionUpdate,
+    PatternSearchUpdate, PipelineCompositeUpdate, VNDCompositeUpdate,
+};
 pub use niche_updates::{EnergyValleyUpdate, GerminalCenterUpdate, WarStrategyUpdate};
 pub use point_crossovers::{
     ArithmeticCrossover, BlendCrossover, MultiPointCrossover, SinglePointCrossover,

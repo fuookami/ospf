@@ -138,6 +138,136 @@ where
         true
     }
 
+    /// 可搜索域，默认保持严格可行性过滤；显式覆盖不放宽有效档案 / Search domain, strictly feasible by default; overriding never relaxes valid archives
+    fn admissible(&self, solution: &Solution<V>) -> bool {
+        self.feasible(solution)
+    }
+
+    /// 装配约束策略时的显式搜索域；默认绝不放宽业务禁区 / Explicit domain under constraint handling; never relaxes business exclusions by default
+    fn constraint_admissible(&self, solution: &Solution<V>) -> bool { self.admissible(solution) }
+
+    /// 约束视图的计费入口；原搜索域保留自定义 evaluate，显式扩域可覆盖本方法保留专用缓存 / Metered constraint-view entry; preserve custom evaluate in the original domain, override for custom caches in explicitly relaxed domains
+    fn evaluate_constraint_admissible(&self, solution: Solution<V>, slice: &SearchSlice) -> Result<SearchEvaluationResult<O, V>> {
+        if self.admissible(&solution) { return self.evaluate(solution, slice); }
+        if !slice.acquire_shared() { return Ok(SearchEvaluationResult { admitted: false, candidate: None }); }
+        let candidate = if self.valid_solution(&solution) && self.constraint_admissible(&solution) {
+            slice.global().objective_called();
+            self.objective(&solution).filter(|objective| self.valid_objective(objective))
+                .map(|objective| Individual::new(solution, objective))
+        } else { None };
+        Ok(SearchEvaluationResult { admitted: true, candidate })
+    }
+
+    /// 是否已装配原生约束策略 / Whether native constraint handling is attached
+    fn has_constraints(&self) -> bool { false }
+
+    /// 是否需要随机批量排序，成对比较仍确定 / Whether batch ordering is stochastic; pair comparisons remain deterministic
+    fn stochastic_constraints(&self) -> bool { false }
+
+    /// 读取并校验约束，必须先于目标调用 / Read and validate constraints before objective calls
+    fn observe_constraints(&self, _solution: &Solution<V>) -> Result<()> { Ok(()) }
+
+    /// 当前事务锁定的错误 / Latched error of the current transaction
+    fn constraint_failure(&self) -> Option<String> { None }
+
+    /// 原生约束层级，空值表示无策略 / Native constraint tier, absent without a strategy
+    fn constraint_tier(&self, _solution: &Solution<V>) -> Option<(u8, f64)> { None }
+
+    /// 开始约束事务 / Begin a constraint transaction
+    fn begin_constraints(&self) {}
+
+    /// 完整步提交后校准并推进约束状态 / Calibrate and advance constraints after a complete step
+    fn commit_constraints(&self) -> Result<()> { Ok(()) }
+
+    /// 保存独立约束状态 / Save independent constraint state
+    fn save_constraints(&self) -> Result<JsonValue> { Ok(JsonValue::Null) }
+
+    /// 恢复约束状态；无策略时拒绝非空状态 / Restore constraint state, rejecting non-null state without handling
+    fn load_constraints(&self, state: &JsonValue) -> Result<()> {
+        if state.is_null() { Ok(()) } else {
+            Err(HeuristicError::InvalidArgument("约束状态能力不匹配 / Constraint state capability mismatch".into()))
+        }
+    }
+
+    /// 完整个体的确定性比较，不覆盖业务目标 / Deterministic complete-individual comparison without replacing objectives
+    fn compare_individuals(&self, lhs: &Individual<O, V>, rhs: &Individual<O, V>) -> std::cmp::Ordering {
+        if let (Some(a), Some(b)) = (self.constraint_tier(&lhs.solution), self.constraint_tier(&rhs.solution)) {
+            let compared = a.0.cmp(&b.0).then_with(|| a.1.total_cmp(&b.1));
+            if compared != std::cmp::Ordering::Equal { return compared; }
+        }
+        match (self.dominates(&lhs.fitness, &rhs.fitness), self.dominates(&rhs.fitness, &lhs.fitness)) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => std::cmp::Ordering::Equal,
+        }
+    }
+
+    /// 批量排序下标；随机扫描实现不得作为 Comparator / Batch rank indices; stochastic scans must never be a Comparator
+    fn rank_indices(&self, entries: &[Individual<O, V>]) -> Vec<usize> {
+        if self.stochastic_constraints() {
+            let solutions: Vec<_> = entries.iter().map(|entry| entry.solution.clone()).collect();
+            let objective = |a: usize, b: usize| {
+                match (self.dominates(&entries[a].fitness, &entries[b].fitness), self.dominates(&entries[b].fitness, &entries[a].fitness)) {
+                    (true, false) => std::cmp::Ordering::Less,
+                    (false, true) => std::cmp::Ordering::Greater,
+                    _ => std::cmp::Ordering::Equal,
+                }
+            };
+            if let Some(indices) = self.rank_constraints(&solutions, &objective) { return indices; }
+        }
+        let mut indices: Vec<usize> = (0..entries.len()).collect();
+        indices.sort_by(|&a, &b| self.compare_individuals(&entries[a], &entries[b]));
+        indices
+    }
+
+    /// 以当前目标视图驱动独立约束扫描，标量化不丢失违约信息 / Drive independent constraint scans with the current objective view, retaining violations under scalarization
+    fn rank_constraints(
+        &self,
+        _solutions: &[Solution<V>],
+        _objective: &dyn Fn(usize, usize) -> std::cmp::Ordering,
+    ) -> Option<Vec<usize>> { None }
+
+    /// 是否提供业务归一化最小化坐标，不从原目标隐式推导 / Whether normalized minimization coordinates are provided, never inferred from raw objectives
+    fn has_objective_coordinates(&self) -> bool { false }
+
+    /// 信用计算坐标；最大化须显式取反，不能替换原目标或调用目标评估 / Credit coordinates; explicitly negate maximization, without replacing or evaluating objectives
+    fn objective_coordinates(&self, _objective: &O) -> Result<Vec<f64>> {
+        Err(HeuristicError::InvalidArgument("缺少显式目标坐标 / Missing explicit objective coordinates".into()))
+    }
+
+    /// 校验坐标数值；跨候选的维度一致性由使用者校验 / Validate coordinate values; consumers validate dimensions across candidates
+    fn checked_objective_coordinates(&self, objective: &O) -> Result<Vec<f64>> {
+        if !self.has_objective_coordinates() || !self.valid_objective(objective) {
+            return Err(HeuristicError::InvalidArgument("目标坐标不可用 / Objective coordinates unavailable".into()));
+        }
+        let coordinates = self.objective_coordinates(objective)?;
+        if coordinates.is_empty() || coordinates.iter().any(|value| !value.is_finite())
+            || !self.multi_objective() && coordinates.len() != 1 {
+            return Err(HeuristicError::InvalidArgument("目标坐标维度或数值无效 / Invalid objective coordinate dimensions or values".into()));
+        }
+        Ok(coordinates)
+    }
+
+    /// 是否提供有限非负的归一化违约度 / Whether finite nonnegative normalized constraint violation is provided
+    fn has_constraint_violation(&self) -> bool { false }
+
+    /// 业务违约度，不调用完整目标，也不作为真实可行性证明 / Domain violation, neither evaluating the full objective nor proving feasibility
+    fn constraint_violation(&self, _solution: &Solution<V>) -> Result<f64> {
+        Err(HeuristicError::InvalidArgument("缺少违约度回调 / Missing constraint violation callback".into()))
+    }
+
+    /// 校验违约度，保留业务回调错误 / Validate violation while preserving domain callback errors
+    fn checked_constraint_violation(&self, solution: &Solution<V>) -> Result<f64> {
+        if !self.has_constraint_violation() || !self.valid_solution(solution) {
+            return Err(HeuristicError::InvalidArgument("违约度回调不可用或解无效 / Violation unavailable or invalid solution".into()));
+        }
+        let violation = self.constraint_violation(solution)?;
+        if !violation.is_finite() || violation < 0.0 {
+            return Err(HeuristicError::InvalidArgument("违约度必须有限且非负 / Violation must be finite and nonnegative".into()));
+        }
+        Ok(violation)
+    }
+
     /// 是否为多目标 / Whether the problem is multi-objective
     fn multi_objective(&self) -> bool {
         false
@@ -181,7 +311,8 @@ where
         if !slice.acquire_shared() {
             return Ok(SearchEvaluationResult { admitted: false, candidate: None });
         }
-        let candidate = if self.valid_solution(&solution) && self.feasible(&solution) {
+        let candidate = if self.valid_solution(&solution) && self.admissible(&solution) {
+            self.observe_constraints(&solution)?;
             slice.global().objective_called();
             self.objective(&solution).filter(|objective| self.valid_objective(objective))
                 .map(|objective| Individual::new(solution, objective))
@@ -194,7 +325,7 @@ where
 pub struct SearchEvaluationResult<O, V> {
     /// 是否消耗请求额度 / Whether a request token was consumed
     pub admitted: bool,
-    /// 有效候选；不可行或无效时为空 / Valid candidate, absent for infeasible or invalid evaluations
+    /// 可搜索候选；可能严格不可行，不能直接当作有效档案 / Search-admissible candidate, possibly strictly infeasible and not automatically a valid archive entry
     pub candidate: Option<Individual<O, V>>,
 }
 
@@ -261,6 +392,9 @@ pub struct SearchSessionSnapshot {
     pub state: JsonValue,
     /// 局部档案 / Local archive
     pub archive: JsonValue,
+    /// 独立原生约束状态，旧快照缺省为空 / Independent native constraint state, absent in old snapshots
+    #[serde(default, skip_serializing_if = "JsonValue::is_null")]
+    pub constraints: JsonValue,
     /// 有效运行纳秒数 / Active runtime in nanoseconds
     #[serde(default, skip_serializing_if = "is_zero")]
     pub active_nanos: u64,
@@ -328,7 +462,125 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+    use std::sync::Arc;
+    use crate::solver::heuristic::model::VariableModel;
+    use crate::solver::heuristic::session::adapters::ProblemModel;
+    use crate::solver::heuristic::session::SearchBudget;
+    use crate::variable::new_standalone_id;
     use super::*;
+
+    struct Domain {
+        x: VariableId,
+        feasible: bool,
+        admission: Option<bool>,
+        coordinates: Option<Vec<f64>>,
+        violation: Option<f64>,
+        violation_failed: bool,
+        calls: Cell<u64>,
+    }
+
+    impl Default for Domain {
+        fn default() -> Self {
+            Self { x: new_standalone_id(), feasible: false, admission: None, coordinates: None,
+                violation: None, violation_failed: false, calls: Cell::new(0) }
+        }
+    }
+
+    impl SearchProblem<f64, f64> for Domain {
+        fn id(&self) -> &str { "domain" }
+        fn fingerprint(&self) -> &str { "domain:1" }
+        fn variable_order(&self) -> Vec<VariableId> { vec![self.x] }
+        fn initial_solutions(&self, _: usize) -> Vec<Solution<f64>> { Vec::new() }
+        fn objective(&self, solution: &Solution<f64>) -> Option<f64> {
+            self.calls.set(self.calls.get() + 1);
+            solution.get(&self.x).copied()
+        }
+        fn dominates(&self, lhs: &f64, rhs: &f64) -> bool { lhs > rhs }
+        fn feasible(&self, _: &Solution<f64>) -> bool { self.feasible }
+        fn admissible(&self, solution: &Solution<f64>) -> bool { self.admission.unwrap_or_else(|| self.feasible(solution)) }
+        fn has_objective_coordinates(&self) -> bool { self.coordinates.is_some() }
+        fn objective_coordinates(&self, _: &f64) -> Result<Vec<f64>> {
+            self.coordinates.clone().ok_or_else(|| HeuristicError::InvalidArgument("no projection".into()))
+        }
+        fn has_constraint_violation(&self) -> bool { self.violation.is_some() || self.violation_failed }
+        fn constraint_violation(&self, _: &Solution<f64>) -> Result<f64> {
+            if self.violation_failed { return Err(HeuristicError::Model("domain violation failure".into())); }
+            self.violation.ok_or_else(|| HeuristicError::InvalidArgument("no violation".into()))
+        }
+    }
+
+    #[test]
+    fn default_admission_stays_strict_and_denied_requests_do_not_call_objective() {
+        let mut domain = Domain::default();
+        let budget = Arc::new(SearchBudget::new(3));
+        let slice = SearchSlice::new(budget.clone(), 3, 1);
+        let solution = Solution::from([(domain.x, 4.0)]);
+        assert!(domain.evaluate(solution.clone(), &slice).unwrap().candidate.is_none());
+        domain.feasible = true;
+        assert!(domain.evaluate(Solution::new(), &slice).unwrap().candidate.is_none());
+        assert_eq!(domain.evaluate(solution.clone(), &slice).unwrap().candidate.unwrap().fitness, 4.0);
+        assert!(!domain.evaluate(solution, &slice).unwrap().admitted);
+        assert_eq!(budget.used(), 3);
+        assert_eq!(budget.objective_calls(), 1);
+        assert_eq!(domain.calls.get(), 1);
+    }
+
+    #[test]
+    fn explicit_search_domain_preserves_objective_and_does_not_prove_feasibility() {
+        let domain = Domain { admission: Some(true), violation: Some(0.0), ..Domain::default() };
+        let solution = Solution::from([(domain.x, 7.0)]);
+        let slice = SearchSlice::new(Arc::new(SearchBudget::new(1)), 1, 1);
+        let candidate = domain.evaluate(solution.clone(), &slice).unwrap().candidate.unwrap();
+        assert_eq!(candidate.fitness, 7.0);
+        assert_eq!(domain.checked_constraint_violation(&solution).unwrap(), 0.0);
+        assert!(!domain.feasible(&solution));
+        assert_eq!(ProblemModel::new(&domain).constraint_satisfied(&solution), Some(true));
+        assert_eq!(ProblemModel::new(&domain).constraint_satisfied(&Solution::new()), Some(false));
+    }
+
+    #[test]
+    fn forbidden_domain_wins_even_when_strictly_feasible() {
+        let domain = Domain { feasible: true, admission: Some(false), ..Domain::default() };
+        let solution = Solution::from([(domain.x, 1.0)]);
+        let budget = Arc::new(SearchBudget::new(1));
+        let slice = SearchSlice::new(budget.clone(), 1, 1);
+        assert!(domain.evaluate(solution.clone(), &slice).unwrap().candidate.is_none());
+        assert_eq!(ProblemModel::new(&domain).constraint_satisfied(&solution), Some(false));
+        assert_eq!(budget.used(), 1);
+        assert_eq!(budget.objective_calls(), 0);
+    }
+
+    #[test]
+    fn coordinates_are_explicit_and_checked_without_objective_evaluations() {
+        let mut domain = Domain::default();
+        assert!(!domain.has_objective_coordinates());
+        assert!(domain.checked_objective_coordinates(&10.0).is_err());
+        for coordinates in [vec![], vec![f64::NAN], vec![f64::INFINITY], vec![1.0, 2.0]] {
+            domain.coordinates = Some(coordinates);
+            assert!(domain.checked_objective_coordinates(&10.0).is_err());
+        }
+        domain.coordinates = Some(vec![-0.1]);
+        assert_eq!(domain.checked_objective_coordinates(&10.0).unwrap(), vec![-0.1]);
+        assert_eq!(domain.calls.get(), 0);
+    }
+
+    #[test]
+    fn violation_rejects_missing_invalid_values_and_preserves_callback_errors() {
+        let mut domain = Domain::default();
+        let solution = Solution::from([(domain.x, 1.0)]);
+        assert!(domain.checked_constraint_violation(&solution).is_err());
+        for violation in [-0.1, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            domain.violation = Some(violation);
+            assert!(domain.checked_constraint_violation(&solution).is_err());
+        }
+        domain.violation = Some(0.5);
+        assert_eq!(domain.checked_constraint_violation(&solution).unwrap(), 0.5);
+        assert!(domain.checked_constraint_violation(&Solution::new()).is_err());
+        domain.violation_failed = true;
+        assert!(domain.checked_constraint_violation(&solution).unwrap_err().to_string().contains("domain violation failure"));
+        assert_eq!(domain.calls.get(), 0);
+    }
 
     #[test]
     fn termination_reports_failure_only_for_failed_and_empty() {

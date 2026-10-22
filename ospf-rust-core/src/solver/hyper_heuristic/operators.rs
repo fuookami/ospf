@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::model::callback::Solution;
@@ -11,7 +12,7 @@ use crate::solver::heuristic::{Individual, Iteration};
 use crate::solver::heuristic::entropy::Entropy;
 use crate::solver::heuristic::model::{HeuristicValue, VariableModel};
 use crate::solver::heuristic::operator::evolution::{ConstantSource, GeometricSource, LinearSource, ParameterSource};
-use crate::solver::heuristic::operator::mutation::{GaussianMutation, InversionMutation, Mutation, NoMutation, PolynomialMutation, SwapMutation, UniformMutation};
+use crate::solver::heuristic::operator::mutation::{GaussianMutation, InversionMutation, LevyMutation, Mutation, NoMutation, PolynomialMutation, SwapMutation, UniformMutation};
 use crate::solver::heuristic::operator::neighborhood::{GaussianPerturbation, Neighborhood, RandomPerturbation};
 use crate::solver::heuristic::operator::update::*;
 use crate::solver::heuristic::result::Result;
@@ -25,6 +26,8 @@ use crate::solver::hyper_heuristic::problem::ProblemHandle;
 use crate::solver::hyper_heuristic::selection::*;
 use crate::solver::hyper_heuristic::{boundary, invalid};
 
+mod composite;
+
 /// 携带内层策略的高层会话边界，不反向依赖底层模块 / Upper session boundary carrying inner policies without reversing dependencies
 pub trait PolicySession<O: Clone, V: HeuristicValue>: SearchSession<O, V> {
     /// 派发远程片段，只有线程代理实现；完成前不得再次访问该会话 / Dispatch a remote slice; only thread proxies implement this, with exclusive access until completion
@@ -34,6 +37,9 @@ pub trait PolicySession<O: Clone, V: HeuristicValue>: SearchSession<O, V> {
 
     /// 接收已派发片段；归并仍由协调器完成 / Receive a dispatched slice; merging remains coordinator-owned
     fn receive(&mut self) -> Result<SearchStepResult<O, V>> { Err(invalid("session has no pending remote slice")) }
+
+    /// 最近远程片段的 worker 内执行耗时，不含接收等待 / Worker execution duration of the latest remote slice, excluding receive waiting
+    fn execution_nanos(&self) -> u64 { 0 }
 
     /// 导出稳定槽位路径对应的策略 / Export policies by stable slot path
     fn policies(&self) -> Result<BTreeMap<String, PolicySnapshot>> { Ok(BTreeMap::new()) }
@@ -75,6 +81,7 @@ trait SlotControl {
     fn id(&self) -> &str;
     fn used_action(&self) -> Option<&str>;
     fn choose(&mut self, context: &SelectionContext) -> Result<()>;
+    fn discard(&mut self);
     fn observe(&mut self, transition: &SelectionTransition) -> Result<()>;
     fn save(&self) -> Result<SlotSnapshot>;
     fn load(&mut self, snapshot: &SlotSnapshot) -> Result<()>;
@@ -101,16 +108,25 @@ impl<T: RecoverableComponent + ?Sized> SlotControl for OperatorPool<T> {
     fn used_action(&self) -> Option<&str> { self.used.then(|| self.actions[self.selected].as_str()) }
 
     fn choose(&mut self, context: &SelectionContext) -> Result<()> {
-        let action = self.policy.select(context, &self.actions, &mut self.random)?;
-        self.selected = self.actions.iter().position(|id| *id == action).ok_or_else(|| invalid("masked operator action"))?;
+        let action = match boundary(|| self.policy.select(context, &self.actions, &mut self.random)) {
+            Ok(action) => action,
+            Err(error) => { self.policy.discard(context.decision); return Err(error); }
+        };
+        let Some(selected) = self.actions.iter().position(|id| *id == action) else {
+            self.policy.discard(context.decision);
+            return Err(invalid("masked operator action"));
+        };
+        self.selected = selected;
         self.before = context.clone();
         self.revision = self.policy.revision();
         self.used = false;
         Ok(())
     }
 
+    fn discard(&mut self) { self.policy.discard(self.before.decision); self.used = false; }
+
     fn observe(&mut self, transition: &SelectionTransition) -> Result<()> {
-        if !self.used { return Ok(()); }
+        if !self.used { self.discard(); return Ok(()); }
         let mut transition = transition.clone();
         transition.episode = self.id.clone();
         transition.scope = self.id.clone();
@@ -120,6 +136,7 @@ impl<T: RecoverableComponent + ?Sized> SlotControl for OperatorPool<T> {
         transition.available = self.actions.clone();
         transition.next_available = self.actions.clone();
         transition.policy_version = self.revision;
+        transition.previous_action = self.policy.predecessor(self.before.decision);
         self.transitions.push(transition.clone());
         self.policy.observe(&transition)
     }
@@ -232,24 +249,28 @@ fn pool<T: RecoverableComponent + ?Sized + 'static>(
     let policy: Box<dyn SelectionPolicy> = if let Some(factory) = selectors.get(&config.selection.r#type) {
         factory(&config.selection, actions.clone(), learning)?
     } else {
-        if config.selection.integer("states", 64)? < 64 { return Err(invalid("operator progress features require at least 64 states")); }
-        Box::new(TabularSelectionPolicy::new(&config.selection, actions.clone(), learning)?)
+        if !NonStationarySelector::supports(&config.selection.r#type) && config.selection.integer("states", 64)? < 64 {
+            return Err(invalid("operator progress features require at least 64 states"));
+        }
+        builtin_selector(&config.selection, actions.clone(), learning)?
     };
     Ok(Rc::new(RefCell::new(OperatorPool { random: random.split(&format!("slot:{id}")), id, actions, candidates, policy,
         selected: 0, used: false, before: SelectionContext::default(), revision: 0, transitions: Vec::new() })))
 }
 
 impl OperatorBindings {
+    pub(crate) fn empty() -> Self {
+        Self { update: None, mutation: None, neighborhood: None, parameters: BTreeMap::new(), pools: Vec::new() }
+    }
+
     pub(crate) fn validate_encoding(
         config: &AlgorithmConfig,
         encoding: SearchEncoding,
-        registry: &OperatorRegistry<f64>,
+        _registry: &OperatorRegistry<f64>,
     ) -> Result<()> {
         if encoding == SearchEncoding::Continuous { return Ok(()); }
         if !["genetic", "nsga-ii", "nsga-iii"].contains(&config.algorithm.r#type.as_str())
-            || config.updates.is_empty() || config.mutations.is_empty()
-            || config.updates.iter().any(|spec| !registry.updates.contains_key(&spec.r#type) && !["order", "cycle"].contains(&spec.r#type.as_str()))
-            || config.mutations.iter().any(|spec| !registry.mutations.contains_key(&spec.r#type) && !["none", "swap", "inversion"].contains(&spec.r#type.as_str())) {
+            || config.updates.is_empty() || config.mutations.is_empty() {
             return Err(invalid("non-continuous native search requires explicit compatible genetic or NSGA slots"));
         }
         Ok(())
@@ -261,6 +282,7 @@ impl OperatorBindings {
         learning: bool,
         registry: &OperatorRegistry<f64>,
         selectors: &BTreeMap<String, SelectorFactory>,
+        encoding: SearchEncoding,
     ) -> Result<Self> {
         let kind = config.algorithm.r#type.as_str();
         let population = super::registry::BUILTIN_ALGORITHMS[..22].contains(&kind) || ["nsga-ii", "nsga-iii"].contains(&kind);
@@ -273,7 +295,7 @@ impl OperatorBindings {
             || (!trajectory && !config.neighborhoods.is_empty()) || config.parameters.keys().any(|key| !parameters.contains(&key.as_str())) {
             return Err(invalid("algorithm does not support the configured operator slot"));
         }
-        let mut bindings = Self { update: None, mutation: None, neighborhood: None, parameters: BTreeMap::new(), pools: Vec::new() };
+        let mut bindings = Self::empty();
         if !config.updates.is_empty() {
             let pool = pool(
                 "update".into(),
@@ -281,10 +303,7 @@ impl OperatorBindings {
                 config,
                 random,
                 learning,
-                |spec| match registry.updates.get(&spec.r#type) {
-                    Some(factory) => factory(spec),
-                    None => Ok(Box::new(Stateless(update(spec)?)) as Box<dyn UpdateComponent<f64>>),
-                },
+                |spec| composite::build_update(spec, registry, encoding),
                 selectors,
             )?;
             bindings.pools.push(pool.clone());
@@ -297,10 +316,7 @@ impl OperatorBindings {
                 config,
                 random,
                 learning,
-                |spec| match registry.mutations.get(&spec.r#type) {
-                    Some(factory) => factory(spec),
-                    None => Ok(Box::new(Stateless(mutation(spec)?)) as Box<dyn MutationComponent<f64>>),
-                },
+                |spec| composite::build_mutation(spec, registry, encoding, false),
                 selectors,
             )?;
             bindings.pools.push(pool.clone());
@@ -313,10 +329,7 @@ impl OperatorBindings {
                 config,
                 random,
                 learning,
-                |spec| match registry.neighborhoods.get(&spec.r#type) {
-                    Some(factory) => factory(spec),
-                    None => Ok(Box::new(Stateless(neighborhood(spec)?)) as Box<dyn NeighborhoodComponent<f64>>),
-                },
+                |spec| composite::build_neighborhood(spec, registry, encoding, false),
                 selectors,
             )?;
             bindings.pools.push(pool.clone());
@@ -360,6 +373,14 @@ impl OperatorBindings {
 }
 
 fn update(spec: &ComponentSpec) -> Result<Box<dyn SolutionUpdate<f64>>> {
+    if spec.r#type == "pattern-search" {
+        spec.validate_parameters(&["initialStep", "contraction", "sweeps"])?;
+        let initial_step = spec.number("initialStep", 0.1)?;
+        let contraction = spec.number("contraction", 0.5)?;
+        let sweeps = usize::try_from(spec.integer("sweeps", 32)?).map_err(|_| invalid("pattern sweeps overflow"))?;
+        if initial_step <= 0.0 || contraction <= 0.0 || contraction >= 1.0 || sweeps == 0 { return Err(invalid("invalid pattern-search parameters")); }
+        return Ok(Box::new(PatternSearchUpdate { initial_step, contraction, sweeps }));
+    }
     if spec.r#type == "sbx" {
         spec.validate_parameters(&["eta"])?;
         let eta = spec.number("eta", 20.0)?;
@@ -373,6 +394,8 @@ fn update(spec: &ComponentSpec) -> Result<Box<dyn SolutionUpdate<f64>>> {
         "blend" => Box::new(BlendCrossover::default()),
         "order" => Box::new(OrderCrossover), "cycle" => Box::new(CycleCrossover),
         "differential" => Box::new(DifferentialCrossover::default()),
+        "de" => Box::new(DifferentialCrossover::default()), "opposition" => Box::new(OppositionUpdate),
+        "hho" => Box::new(HarrisHawkUpdate::default()), "gwo" => Box::new(GreyWolfUpdate::default()),
         _ => return Err(invalid("unknown update operator")),
     })
 }
@@ -388,7 +411,8 @@ fn mutation(spec: &ComponentSpec) -> Result<Box<dyn Mutation<f64>>> {
     Ok(match spec.r#type.as_str() {
         "none" => Box::new(NoMutation), "polynomial" => Box::new(PolynomialMutation::default()),
         "swap" => Box::new(SwapMutation), "inversion" => Box::new(InversionMutation),
-        "uniform" => Box::new(UniformMutation::default()), _ => return Err(invalid("unknown mutation operator")),
+        "uniform" => Box::new(UniformMutation::default()), "levy" => Box::new(LevyMutation::default()),
+        _ => return Err(invalid("unknown mutation operator")),
     })
 }
 
@@ -453,6 +477,8 @@ pub(crate) struct ControlledSession<O: ObjectiveComponents, V: HeuristicValue> {
     decisions: u64,
     stagnation: u64,
     reward: Box<dyn RewardPolicy>,
+    legacy_custom_snapshot: bool,
+    legacy_passthrough: bool,
 }
 
 impl<O: ObjectiveComponents, V: HeuristicValue> ControlledSession<O, V> {
@@ -465,7 +491,18 @@ impl<O: ObjectiveComponents, V: HeuristicValue> ControlledSession<O, V> {
     ) -> Box<dyn PolicySession<O, V>>
     where O: 'static {
         Box::new(Self { delegate, problem, bindings, memory: SearchMemory::local(100, 20), codec,
-            initialized: false, decisions: 0, stagnation: 0, reward })
+            initialized: false, decisions: 0, stagnation: 0, reward, legacy_custom_snapshot: false, legacy_passthrough: false })
+    }
+
+    pub(crate) fn wrap_custom(
+        delegate: Box<dyn SearchSession<O, V>>,
+        problem: ProblemHandle<O, V>,
+        codec: Box<dyn SearchCodec<Vec<Individual<O, V>>>>,
+        reward: Box<dyn RewardPolicy>,
+    ) -> Box<dyn PolicySession<O, V>>
+    where O: 'static {
+        Box::new(Self { delegate, problem, bindings: OperatorBindings::empty(), memory: SearchMemory::local(100, 20), codec,
+            initialized: false, decisions: 0, stagnation: 0, reward, legacy_custom_snapshot: true, legacy_passthrough: false })
     }
 
     fn context(&self) -> SelectionContext {
@@ -478,37 +515,57 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Controll
     fn supports_import(&self) -> bool { self.delegate.supports_import() }
 
     fn step(&mut self, slice: &mut SearchSlice) -> Result<SearchStepResult<O, V>> {
+        if self.legacy_passthrough { return self.delegate.step(slice); }
         let start = slice.used();
         let parent = Arc::new(slice.clone());
         let mut report = SearchStepResult::empty(SearchTermination::SliceComplete);
         while report.steps < slice.steps() && slice.remaining() > 0 && !slice.expired() {
             let before = self.context();
-            if self.initialized { for pool in &self.bindings.pools { pool.borrow_mut().choose(&before)?; } }
+            if self.initialized {
+                for pool in &self.bindings.pools {
+                    if let Err(error) = boundary(|| pool.borrow_mut().choose(&before)) {
+                        for pool in &self.bindings.pools { pool.borrow_mut().discard(); }
+                        report.termination = SearchTermination::Failed;
+                        report.diagnostics.push(error.to_string());
+                        report.evaluations = slice.used().saturating_sub(start);
+                        return Ok(report);
+                    }
+                }
+            }
+            let reference = boundary(|| RewardContext::default().with_reference(&self.problem, self.memory.archive()));
             let mut child = (*SearchSlice::child(&parent, slice.remaining(), 1)).clone();
+            let started = Instant::now();
             let outcome = boundary(|| self.delegate.step(&mut child));
+            let elapsed_nanos = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
             let mut result = match outcome {
                 Ok(result) => result,
                 Err(error) => { let mut result = SearchStepResult::empty(SearchTermination::Failed); result.diagnostics.push(error.to_string()); result },
             };
             let (improved, contribution) = self.memory.contribution(&self.problem, self.memory.archive(), &result.candidates);
+            let credit = boundary(|| reference?.with_candidates(&self.problem, &result.candidates));
             self.stagnation = if improved { 0 } else { self.stagnation.saturating_add(1) };
             self.decisions += 1;
             if self.initialized {
                 let event = SelectionTransition { episode: String::new(), decision: before.decision, action: String::new(), before,
                     after: self.context(), available: Vec::new(), next_available: Vec::new(), reward: 0.0,
-                    evaluations: child.used(), terminal: result.termination != SearchTermination::SliceComplete || slice.global().remaining() == 0,
+                    // 其他 worker 的全局消耗不能改变本地信用历史 / Other workers' global consumption must not alter local credit history.
+                    evaluations: child.used(), terminal: result.termination != SearchTermination::SliceComplete,
                     policy_version: 0, feature_version: "progress:1".into(), scope: String::new(), steps: result.steps,
-                    failed: result.termination == SearchTermination::Failed, merged_improvement: false, elapsed_nanos: 0, previous_action: None };
+                    failed: result.termination == SearchTermination::Failed, merged_improvement: false,
+                    elapsed_nanos: if self.reward.requires_elapsed_time() { elapsed_nanos } else { 0 }, previous_action: None };
                 // 只对真实调用的槽位计奖，初始化与未使用槽位不推进奖励状态。
                 // Credit only invoked slots; initialization and unused slots must not advance reward state.
                 let mut feedback_failed = false;
                 for pool in &self.bindings.pools {
                     let mut pool = pool.borrow_mut();
-                    let Some(action) = pool.used_action() else { continue; };
+                    let Some(action) = pool.used_action() else { pool.discard(); continue; };
                     let action = format!("{}/{action}", pool.id());
                     let mut event = event.clone();
                     event.reward = match boundary(|| {
-                        let reward = self.reward.reward(&RewardContext { improved, contribution, evaluations: child.used(), action })?;
+                        let mut context = credit.as_ref().map_err(|error| invalid(error.to_string()))?.clone();
+                        context.improved = improved; context.contribution = contribution; context.evaluations = child.used();
+                        context.action = action; context.elapsed_nanos = elapsed_nanos;
+                        let reward = self.reward.reward(&context)?;
                         if !reward.is_finite() { return Err(invalid("non-finite operator reward")); }
                         Ok(reward)
                     }) {
@@ -520,7 +577,9 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Controll
                     };
                     // 反馈异常不能丢弃已执行候选或阻止其他已用槽位反馈。
                     // Feedback failures must not discard evaluated candidates or skip other used slots.
-                    if let Err(error) = boundary(|| pool.observe(&event)) {
+                    let observed = boundary(|| pool.observe(&event));
+                    pool.discard();
+                    if let Err(error) = observed {
                         feedback_failed = true; result.diagnostics.push(error.to_string());
                     }
                 }
@@ -543,6 +602,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Controll
     }
 
     fn snapshot(&self) -> Result<SearchSessionSnapshot> {
+        if self.legacy_passthrough { return self.delegate.snapshot(); }
         let mut snapshot = self.delegate.snapshot()?;
         let slots = self.bindings.pools.iter().map(|pool| {
             let pool = pool.borrow(); Ok((pool.id().into(), pool.save()?))
@@ -556,13 +616,20 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Controll
     }
 
     fn restore(&mut self, snapshot: &SearchSessionSnapshot) -> Result<()> {
+        if self.legacy_custom_snapshot && !["session", "slots", "localArchive"].iter().all(|key| snapshot.state.get(key).is_some()) {
+            // 老Rust自定义快照未存控制层历史；保留其直通执行语义，不伪造缺失的历史 / Legacy Rust custom snapshots have no control history; retain passthrough semantics rather than inventing it.
+            self.delegate.restore(snapshot)?;
+            self.legacy_passthrough = true;
+            return Ok(());
+        }
         let saved: ControlledSnapshot = serde_json::from_value(snapshot.state.clone()).map_err(|error| invalid(error.to_string()))?;
         if saved.reward_state_version > 1 || (saved.reward_state_version != 0
             && (saved.reward_state.is_null() || snapshot.state.get("rewardState").is_none())) {
             return Err(invalid("unsupported or missing operator reward state / 不支持或缺失的算子奖励状态"));
         }
         if saved.slots.len() != self.bindings.pools.len() || saved.initialized != snapshot.initialized
-            || saved.session.initialized != saved.initialized || saved.session.iteration != snapshot.iteration {
+            || saved.session.initialized != saved.initialized || saved.session.iteration != snapshot.iteration
+            || saved.session.constraints != snapshot.constraints {
             return Err(invalid("incompatible controlled session snapshot"));
         }
         for pool in &self.bindings.pools {
@@ -575,6 +642,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Controll
         self.delegate.restore(&saved.session)?;
         self.reward.load(&saved.reward_state)?;
         self.initialized = saved.initialized; self.decisions = saved.decisions; self.stagnation = saved.stagnation;
+        self.legacy_passthrough = false;
         Ok(())
     }
 
@@ -601,3 +669,6 @@ impl<O: ObjectiveComponents, V: HeuristicValue> PolicySession<O, V> for Controll
         self.bindings.pools.iter().flat_map(|pool| pool.borrow_mut().drain()).collect()
     }
 }
+
+#[cfg(test)]
+mod tests;

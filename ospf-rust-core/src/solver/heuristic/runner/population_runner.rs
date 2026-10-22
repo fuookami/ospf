@@ -14,7 +14,7 @@ use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::iteration::Iteration;
 use crate::solver::heuristic::model::{HeuristicValue, ObjectiveModel};
 use crate::solver::heuristic::operator::archive::BestArchive;
-use crate::solver::heuristic::operator::compare_strictly;
+use crate::solver::heuristic::operator::rank_individuals;
 use crate::solver::heuristic::operator::fitness::{DefaultOnMissFitnessEvaluator, FitnessEvaluator};
 use crate::solver::heuristic::operator::initializer::{Initializer, ModelInitializer};
 use crate::solver::heuristic::operator::mutation::Mutation;
@@ -84,9 +84,9 @@ where
         // Neighbourhood parents are ranked by ascending quality first: crossover does not care about the order, whereas
         // position-update operators rely on "the first k are the leaders", so the skeleton guarantees it uniformly.
         let neighbours = ops.topology.neighbours(index, state.len(), entropy);
-        let mut parents: Vec<&Individual<V, V>> =
-            neighbours.iter().filter_map(|i| state.get(*i)).collect();
-        parents.sort_by(|lhs, rhs| compare_strictly(model, &lhs.fitness, &rhs.fitness));
+        let parents: Vec<Individual<V, V>> =
+            neighbours.iter().filter_map(|i| state.get(*i)).cloned().collect();
+        let parents = rank_individuals(model, &parents);
         let parent_solutions: Vec<Solution<V>> = parents
             .iter()
             .map(|individual| individual.solution.clone())

@@ -120,6 +120,10 @@ impl RunCheckpoint {
     /// 检查 Kotlin v1 无法保存的已知状态；不认证自定义组件的业务语义。
     /// Check known state unsupported by Kotlin v1; custom component semantics still require independent validation.
     pub fn validate_kotlin_v1(&self) -> Result<()> {
+        if std::iter::once(&self.policy.root).chain(self.policy.operators.values().flat_map(|policies| policies.values()))
+            .any(|policy| super::selection::NonStationarySelector::supports(&policy.r#type)) {
+            return Err(invalid("Kotlin 2eb7943 does not support non-stationary selector state"));
+        }
         if self.schedule.is_some() { return Err(invalid("Kotlin 2eb7943 does not support schedule replay state")); }
         if self.version != 1 || self.policy.version != 1 {
             return Err(invalid("Kotlin v1 export requires checkpoint and policy version 1"));
@@ -130,6 +134,7 @@ impl RunCheckpoint {
         validate_kotlin_algorithms(&self.configuration_data, "configurationData", 0)?;
         validate_kotlin_algorithms(&self.policy.definitions, "policy/definitions", 0)?;
         for (id, worker) in &self.workers {
+            if !worker.session.constraints.is_null() { return Err(invalid("Kotlin 2eb7943 does not support native constraint state")); }
             validate_kotlin_session(&worker.session.state, &format!("workers/{id}"), 0)?;
         }
         Ok(())
@@ -142,10 +147,27 @@ fn validate_kotlin_algorithms(
     depth: usize,
 ) -> Result<()> {
     if depth > 128 { return Err(invalid("Kotlin algorithm nesting exceeds 128")); }
+    if document.get("learning").and_then(|value| value.get("reward")).and_then(|value| value.get("type")).and_then(Value::as_str)
+        .is_some_and(|kind| ["time-normalized", "extreme-value", "dominance", "hypervolume-delta"].contains(&kind)) {
+        return Err(invalid(format!("{path}/learning/reward: Kotlin 2eb7943 does not support adaptive rewards")));
+    }
+    if document.get("memory").and_then(|value| value.get("acceptance")).and_then(|value| value.get("type")).and_then(Value::as_str)
+        .is_some_and(|kind| ["late", "record-to-record", "auto"].contains(&kind)) {
+        return Err(invalid(format!("{path}/memory/acceptance: Kotlin 2eb7943 does not support adaptive acceptance")));
+    }
     for field in ["algorithms", "children"] {
         if let Some(algorithms) = document.get(field).and_then(Value::as_array) {
             for (index, algorithm) in algorithms.iter().enumerate() {
                 let path = format!("{path}/{field}/{index}");
+                if algorithm.get("constraints").is_some_and(|value| !value.is_null()) {
+                    return Err(invalid(format!("{path}/constraints: Kotlin 2eb7943 does not support native constraints")));
+                }
+                if algorithm.get("updates").and_then(Value::as_array).is_some_and(|updates| updates.iter().any(|spec| {
+                    spec.get("type").and_then(Value::as_str).is_some_and(|kind| ["pattern-search", "opposition", "levy",
+                        "pipeline", "vnd", "elite-local", "mutation-stage", "neighborhood-stage"].contains(&kind))
+                })) {
+                    return Err(invalid(format!("{path}/updates: Kotlin 2eb7943 does not support local update components")));
+                }
                 if algorithm.get("algorithm").and_then(|spec| spec.get("parameters"))
                     .is_some_and(|parameters| parameters.get("numerics").is_some()) {
                     return Err(invalid(format!("{path}/algorithm/parameters/numerics: Kotlin 2eb7943 does not support explicit numerical contracts")));
@@ -163,9 +185,15 @@ fn validate_kotlin_session(
     depth: usize,
 ) -> Result<()> {
     if depth > 128 { return Err(invalid("Kotlin session nesting exceeds 128")); }
+    if state.get("constraints").is_some_and(|value| !value.is_null()) {
+        return Err(invalid(format!("{path}/constraints: Kotlin 2eb7943 does not support native constraint state")));
+    }
     if state.get("slots").is_some() && state.get("localArchive").is_some() {
         if ["rewardState", "rewardStateVersion", "reward"].iter().any(|key| state.get(key).is_some()) {
             return Err(invalid(format!("{path}/rewardState: Kotlin 2eb7943 does not support operator reward-state fields; use the shared reward-state protocol instead of discarding state")));
+        }
+        if state.get("session").and_then(|session| session.get("constraints")).is_some_and(|value| !value.is_null()) {
+            return Err(invalid(format!("{path}/session/constraints: Kotlin 2eb7943 does not support native constraint state")));
         }
         if let Some(delegate) = state.get("session").and_then(|session| session.get("state")) {
             validate_kotlin_session(delegate, &format!("{path}/session"), depth + 1)?;

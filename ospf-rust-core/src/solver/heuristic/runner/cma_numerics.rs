@@ -38,6 +38,14 @@ mod tests {
     }
 
     #[test]
+    fn shared_new_component_transcendentals_keep_strictmath_rounding() {
+        let mode = CmaNumerics::PolarFdlibmV1;
+        assert_eq!(mode.ln(9170.0).to_bits(), 0x40223f54a1c504c2);
+        assert_eq!(mode.pow(547.0 / 10001.0, 1.0 / 3.0 + 0.01).to_bits(), 0x3fd799126e159c7e);
+        assert_eq!(mode.sqrt(mode.ln(200.0) / 246.0).to_bits(), 0x3fc2c8f6547a82c9);
+    }
+
+    #[test]
     fn polar_gaussian_rejects_zero_and_outer_pairs_without_hidden_cache() {
         let draws = [0.5, 0.5, 0.0, 0.0, 0.75, 0.625, 0.75, 0.625];
         let mut used = 0;

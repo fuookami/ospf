@@ -97,10 +97,12 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicSolver<O
         let config = self.config.clone();
         config.validate()?;
         let threaded = config.execution.mode != ExecutionMode::Serial && config.execution.parallelism > 1;
-        let components = boundary(|| self.registry.components.instantiate(&config))?;
+        let components = boundary(|| self.registry.components.instantiate(&config, self.registry.objective_codec()))?;
         if config.persistence.enabled { boundary(|| components.save())?; }
         let random = SearchRandom::new(config.execution.seed as u64);
         let problem = self.registry.problem(&config.problem, random.clone())?;
+        boundary(|| components.reward.validate_mode(problem.multi_objective(), problem.has_objective_coordinates()))?;
+        boundary(|| components.acceptance.validate_problem(&problem))?;
         let archive_codec = self.registry.archive_codec(problem.variable_order());
         if config.persistence.enabled {
             if archive_codec.is_none() { return Err(invalid("complete recovery requires a lossless archive codec")); }
@@ -124,7 +126,9 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicSolver<O
                 (worker_problem, session, stream)
             };
             if worker_problem.fingerprint() != problem.fingerprint() || worker_problem.variable_order().len() != problem.variable_order().len()
-                || worker_problem.multi_objective() != problem.multi_objective() || worker_problem.encoding() != problem.encoding() {
+                || worker_problem.multi_objective() != problem.multi_objective() || worker_problem.encoding() != problem.encoding()
+                || worker_problem.has_objective_coordinates() != problem.has_objective_coordinates()
+                || worker_problem.has_constraint_violation() != problem.has_constraint_violation() {
                 return Err(invalid("independent problem factories produced incompatible definitions"));
             }
             if config.persistence.enabled {
@@ -184,12 +188,15 @@ struct Dispatch<O, V> {
     available: Vec<String>,
     revision: u64,
     reference: Vec<Individual<O, V>>,
+    credit: RewardContext,
+    elapsed_nanos: u64,
     local_order: Vec<VariableId>,
     order: Vec<VariableId>,
     steps: u64,
     slice: SearchSlice,
     seeds: Vec<Solution<V>>,
     decision: u64,
+    previous_action: Option<String>,
 }
 
 impl<O: Clone, V: HeuristicValue> Drop for Worker<O, V> {
@@ -293,8 +300,8 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
 
     fn bind_schedule(&mut self, source: Option<&ScheduleLog>) -> Result<()> {
         if self.config.execution.mode != ExecutionMode::Asynchronous || self.completions.is_none()
-            || self.config.budget.time_millis.is_some() || !self.pending.is_empty() || self.closed {
-            return Err(invalid("schedule control requires quiescent asynchronous threaded execution without time budgets"));
+            || self.config.budget.time_millis.is_some() || self.components.reward.requires_elapsed_time() || !self.pending.is_empty() || self.closed {
+            return Err(invalid("schedule control requires quiescent asynchronous threaded execution without time budgets or elapsed-time rewards"));
         }
         if self.dispatched != 0 && !self.schedule.enabled() { return Err(invalid("enable schedule control before dispatching")); }
         self.schedule.bind(fingerprint(&checkpoint_configuration(&self.config)?), format!("{}:{}", self.problem.id(), self.problem.fingerprint()), source)
@@ -508,24 +515,33 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         decision: u64,
     ) -> Result<Dispatch<O, V>> {
         let before = self.context_at(decision)?;
-        let action = self.policy.select(&before, &available, &mut self.random)?;
-        let index = self.workers.iter().position(|worker| worker.id == action && !worker.disabled)
-            .ok_or_else(|| invalid("selector returned a masked action"))?;
-        if !available.contains(&action) { return Err(invalid("selector returned an unavailable action")); }
-        let worker = &self.workers[index];
-        let local_order = worker.problem.variable_order();
-        let order = self.problem.variable_order();
-        let mut slice = SearchSlice::new(self.budget.clone(), allowance, steps);
-        if let Some(limit) = self.config.budget.time_millis {
-            slice = slice.with_duration(Duration::from_millis(limit).saturating_sub(self.elapsed()));
-        }
-        let amount = self.components.exchange.amount(self.decisions)?;
-        let seeds = if (!worker.initialized && worker.initialization == InitializationMode::WorkingSet) || amount > 0 {
-            self.memory.working().iter().take(if worker.initialized { amount } else { usize::MAX })
-                .map(|value| remap(&value.solution, &order, &local_order)).collect::<Result<_>>()?
-        } else { Vec::new() };
-        Ok(Dispatch { index, action, before, available, revision: self.policy.revision(), reference: self.memory.archive().to_vec(),
-            local_order, order, steps, slice, seeds, decision })
+        let action = match boundary(|| self.policy.select(&before, &available, &mut self.random)) {
+            Ok(action) => action,
+            Err(error) => { self.policy.discard(decision); return Err(error); }
+        };
+        let prepared = boundary(|| {
+            let index = self.workers.iter().position(|worker| worker.id == action && !worker.disabled)
+                .ok_or_else(|| invalid("selector returned a masked action"))?;
+            if !available.contains(&action) { return Err(invalid("selector returned an unavailable action")); }
+            let worker = &self.workers[index];
+            let local_order = worker.problem.variable_order();
+            let order = self.problem.variable_order();
+            let mut slice = SearchSlice::new(self.budget.clone(), allowance, steps);
+            if let Some(limit) = self.config.budget.time_millis {
+                slice = slice.with_duration(Duration::from_millis(limit).saturating_sub(self.elapsed()));
+            }
+            let amount = self.components.exchange.amount(self.decisions)?;
+            let seeds = if (!worker.initialized && worker.initialization == InitializationMode::WorkingSet) || amount > 0 {
+                self.memory.working().iter().take(if worker.initialized { amount } else { usize::MAX })
+                    .map(|value| remap(&value.solution, &order, &local_order)).collect::<Result<_>>()?
+            } else { Vec::new() };
+            let credit = RewardContext::default().with_reference(&self.problem, self.memory.archive())?;
+            let previous_action = self.policy.predecessor(decision);
+            Ok(Dispatch { index, action, before, available, revision: self.policy.revision(), reference: self.memory.archive().to_vec(), credit, elapsed_nanos: 0,
+                local_order, order, steps, slice, seeds, decision, previous_action })
+        });
+        if prepared.is_err() { self.policy.discard(decision); }
+        prepared
     }
 
     fn merge(
@@ -534,7 +550,19 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         outcome: Result<SearchStepResult<O, V>>,
         batch_active: &[String],
     ) -> Result<()> {
-        let Dispatch { index, action, before, available, revision, reference, local_order, order, steps, slice, decision, .. } = dispatch;
+        let decision = dispatch.decision;
+        let result = boundary(|| self.merge_inner(dispatch, outcome, batch_active));
+        self.policy.discard(decision);
+        result
+    }
+
+    fn merge_inner(
+        &mut self,
+        dispatch: Dispatch<O, V>,
+        outcome: Result<SearchStepResult<O, V>>,
+        batch_active: &[String],
+    ) -> Result<()> {
+        let Dispatch { index, action, before, available, revision, reference, credit, elapsed_nanos, local_order, order, steps, slice, decision, previous_action, .. } = dispatch;
         let mut report = match outcome {
             Ok(report) => report,
             Err(error) => { let mut report = SearchStepResult::empty(SearchTermination::Failed); report.diagnostics.push(error.to_string()); report },
@@ -575,13 +603,17 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
             Ok(value) => value,
             Err(error) => { failed = true; self.diagnostics.push(error.to_string()); (false, 0.0) }
         };
+        let credit = boundary(|| credit.with_candidates(&self.problem, &report.candidates));
         let merged = match boundary(|| Ok(self.memory.offer(&self.problem, report.candidates, self.components.acceptance.as_mut()))) {
             Ok(value) => value,
             Err(error) => { failed = true; self.diagnostics.push(error.to_string()); false }
         };
         if merged { self.stagnation = 0; self.successes += 1; } else { self.stagnation += 1; }
         let reward = match boundary(|| {
-            let reward = self.components.reward.reward(&RewardContext { improved, contribution, evaluations: consumed, action: action.clone() })?;
+            let mut context = credit?;
+            context.improved = improved; context.contribution = contribution; context.evaluations = consumed;
+            context.action = action.clone(); context.elapsed_nanos = elapsed_nanos;
+            let reward = self.components.reward.reward(&context)?;
             if !reward.is_finite() { return Err(invalid("non-finite search reward")); }
             Ok(reward)
         }) {
@@ -599,7 +631,8 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
             next_available: self.workers.iter().filter(|worker| !worker.disabled && !self.pending.contains_key(&worker.id)
                 && !batch_active.contains(&worker.id)).map(|worker| worker.id.clone()).collect(),
             reward, evaluations: consumed, terminal: failed || self.termination().is_some(), policy_version: revision,
-            feature_version: self.components.features.version().into(), scope: "algorithm".into(), steps: report.steps, failed, merged_improvement: merged, elapsed_nanos: 0, previous_action: None,
+            feature_version: self.components.features.version().into(), scope: "algorithm".into(), steps: report.steps, failed, merged_improvement: merged,
+            elapsed_nanos: if self.components.reward.requires_elapsed_time() { elapsed_nanos } else { 0 }, previous_action,
         };
         self.transitions.extend(operator_transitions.into_iter().map(|mut event| {
             event.episode = transition.episode.clone();
@@ -607,7 +640,8 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
             event
         }));
         self.transitions.push(transition.clone());
-        self.policy.observe(&transition)?;
+        let observed = boundary(|| self.policy.observe(&transition));
+        observed?;
         if failed { return Err(crate::solver::heuristic::result::HeuristicError::Model(self.diagnostics.join("; "))); }
         Ok(())
     }
@@ -625,8 +659,9 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
             if expected.as_ref().is_none_or(|wanted| *wanted == id) { break id; }
             if !self.pending.contains_key(&id) || !self.ready_completions.insert(id) { return Err(invalid("unexpected or duplicate completion notification")); }
         };
-        let dispatch = self.pending.remove(&id).ok_or_else(|| invalid("unexpected or duplicate worker completion"))?;
+        let mut dispatch = self.pending.remove(&id).ok_or_else(|| invalid("unexpected or duplicate worker completion"))?;
         let report = self.workers[dispatch.index].session.receive();
+        dispatch.elapsed_nanos = self.workers[dispatch.index].session.execution_nanos();
         self.observe_stop();
         let event = ScheduleEvent { kind: "complete".into(), decision: dispatch.decision, action: id,
             evaluations: dispatch.slice.used(), steps: report.as_ref().map_or(0, |report| report.steps),
@@ -681,15 +716,16 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
                 return Err(invalid("allocator exceeded its ceiling or returned a zero allowance"));
             }
             let mut dispatch = self.prepare(available.clone(), allocation.evaluations, allocation.steps, self.dispatched)?;
-            self.schedule.event(ScheduleEvent { kind: "dispatch".into(), action: dispatch.action.clone(), decision: dispatch.decision,
+            let scheduled = self.schedule.event(ScheduleEvent { kind: "dispatch".into(), action: dispatch.action.clone(), decision: dispatch.decision,
                 available: dispatch.available.clone(), evaluations: allocation.evaluations, steps: allocation.steps,
-                random: self.random.state() as i64, ..Default::default() })?;
+                random: self.random.state() as i64, ..Default::default() });
+            if let Err(error) = scheduled { self.policy.discard(dispatch.decision); return Err(error); }
             available.retain(|id| *id != dispatch.action);
             evaluations -= allocation.evaluations;
             steps -= allocation.steps;
             self.dispatched += 1;
             let worker = &mut self.workers[dispatch.index];
-            let sent = worker.session.dispatch(dispatch.slice.clone(), std::mem::take(&mut dispatch.seeds), worker.initialized);
+            let sent = boundary(|| worker.session.dispatch(dispatch.slice.clone(), std::mem::take(&mut dispatch.seeds), worker.initialized));
             match sent {
                 Ok(()) => { self.pending.insert(dispatch.action.clone(), dispatch); }
                 Err(error) => { return self.merge(dispatch, Err(error), &[]); }
@@ -712,28 +748,37 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         // 派发前预留不重叠额度，避免完成顺序改变同步批次的请求分配。
         // Reserve disjoint allowances before dispatch so completion order cannot change synchronous allocation.
         let mut batch = BTreeMap::new();
-        for offset in 0..capacity {
-            if available.is_empty() || evaluations == 0 || steps == 0 || self.stopped.load(Ordering::Relaxed) { break; }
-            let ceiling = SliceAllocation { evaluations: self.config.budget.slice_evaluations.min(evaluations),
-                steps: self.config.budget.slice_steps.min(steps) };
-            let progress = self.context_at(self.dispatched + offset as u64)?;
-            let allocation = self.components.allocator.allocate(ceiling, &progress)?;
-            if allocation.evaluations == 0 || allocation.steps == 0 || allocation.evaluations > ceiling.evaluations || allocation.steps > ceiling.steps {
-                return Err(invalid("allocator exceeded its ceiling or returned a zero allowance"));
+        let prepared = boundary(|| {
+            for offset in 0..capacity {
+                if available.is_empty() || evaluations == 0 || steps == 0 || self.stopped.load(Ordering::Relaxed) { break; }
+                let ceiling = SliceAllocation { evaluations: self.config.budget.slice_evaluations.min(evaluations),
+                    steps: self.config.budget.slice_steps.min(steps) };
+                let progress = self.context_at(self.dispatched + offset as u64)?;
+                let allocation = self.components.allocator.allocate(ceiling, &progress)?;
+                if allocation.evaluations == 0 || allocation.steps == 0 || allocation.evaluations > ceiling.evaluations || allocation.steps > ceiling.steps {
+                    return Err(invalid("allocator exceeded its ceiling or returned a zero allowance"));
+                }
+                let allowance = allocation.evaluations;
+                let allowance_steps = allocation.steps;
+                let dispatch = self.prepare(available.clone(), allowance, allowance_steps, self.dispatched + offset as u64)?;
+                available.retain(|id| *id != dispatch.action);
+                evaluations -= allowance;
+                steps -= allowance_steps;
+                batch.insert(dispatch.action.clone(), dispatch);
             }
-            let allowance = allocation.evaluations;
-            let allowance_steps = allocation.steps;
-            let dispatch = self.prepare(available.clone(), allowance, allowance_steps, self.dispatched + offset as u64)?;
-            available.retain(|id| *id != dispatch.action);
-            evaluations -= allowance;
-            steps -= allowance_steps;
-            batch.insert(dispatch.action.clone(), dispatch);
+            Ok(())
+        });
+        if let Err(error) = prepared {
+            for dispatch in batch.values() { self.policy.discard(dispatch.decision); }
+            return Err(error);
         }
         self.dispatched += batch.len() as u64;
         if self.completions.is_none() {
             if let Some((_, mut dispatch)) = batch.pop_first() {
                 let worker = &mut self.workers[dispatch.index];
+                let started = Instant::now();
                 let report = super::parallel::execute(worker.session.as_mut(), &mut dispatch.slice, std::mem::take(&mut dispatch.seeds), worker.initialized);
+                dispatch.elapsed_nanos = started.elapsed().as_nanos().min(u64::MAX as u128) as u64;
                 return self.merge(dispatch, Ok(report), &[]);
             }
             return Ok(());
@@ -742,7 +787,7 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         let mut completed = BTreeMap::new();
         for (id, dispatch) in &mut batch {
             let worker = &mut self.workers[dispatch.index];
-            match worker.session.dispatch(dispatch.slice.clone(), std::mem::take(&mut dispatch.seeds), worker.initialized) {
+            match boundary(|| worker.session.dispatch(dispatch.slice.clone(), std::mem::take(&mut dispatch.seeds), worker.initialized)) {
                 Ok(()) => pending.push(id.clone()),
                 Err(error) => { completed.insert(id.clone(), Err(error)); }
             }
@@ -753,8 +798,9 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         for _ in 0..pending.len() {
             let id = self.completions.as_ref().ok_or_else(|| invalid("missing completion channel"))?
                 .recv().map_err(|_| invalid("completion channel disconnected"))?;
-            let dispatch = batch.get(&id).ok_or_else(|| invalid("unexpected worker completion"))?;
+            let dispatch = batch.get_mut(&id).ok_or_else(|| invalid("unexpected worker completion"))?;
             let report = self.workers[dispatch.index].session.receive();
+            dispatch.elapsed_nanos = self.workers[dispatch.index].session.execution_nanos();
             if self.config.execution.mode == ExecutionMode::Asynchronous {
                 let dispatch = batch.remove(&id).ok_or_else(|| invalid("duplicate worker completion"))?;
                 if let Err(failure) = boundary(|| self.merge(dispatch, report, &[])) { error = Some(failure); }

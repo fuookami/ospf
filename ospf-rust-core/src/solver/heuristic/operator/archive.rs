@@ -1,6 +1,6 @@
 //! 档案算子 / Archive operators
 
-use super::compare_strictly;
+use super::compare_individuals;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::model::{HeuristicValue, ObjectiveModel};
 
@@ -76,15 +76,13 @@ where
     ) -> bool {
         let previous_best = self.entries.first().cloned();
         self.entries.extend(candidates);
-        self.entries.sort_by(|lhs, rhs| {
-            compare_strictly(model, &lhs.fitness, &rhs.fitness)
-        });
+        self.entries.sort_by(|lhs, rhs| compare_individuals(model, lhs, rhs));
         self.entries.truncate(self.amount);
 
         match (previous_best, self.entries.first()) {
             (None, Some(_)) => true,
             (Some(previous), Some(current)) => {
-                compare_strictly(model, &current.fitness, &previous.fitness) == std::cmp::Ordering::Less
+                compare_individuals(model, &current, &previous) == std::cmp::Ordering::Less
             }
             _ => false,
         }
@@ -148,7 +146,7 @@ where
             let better = match &self.entry {
                 None => true,
                 Some(current) => {
-                    compare_strictly(model, &candidate.fitness, &current.fitness)
+                    compare_individuals(model, &candidate, &current)
                         == std::cmp::Ordering::Less
                 }
             };

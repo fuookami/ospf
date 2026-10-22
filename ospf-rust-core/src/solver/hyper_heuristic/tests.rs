@@ -10,6 +10,8 @@ use crate::solver::hyper_heuristic::registry::BUILTIN_ALGORITHMS;
 use crate::variable::{VariableId, new_standalone_id};
 use super::*;
 
+mod ruin;
+
 struct Quadratic {
     x: VariableId,
     calls: Arc<AtomicU64>,
@@ -207,6 +209,57 @@ fn native_population_import_preserves_elitist_order_not_replacement_positions() 
             .map(|candidate| candidate["fitness"].as_str().unwrap().parse().unwrap()).collect();
         assert_eq!(fitness, [0.25, 2.25, 4.0, 9.0], "{kind}");
     }
+}
+
+#[test]
+fn pso_and_clpso_real_imports_warm_nearest_original_motion_and_preserve_true_best() {
+    for kind in ["pso", "apso", "clpso"] {
+        let calls = Arc::new(AtomicU64::new(0)); let registry = registry(calls.clone());
+        let problem = registry.problem(&ComponentSpec::new("quadratic"), SearchRandom::new(1)).unwrap();
+        let x = problem.variable_order()[0];
+        let mut config = AlgorithmConfig::new("search", kind); config.size = 4;
+        config.algorithm = config.algorithm.parameter("maxVelocity", 0.25);
+        let random = RandomHandle::new(SearchRandom::new(1));
+        let mut session = registry.session(AlgorithmContext { config, problem, random: random.clone() }).unwrap();
+        let budget = Arc::new(SearchBudget::new(5));
+        session.step(&mut SearchSlice::new(budget.clone(), 4, 1)).unwrap();
+        let before_random = random.state();
+        let report = session.import_solutions(vec![Solution::from([(x, 4.5)])], &mut SearchSlice::new(budget.clone(), 1, 0)).unwrap();
+        assert_eq!(report.evaluations, 1); assert_eq!(report.steps, 0); assert_eq!(random.state(), before_random);
+        assert_eq!(budget.used(), 5); assert_eq!(calls.load(Ordering::Relaxed), 5);
+        let saved = session.snapshot().unwrap();
+        let state = &saved.state["session"]["state"];
+        assert_eq!(state["individuals"][6]["fitness"], "20.25");
+        assert_eq!(state["individuals"][7]["fitness"], "16.0");
+        assert_eq!(state["vectors"][3], serde_json::json!([0.25]));
+        if kind == "clpso" {
+            use crate::solver::heuristic::session::{ClpsoStateCodec, SearchCodec};
+            let particles = ClpsoStateCodec::new(vec![x]).decode(state).unwrap();
+            for (index, particle) in particles.iter().enumerate() { assert_eq!(particle.exemplars, vec![index]); assert_eq!(particle.stagnation, 0); }
+        }
+    }
+}
+
+#[test]
+fn shade_real_import_archives_displaced_population_without_overwriting_learned_parameter_memory() {
+    let registry = registry(Arc::new(AtomicU64::new(0)));
+    let problem = registry.problem(&ComponentSpec::new("quadratic"), SearchRandom::new(1)).unwrap();
+    let x = problem.variable_order()[0];
+    let mut config = AlgorithmConfig::new("search", "shade"); config.size = 4;
+    config.algorithm = config.algorithm.parameter("memorySize", 2);
+    let mut session = registry.session(AlgorithmContext { config, problem, random: RandomHandle::new(SearchRandom::new(1)) }).unwrap();
+    session.step(&mut SearchSlice::new(Arc::new(SearchBudget::new(4)), 4, 1)).unwrap();
+    let mut saved = session.snapshot().unwrap();
+    use crate::solver::heuristic::session::{SearchCodec, ShadeStateCodec};
+    let codec = ShadeStateCodec::new(vec![x]);
+    let mut native = codec.decode(&saved.state["session"]["state"]).unwrap();
+    native.memory = crate::solver::heuristic::runner::ShadeMemory { memory_f: vec![0.21, 0.73], memory_cr: vec![0.31, 0.82], cursor: 1 };
+    saved.state["session"]["state"] = codec.encode(&native).unwrap(); session.restore(&saved).unwrap();
+    session.import_solutions(vec![Solution::from([(x, 0.5)])], &mut SearchSlice::new(Arc::new(SearchBudget::new(1)), 1, 0)).unwrap();
+    let after = codec.decode(&session.snapshot().unwrap().state["session"]["state"]).unwrap();
+    assert_eq!(after.memory, native.memory);
+    assert_eq!(after.population[0].fitness, 0.25);
+    assert!(after.archive.contains(&Solution::from([(x, 5.0)])));
 }
 
 #[test]
@@ -410,6 +463,23 @@ fn deterministic_checkpoint(saved: &RunCheckpoint) -> serde_json::Value {
         }
     }
     let mut value = serde_json::to_value(saved).unwrap(); strip(&mut value); value
+}
+
+fn assert_deterministic_checkpoint_eq(actual: &RunCheckpoint, expected: &RunCheckpoint, label: &str) {
+    fn compare(actual: &serde_json::Value, expected: &serde_json::Value, path: &str) {
+        match (actual, expected) {
+            (serde_json::Value::Object(a), serde_json::Value::Object(b)) => {
+                assert_eq!(a.keys().collect::<Vec<_>>(), b.keys().collect::<Vec<_>>(), "{path}: keys");
+                for (key, value) in a { compare(value, &b[key], &format!("{path}/{key}")); }
+            }
+            (serde_json::Value::Array(a), serde_json::Value::Array(b)) => {
+                assert_eq!(a.len(), b.len(), "{path}: length");
+                for (index, (a, b)) in a.iter().zip(b).enumerate() { compare(a, b, &format!("{path}/{index}")); }
+            }
+            _ => assert_eq!(actual, expected, "{path}"),
+        }
+    }
+    compare(&deterministic_checkpoint(actual), &deterministic_checkpoint(expected), label);
 }
 
 #[test]
@@ -1069,6 +1139,8 @@ impl SearchProblem<f64, f64> for FallibleEvaluation {
     fn initial_solutions(&self, amount: usize) -> Vec<Solution<f64>> { vec![Solution::from([(self.x, 1.0)]); amount] }
     fn objective(&self, _: &Solution<f64>) -> Option<f64> { Some(1.0) }
     fn dominates(&self, lhs: &f64, rhs: &f64) -> bool { lhs < rhs }
+    fn has_constraint_violation(&self) -> bool { true }
+    fn constraint_violation(&self, _: &Solution<f64>) -> crate::solver::heuristic::result::Result<f64> { Ok(0.0) }
     fn evaluate(&self, solution: Solution<f64>, slice: &SearchSlice) -> crate::solver::heuristic::result::Result<crate::solver::heuristic::session::SearchEvaluationResult<f64, f64>> {
         if !slice.acquire_shared() { return Ok(crate::solver::heuristic::session::SearchEvaluationResult { admitted: false, candidate: None }); }
         if self.calls.get() > 0 { return Err(invalid("evaluation callback rejected request")); }
@@ -1088,6 +1160,21 @@ fn metered_evaluation_errors_propagate_and_keep_completed_candidates() {
     assert!(run.advance().is_err());
     assert_eq!(run.result().evaluations, 2); assert_eq!(run.result().objective_calls, 1);
     assert_eq!(run.result().archive.len(), 1); assert_eq!(run.transitions().len(), 1);
+    assert!(run.result().diagnostics.iter().any(|message| message.contains("evaluation callback rejected request")));
+}
+
+#[test]
+fn constraint_view_preserves_custom_evaluation_errors_and_charges_exactly_once() {
+    let mut registry = SearchRegistry::with_builtins();
+    registry.register_problem("fallible", |_, _| Ok(Box::new(FallibleEvaluation { x: new_standalone_id(), calls: std::cell::Cell::new(0) }))).unwrap();
+    let mut config = config(&["pso"], 20);
+    config.problem = ComponentSpec::new("fallible");
+    config.algorithms[0].constraints = Some(crate::solver::heuristic::session::ConstraintHandlingConfig::default());
+    let mut run = HyperHeuristicSolver::new(config, registry).unwrap().open().unwrap();
+    assert!(run.advance().is_err());
+    assert_eq!(run.result().evaluations, 2);
+    assert_eq!(run.result().objective_calls, 1);
+    assert_eq!(run.result().archive.len(), 1);
     assert!(run.result().diagnostics.iter().any(|message| message.contains("evaluation callback rejected request")));
 }
 
@@ -1144,6 +1231,179 @@ fn ucb_explores_unobserved_actions_then_uses_observed_rewards() {
     assert_eq!(policy.select(&SelectionContext::default(), &actions, &mut random).unwrap(), "b");
 }
 
+fn non_stationary_config(kind: &str, mode: ExecutionMode) -> HyperHeuristicConfig {
+    let mut config = config(&["pso", "genetic"], 128);
+    config.selection = ComponentSpec::new(kind);
+    config.execution.mode = mode;
+    config.execution.parallelism = 2;
+    config.budget.slice_evaluations = 12;
+    config.persistence.enabled = true;
+    for algorithm in &mut config.algorithms { algorithm.selection = ComponentSpec::new(kind); }
+    config.algorithms[0].parameters.insert("inertia".into(), vec![ComponentSpec::new("constant").parameter("value", 0.2),
+        ComponentSpec::new("constant").parameter("value", 0.8)]);
+    config.algorithms[1].updates = vec![ComponentSpec::new("single-point"), ComponentSpec::new("blend")];
+    config
+}
+
+#[test]
+fn non_stationary_both_levels_restore_complete_credit_and_discard_unused_slots() {
+    for kind in ["frr-mab", "choice-function", "adaptive-pursuit"] {
+        for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+            let mut config = non_stationary_config(kind, mode);
+            for algorithm in &mut config.algorithms {
+                algorithm.constraints = Some(crate::solver::heuristic::session::ConstraintHandlingConfig {
+                    mode: crate::solver::heuristic::session::ConstraintMode::StochasticRanking, ..Default::default()
+                });
+            }
+            let solver = HyperHeuristicSolver::new(config, constraint_registry(Arc::new(std::sync::atomic::AtomicBool::new(false)))).unwrap();
+            let mut run = solver.open().unwrap();
+            run.advance().unwrap(); run.advance().unwrap();
+            let saved = run.checkpoint().unwrap();
+            assert!(saved.validate_kotlin_v1().is_err());
+            let mut restored = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+            run.run().unwrap(); restored.run().unwrap();
+            let expected = run.checkpoint().unwrap();
+            let actual = restored.checkpoint().unwrap();
+            assert_eq!(deterministic_checkpoint(&actual), deterministic_checkpoint(&expected), "{kind}/{mode:?}");
+            assert!(expected.policy.root.revision > 0);
+            assert_eq!(expected.policy.root.extension["clock"].as_u64(), Some(expected.completed));
+            assert!(expected.policy.root.extension["pending"].as_object().unwrap().is_empty());
+            for policies in expected.policy.operators.values() {
+                for policy in policies.values() { assert!(policy.extension["pending"].as_object().unwrap().is_empty()); }
+            }
+            assert!(expected.policy.operators.values().flat_map(|policies| policies.values()).any(|policy| policy.revision > 0));
+        }
+    }
+}
+
+#[test]
+fn non_stationary_choice_replay_learns_frozen_predecessors_and_frozen_runs_do_not_learn() {
+    let config = non_stationary_config("choice-function", ExecutionMode::Serial);
+    let solver = HyperHeuristicSolver::new(config.clone(), registry(Arc::new(AtomicU64::new(0)))).unwrap();
+    let mut run = solver.open().unwrap(); run.run().unwrap();
+    let policy = run.export_policy().unwrap();
+    let mut replay = NonStationarySelector::new(&config.selection, policy.root.actions.clone(), true).unwrap();
+    super::learning::PolicyTrainer::<f64, f64>::replay(&mut replay, run.transitions(), "algorithm").unwrap();
+    assert_eq!(replay.snapshot().unwrap(), policy.root);
+    let mut frozen = config.clone(); frozen.learning.mode = LearningMode::Frozen;
+    let solver = HyperHeuristicSolver::new(frozen, registry(Arc::new(AtomicU64::new(0)))).unwrap();
+    let mut run = solver.open_with(RunOptions { checkpoint: None, policy: Some(&policy) }).unwrap();
+    let before = run.export_policy().unwrap(); run.run().unwrap();
+    assert_eq!(run.export_policy().unwrap(), before);
+    assert!(run.transitions().iter().all(|event| event.previous_action.is_none()));
+}
+
+struct FailingPreparationExchange { calls: u64 }
+
+impl RecoverableComponent for FailingPreparationExchange {
+    fn save(&self) -> crate::solver::heuristic::result::Result<serde_json::Value> { Ok(self.calls.into()) }
+    fn load(&mut self, value: &serde_json::Value) -> crate::solver::heuristic::result::Result<()> {
+        self.calls = value.as_u64().ok_or_else(|| invalid("invalid exchange calls"))?;
+        Ok(())
+    }
+}
+
+impl ExchangePolicy for FailingPreparationExchange {
+    fn requires_import(&self) -> bool { false }
+    fn amount(&mut self, _: u64) -> crate::solver::heuristic::result::Result<usize> {
+        self.calls += 1;
+        if self.calls == 2 { panic!("second preparation failed"); }
+        Ok(0)
+    }
+}
+
+#[test]
+fn choice_discards_unexecuted_decisions_when_serial_or_partial_batch_preparation_panics() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let mut config = non_stationary_config("choice-function", mode);
+        config.memory.exchange = ComponentSpec::new("failing-preparation");
+        let mut registry = registry(Arc::new(AtomicU64::new(0)));
+        registry.components.register_exchange("failing-preparation", |_| Ok(Box::new(FailingPreparationExchange { calls: 0 }))).unwrap();
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap();
+        if mode == ExecutionMode::Serial { run.advance().unwrap(); }
+        assert!(run.advance().is_err());
+        let saved = run.checkpoint().unwrap();
+        assert!(saved.policy.root.extension["pending"].as_object().unwrap().is_empty());
+        let completed = if mode == ExecutionMode::Serial { 1 } else { 0 };
+        assert_eq!(saved.dispatched, completed);
+        assert_eq!(saved.completed, completed);
+        assert_eq!(saved.policy.root.revision, completed);
+        assert_eq!(saved.transitions.iter().filter(|event| event.scope == "algorithm").count() as u64, completed);
+    }
+}
+
+fn non_stationary_schedule_solver(kind: &str, reverse: bool) -> HyperHeuristicSolver<f64, f64> {
+    non_stationary_schedule_solver_with_failure(kind, reverse, false)
+}
+
+fn non_stationary_schedule_solver_with_failure(kind: &str, reverse: bool, fail: bool) -> HyperHeuristicSolver<f64, f64> {
+    let mut registry = SearchRegistry::with_builtins();
+    let factories = Arc::new(AtomicU64::new(0));
+    registry.register_problem("scheduled", move |_, _| {
+        let role = factories.fetch_add(1, Ordering::SeqCst) % 3;
+        Ok(Box::new(ScheduledProblem { inner: Quadratic { x: new_standalone_id(), calls: Arc::new(AtomicU64::new(0)),
+            offset: 0.0, fingerprint: "scheduled:1".into() }, slow: role == if reverse { 2 } else { 1 }, fail: fail && role == 1, entered: None }))
+    }).unwrap();
+    let mut config = non_stationary_config(kind, ExecutionMode::Asynchronous);
+    config.problem = ComponentSpec::new("scheduled");
+    config.budget.slice_evaluations = 8;
+    HyperHeuristicSolver::new(config, registry).unwrap()
+}
+
+#[test]
+fn non_stationary_schedule_stop_and_failure_drain_credit_exactly_once() {
+    for kind in ["frr-mab", "choice-function", "adaptive-pursuit"] {
+        for fail in [false, true] {
+            let solver = non_stationary_schedule_solver_with_failure(kind, false, fail);
+            let mut run = solver.open().unwrap(); run.record_schedule().unwrap();
+            if fail { assert!(run.run().is_err()); }
+            else { run.advance().unwrap(); run.request_stop(); }
+            let expected = run.checkpoint().unwrap();
+            let log = run.export_schedule().unwrap();
+            assert_eq!(expected.dispatched, expected.completed);
+            assert_eq!(expected.policy.root.revision, expected.completed);
+            assert!(expected.policy.root.extension["pending"].as_object().unwrap().is_empty());
+            let decisions: std::collections::BTreeSet<_> = expected.transitions.iter()
+                .filter(|event| event.scope == "algorithm").map(|event| event.decision).collect();
+            assert_eq!(decisions.len() as u64, expected.completed);
+            let solver = non_stationary_schedule_solver_with_failure(kind, true, fail);
+            let mut replay = solver.open().unwrap(); replay.replay_schedule(&log).unwrap();
+            assert_eq!(replay.run().is_err(), fail);
+            assert_eq!(replay.export_schedule().unwrap(), log);
+            assert_deterministic_checkpoint_eq(&replay.checkpoint().unwrap(), &expected, &format!("{kind}/{fail}"));
+        }
+    }
+}
+
+#[test]
+fn non_stationary_async_schedule_reexecutes_and_restores_dispatch_frozen_credit() {
+    for kind in ["frr-mab", "choice-function", "adaptive-pursuit"] {
+        let solver = non_stationary_schedule_solver(kind, false);
+        let mut recorded = solver.open().unwrap(); recorded.record_schedule().unwrap();
+        recorded.advance().unwrap(); recorded.advance().unwrap();
+        let prefix = recorded.checkpoint().unwrap();
+        recorded.run().unwrap();
+        let expected = recorded.checkpoint().unwrap();
+        let log = recorded.export_schedule().unwrap();
+        let solver = non_stationary_schedule_solver(kind, true);
+        let mut replay = solver.open().unwrap(); replay.replay_schedule(&log).unwrap(); replay.run().unwrap();
+        assert_eq!(replay.export_schedule().unwrap(), log);
+        assert_deterministic_checkpoint_eq(&replay.checkpoint().unwrap(), &expected, kind);
+        let mut restored = solver.open_with(RunOptions { checkpoint: Some(&prefix), policy: None }).unwrap();
+        restored.replay_schedule(&log).unwrap(); restored.run().unwrap();
+        assert_deterministic_checkpoint_eq(&restored.checkpoint().unwrap(), &expected, &format!("{kind}/prefix"));
+        if kind == "choice-function" {
+            let transitions: Vec<_> = expected.transitions.iter().filter(|event| event.scope == "algorithm").collect();
+            assert!(transitions.windows(2).any(|pair| pair[1].decision < pair[0].decision));
+            assert!(transitions.iter().any(|event| event.previous_action.is_some()));
+            let mut learned = NonStationarySelector::new(&ComponentSpec::new(kind), expected.policy.root.actions.clone(), true).unwrap();
+            super::learning::PolicyTrainer::<f64, f64>::replay(&mut learned, &expected.transitions, "algorithm").unwrap();
+            assert_eq!(learned.snapshot().unwrap(), expected.policy.root);
+        }
+    }
+}
+
 #[test]
 fn invalid_masks_and_snapshots_do_not_mutate_policy() {
     let mut policy = TabularSelectionPolicy::new(&ComponentSpec::new("q-learning"), vec!["a".into(), "b".into()], true).unwrap();
@@ -1182,6 +1442,227 @@ fn all_native_algorithms_charge_exact_request_budgets() {
         assert_eq!(result.evaluations, result.objective_calls, "{kind}");
         assert!(!result.archive.is_empty(), "{kind}");
         assert_eq!(result.termination, SearchTermination::EvaluationLimit, "{kind}");
+    }
+}
+
+struct ConstrainedQuadratic {
+    x: VariableId,
+    bad_violation: Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl SearchProblem<f64, f64> for ConstrainedQuadratic {
+    fn id(&self) -> &str { "quadratic" }
+    fn fingerprint(&self) -> &str { "constrained-quadratic:1" }
+    fn variable_order(&self) -> Vec<VariableId> { vec![self.x] }
+    fn lower_bound(&self, _: usize) -> Option<f64> { Some(-10.0) }
+    fn upper_bound(&self, _: usize) -> Option<f64> { Some(10.0) }
+    fn initial_solutions(&self, amount: usize) -> Vec<Solution<f64>> {
+        (0..amount).map(|index| Solution::from([(self.x, index as f64 - 2.0)])).collect()
+    }
+    fn objective(&self, solution: &Solution<f64>) -> Option<f64> { Some((solution[&self.x] + 1.0).powi(2)) }
+    fn dominates(&self, lhs: &f64, rhs: &f64) -> bool { lhs < rhs }
+    fn feasible(&self, solution: &Solution<f64>) -> bool { solution[&self.x] >= 0.0 }
+    fn admissible(&self, solution: &Solution<f64>) -> bool { solution[&self.x].is_finite() && solution[&self.x] >= -8.0 }
+    fn has_constraint_violation(&self) -> bool { true }
+    fn constraint_violation(&self, solution: &Solution<f64>) -> crate::solver::heuristic::result::Result<f64> {
+        if self.bad_violation.load(Ordering::Relaxed) { Err(invalid("domain violation callback failed")) }
+        else { Ok((-solution[&self.x]).max(0.0)) }
+    }
+    fn stateless(&self) -> bool { true }
+}
+
+fn constraint_registry(bad: Arc<std::sync::atomic::AtomicBool>) -> SearchRegistry<f64, f64> {
+    let mut registry = SearchRegistry::with_builtins();
+    registry.register_problem("quadratic", move |_, _| Ok(Box::new(ConstrainedQuadratic {
+        x: new_standalone_id(), bad_violation: bad.clone(),
+    }))).unwrap();
+    registry
+}
+
+fn without_constraint_timing(mut value: serde_json::Value) -> serde_json::Value {
+    match &mut value {
+        serde_json::Value::Object(fields) => {
+            fields.remove("activeNanos");
+            for value in fields.values_mut() { *value = without_constraint_timing(std::mem::take(value)); }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values { *value = without_constraint_timing(std::mem::take(value)); }
+        }
+        _ => {}
+    }
+    value
+}
+
+#[test]
+fn constraint_modes_resume_complete_native_and_random_states_across_families() {
+    use crate::solver::heuristic::session::{ConstraintHandlingConfig, ConstraintMode};
+    let registry = constraint_registry(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    for mode in [ConstraintMode::FeasibilityFirst, ConstraintMode::Epsilon, ConstraintMode::StochasticRanking] {
+        for kind in ["pso", "apso", "clpso", "shade", "l-shade", "cma-es", "hill-climbing", "genetic"] {
+            let mut algorithm = config(&[kind], 1000).algorithms.remove(0);
+            algorithm.constraints = Some(ConstraintHandlingConfig { mode, horizon: 5, ..Default::default() });
+            let problem = registry.problem(&ComponentSpec::new("quadratic"), SearchRandom::new(1)).unwrap();
+            let random = RandomHandle::new(SearchRandom::new(42));
+            let mut session = registry.session(AlgorithmContext { config: algorithm.clone(), problem, random: random.clone() }).unwrap();
+            let report = session.step(&mut SearchSlice::new(Arc::new(SearchBudget::new(1000)), 500, 2)).unwrap();
+            assert_eq!(report.steps, 2, "{mode:?}/{kind}: {:?}", report.diagnostics);
+            let saved = session.snapshot().unwrap();
+            assert_eq!(saved.constraints["steps"], 2);
+            assert_eq!(saved.constraints["scale"], 2.0);
+            let stream = random.state();
+            let expected = session.step(&mut SearchSlice::new(Arc::new(SearchBudget::new(1000)), 500, 2)).unwrap();
+            let expected_state = without_constraint_timing(serde_json::to_value(session.snapshot().unwrap()).unwrap());
+            let problem = registry.problem(&ComponentSpec::new("quadratic"), SearchRandom::new(1)).unwrap();
+            let random = RandomHandle::new(SearchRandom::new(99));
+            let mut restored = registry.session(AlgorithmContext { config: algorithm, problem, random: random.clone() }).unwrap();
+            restored.restore(&saved).unwrap();
+            random.restore(stream);
+            let actual = restored.step(&mut SearchSlice::new(Arc::new(SearchBudget::new(1000)), 500, 2)).unwrap();
+            assert_eq!(actual.evaluations, expected.evaluations, "{mode:?}/{kind}");
+            assert_eq!(without_constraint_timing(serde_json::to_value(restored.snapshot().unwrap()).unwrap()), expected_state, "{mode:?}/{kind}");
+        }
+    }
+}
+
+#[test]
+fn constraint_budget_interruptions_and_failed_imports_roll_back_without_refunding() {
+    use crate::solver::heuristic::session::ConstraintHandlingConfig;
+    let bad = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let registry = constraint_registry(bad.clone());
+    let mut algorithm = AlgorithmConfig::new("leaf", "pso");
+    algorithm.size = 4;
+    algorithm.constraints = Some(ConstraintHandlingConfig::default());
+    let problem = registry.problem(&ComponentSpec::new("quadratic"), SearchRandom::new(1)).unwrap();
+    let x = problem.variable_order()[0];
+    let mut session = registry.session(AlgorithmContext { config: algorithm, problem, random: RandomHandle::new(SearchRandom::new(42)) }).unwrap();
+    let budget = Arc::new(SearchBudget::new(100));
+    let empty = session.snapshot().unwrap();
+    let partial = session.step(&mut SearchSlice::new(budget.clone(), 2, 1)).unwrap();
+    assert_eq!((partial.steps, partial.evaluations, partial.candidates.len()), (0, 2, 2));
+    assert_eq!(session.snapshot().unwrap().constraints, empty.constraints);
+    assert!(!session.snapshot().unwrap().initialized);
+    session.step(&mut SearchSlice::new(budget.clone(), 4, 1)).unwrap();
+    let before = session.snapshot().unwrap();
+    let partial = session.step(&mut SearchSlice::new(budget.clone(), 2, 1)).unwrap();
+    let after = session.snapshot().unwrap();
+    assert_eq!((partial.steps, partial.evaluations), (0, 2));
+    assert_eq!(before.constraints, after.constraints);
+    assert_eq!(before.state["session"]["state"], after.state["session"]["state"]);
+    assert_eq!(before.state["session"]["archive"], after.state["session"]["archive"]);
+    let used = budget.used();
+    let calls = budget.objective_calls();
+    bad.store(true, Ordering::Relaxed);
+    let failure = session.import_solutions(vec![Solution::from([(x, -0.5)])], &mut SearchSlice::new(budget.clone(), 4, 1)).unwrap();
+    assert_eq!(failure.termination, SearchTermination::Failed);
+    assert_eq!(budget.used(), used + 1);
+    assert_eq!(budget.objective_calls(), calls);
+    let after = session.snapshot().unwrap();
+    assert_eq!(before.constraints, after.constraints);
+    assert_eq!(before.state["session"]["state"], after.state["session"]["state"]);
+    bad.store(false, Ordering::Relaxed);
+    let imported = session.import_solutions(vec![Solution::from([(x, 0.25)])], &mut SearchSlice::new(budget.clone(), 4, 1)).unwrap();
+    assert_eq!(imported.termination, SearchTermination::SliceComplete);
+    assert_eq!(after.constraints["steps"], session.snapshot().unwrap().constraints["steps"]);
+}
+
+#[test]
+fn constraint_search_can_visit_infeasible_points_but_global_archives_stay_strict() {
+    let mut config = config(&["genetic", "pso"], 100);
+    for algorithm in &mut config.algorithms {
+        algorithm.constraints = Some(crate::solver::heuristic::session::ConstraintHandlingConfig::default());
+    }
+    config.persistence.enabled = true;
+    let solver = HyperHeuristicSolver::new(config, constraint_registry(Arc::new(std::sync::atomic::AtomicBool::new(false)))).unwrap();
+    let mut run = solver.open().unwrap();
+    run.run().unwrap();
+    let result = run.result();
+    assert_eq!(result.evaluations, 100);
+    assert!(!result.archive.is_empty());
+    assert!(result.archive.iter().all(|individual| individual.solution.values().all(|value| *value >= 0.0)));
+    let working = run.checkpoint().unwrap().working;
+    assert!(working.as_array().unwrap().iter().all(|individual| individual["solution"].as_array().unwrap().iter()
+        .all(|value| value.as_str().unwrap().parse::<f64>().unwrap() >= 0.0)));
+}
+
+#[test]
+fn constraint_preflight_rejects_missing_callback_composite_root_and_undeclared_factory() {
+    let mut requested = config(&["pso"], 100);
+    requested.algorithms[0].constraints = Some(crate::solver::heuristic::session::ConstraintHandlingConfig::default());
+    let calls = Arc::new(AtomicU64::new(0));
+    assert!(HyperHeuristicSolver::new(requested.clone(), registry(calls.clone())).unwrap().open().is_err());
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    let mut registry = constraint_registry(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    registry.register_algorithm("custom", |_| panic!("unsupported factory must not run")).unwrap();
+    requested.algorithms[0].algorithm = ComponentSpec::new("custom");
+    assert!(HyperHeuristicSolver::new(requested.clone(), registry.clone()).unwrap().open().is_err());
+    requested.algorithms[0].algorithm = ComponentSpec::new("island");
+    requested.algorithms[0].children = vec![AlgorithmConfig::new("child", "pso")];
+    requested.algorithms[0].import_mode = ImportMode::Native;
+    assert!(HyperHeuristicSolver::new(requested, registry).is_err());
+}
+
+struct ConstrainedVector(VectorProblem);
+
+impl SearchProblem<Vec<f64>, f64> for ConstrainedVector {
+    fn id(&self) -> &str { "vector" }
+    fn fingerprint(&self) -> &str { "constrained-vector:1" }
+    fn variable_order(&self) -> Vec<VariableId> { self.0.variable_order() }
+    fn lower_bound(&self, index: usize) -> Option<f64> { self.0.lower_bound(index) }
+    fn upper_bound(&self, index: usize) -> Option<f64> { self.0.upper_bound(index) }
+    fn initial_solutions(&self, amount: usize) -> Vec<Solution<f64>> { self.0.initial_solutions(amount) }
+    fn objective(&self, solution: &Solution<f64>) -> Option<Vec<f64>> { self.0.objective(solution) }
+    fn dominates(&self, lhs: &Vec<f64>, rhs: &Vec<f64>) -> bool { self.0.dominates(lhs, rhs) }
+    fn equivalent(&self, lhs: &Vec<f64>, rhs: &Vec<f64>) -> bool { lhs == rhs }
+    fn valid_objective(&self, objective: &Vec<f64>) -> bool { self.0.valid_objective(objective) }
+    fn admissible(&self, solution: &Solution<f64>) -> bool { self.0.feasible(solution) }
+    fn feasible(&self, solution: &Solution<f64>) -> bool { solution[&self.0.x] >= 1.0 }
+    fn has_constraint_violation(&self) -> bool { true }
+    fn constraint_violation(&self, solution: &Solution<f64>) -> crate::solver::heuristic::result::Result<f64> {
+        Ok((1.0 - solution[&self.0.x]).max(0.0))
+    }
+    fn multi_objective(&self) -> bool { true }
+    fn stateless(&self) -> bool { true }
+}
+
+#[test]
+fn constraint_nsga_and_scalarization_preserve_vectors_tiers_and_shared_state() {
+    use crate::solver::heuristic::session::{ConstraintHandlingConfig, ConstraintMode};
+    for mode in [ConstraintMode::FeasibilityFirst, ConstraintMode::Epsilon, ConstraintMode::StochasticRanking] {
+        for execution in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+            let mut registry = SearchRegistry::with_multi_objective_builtins();
+            registry.register_problem("vector", |_, _| Ok(Box::new(ConstrainedVector(VectorProblem { x: new_standalone_id() })))).unwrap();
+            registry.register_scalarization("weighted", |values| Ok(values[0] * 0.25 + values[1] * 0.75)).unwrap();
+            let mut config = config(&["pso", "nsga-ii", "nsga-iii"], 128);
+            config.problem = ComponentSpec::new("vector");
+            config.execution.mode = execution;
+            config.execution.parallelism = 2;
+            config.persistence.enabled = true;
+            config.budget.slice_evaluations = 12;
+            for algorithm in &mut config.algorithms {
+                algorithm.constraints = Some(ConstraintHandlingConfig { mode, horizon: 5, ..Default::default() });
+            }
+            config.algorithms[0].scalarization = Some("weighted".into());
+            let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+            let mut run = solver.open().unwrap();
+            run.advance().unwrap();
+            let saved = run.checkpoint().unwrap();
+            assert!(saved.validate_kotlin_v1().is_err());
+            let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+            run.run().unwrap(); resumed.run().unwrap();
+            assert_eq!(run.transitions(), resumed.transitions(), "{mode:?}/{execution:?}");
+            let expected = run.checkpoint().unwrap();
+            let actual = resumed.checkpoint().unwrap();
+            for id in expected.workers.keys() {
+                let expected = without_constraint_timing(serde_json::to_value(&expected.workers[id]).unwrap());
+                let actual = without_constraint_timing(serde_json::to_value(&actual.workers[id]).unwrap());
+                assert_eq!(actual, expected, "{mode:?}/{execution:?}/{id}");
+            }
+            let result = run.result();
+            assert!(!result.archive.is_empty());
+            assert_eq!(result.evaluations, 128);
+            assert!(result.archive.iter().all(|entry| entry.fitness.len() == 2 && entry.solution.values().all(|value| *value >= 1.0)));
+            assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        }
     }
 }
 
@@ -1724,4 +2205,605 @@ fn paused_iteration_excludes_idle_time_and_restores_saved_active_time() {
     iteration.restore_time(std::time::Duration::from_nanos(123));
     assert_eq!(iteration.time().as_nanos(), 123);
     iteration.resume(); iteration.pause(); assert!(iteration.time().as_nanos() >= 123);
+}
+
+struct CreditProblem {
+    inner: Quadratic,
+    coordinates: bool,
+    malformed: bool,
+}
+
+impl SearchProblem<f64, f64> for CreditProblem {
+    fn id(&self) -> &str { "credit" }
+    fn fingerprint(&self) -> &str { "credit:1" }
+    fn variable_order(&self) -> Vec<VariableId> { self.inner.variable_order() }
+    fn lower_bound(&self, _: usize) -> Option<f64> { Some(0.0) }
+    fn upper_bound(&self, _: usize) -> Option<f64> { Some(10.0) }
+    fn initial_solutions(&self, amount: usize) -> Vec<Solution<f64>> { self.inner.initial_solutions(amount) }
+    fn objective(&self, solution: &Solution<f64>) -> Option<f64> { self.inner.objective(solution) }
+    fn dominates(&self, lhs: &f64, rhs: &f64) -> bool { lhs > rhs }
+    fn valid_objective(&self, objective: &f64) -> bool { objective.is_finite() }
+    fn feasible(&self, solution: &Solution<f64>) -> bool { self.inner.feasible(solution) }
+    fn admissible(&self, solution: &Solution<f64>) -> bool { (0.0..=10.0).contains(&solution[&self.inner.x]) }
+    fn has_objective_coordinates(&self) -> bool { self.coordinates }
+    fn objective_coordinates(&self, objective: &f64) -> crate::solver::heuristic::result::Result<Vec<f64>> {
+        Ok(vec![if self.malformed { f64::NAN } else { -objective / 100.0 }])
+    }
+    fn has_constraint_violation(&self) -> bool { true }
+    fn constraint_violation(&self, _: &Solution<f64>) -> crate::solver::heuristic::result::Result<f64> { Ok(0.0) }
+    fn stateless(&self) -> bool { true }
+}
+
+struct CaptureCredit {
+    contexts: Arc<std::sync::Mutex<Vec<RewardContext>>>,
+    timed: bool,
+}
+
+impl RecoverableComponent for CaptureCredit { fn stateless(&self) -> bool { true } }
+impl RewardPolicy for CaptureCredit {
+    fn requires_coordinates(&self) -> bool { true }
+    fn requires_elapsed_time(&self) -> bool { self.timed }
+    fn reward(&mut self, context: &RewardContext) -> crate::solver::heuristic::result::Result<f64> {
+        self.contexts.lock().unwrap().push(context.clone());
+        Ok(context.contribution)
+    }
+}
+
+fn credit_registry(
+    calls: Arc<AtomicU64>,
+    contexts: Arc<std::sync::Mutex<Vec<RewardContext>>>,
+    coordinates: bool,
+    malformed: bool,
+    timed: bool,
+) -> SearchRegistry<f64, f64> {
+    let mut registry = SearchRegistry::with_builtins();
+    registry.register_problem("credit", move |_, _| Ok(Box::new(CreditProblem {
+        inner: Quadratic { x: new_standalone_id(), calls: calls.clone(), offset: 0.0, fingerprint: "credit:1".into() },
+        coordinates, malformed,
+    }))).unwrap();
+    registry.components.register_reward("capture-credit", move |_| Ok(Box::new(CaptureCredit { contexts: contexts.clone(), timed }))).unwrap();
+    registry
+}
+
+#[test]
+fn coordinate_rewards_receive_real_cost_and_canonical_coordinates_at_both_levels() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous, ExecutionMode::Asynchronous] {
+        let calls = Arc::new(AtomicU64::new(0));
+        let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut config = config(&["pso", "genetic"], 32);
+        config.problem = ComponentSpec::new("credit"); config.learning.reward = ComponentSpec::new("capture-credit");
+        config.execution.mode = mode; config.execution.parallelism = 2;
+        config.budget.slice_evaluations = 8;
+        config.algorithms[0].parameters.insert("inertia".into(), vec![ComponentSpec::new("constant")]);
+        let solver = HyperHeuristicSolver::new(config, credit_registry(calls.clone(), contexts.clone(), true, false, false)).unwrap();
+        let result = solver.solve().unwrap();
+        assert_eq!(result.evaluations, 32);
+        assert_eq!(result.objective_calls, calls.load(Ordering::Relaxed));
+        assert!(result.archive.iter().all(|value| value.fitness >= 0.0));
+        let contexts = contexts.lock().unwrap();
+        let outer: Vec<_> = contexts.iter().filter(|context| !context.action.contains('/')).collect();
+        let inner: Vec<_> = contexts.iter().filter(|context| context.action.starts_with("inertia/constant:1:")).collect();
+        assert_eq!(outer.len() as u64, result.decisions);
+        assert!(!inner.is_empty(), "{mode:?}");
+        assert!(outer[0].reference.is_empty());
+        assert!(outer.iter().skip(1).any(|context| !context.reference.is_empty()));
+        assert!(contexts.iter().all(|context| context.elapsed_nanos > 0 && context.evaluations > 0));
+        assert!(contexts.iter().flat_map(|context| &context.candidates).all(|point| point.len() == 1 && point[0] <= 0.0));
+        assert!(inner.iter().all(|context| !context.reference.is_empty()));
+    }
+}
+
+#[test]
+fn coordinate_capabilities_fail_preflight_without_implicit_scalar_projection() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let calls = Arc::new(AtomicU64::new(0));
+        let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut config = config(&["pso"], 16); config.problem = ComponentSpec::new("credit");
+        config.learning.reward = ComponentSpec::new("capture-credit"); config.execution.mode = mode; config.execution.parallelism = 2;
+        let solver = HyperHeuristicSolver::new(config, credit_registry(calls.clone(), contexts.clone(), false, false, false)).unwrap();
+        assert!(solver.open().err().unwrap().to_string().contains("coordinates"));
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+        assert!(contexts.lock().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn inconsistent_worker_coordinate_capabilities_fail_before_evaluation() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let factories = Arc::new(AtomicU64::new(0));
+        let calls = Arc::new(AtomicU64::new(0));
+        let constructed = factories.clone();
+        let evaluated = calls.clone();
+        let mut registry = SearchRegistry::with_builtins();
+        registry.register_problem("credit", move |_, _| Ok(Box::new(CreditProblem {
+            inner: Quadratic { x: new_standalone_id(), calls: evaluated.clone(), offset: 0.0, fingerprint: "credit:1".into() },
+            coordinates: constructed.fetch_add(1, Ordering::Relaxed) == 0, malformed: false,
+        }))).unwrap();
+        let mut config = config(&["pso"], 16); config.problem = ComponentSpec::new("credit");
+        config.execution.mode = mode; config.execution.parallelism = 2;
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        assert!(solver.open().err().unwrap().to_string().contains("incompatible definitions"));
+        assert_eq!(factories.load(Ordering::Relaxed), 2);
+        assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+}
+
+#[test]
+fn malformed_credit_coordinates_preserve_candidates_and_exactly_once_terminal_feedback() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let calls = Arc::new(AtomicU64::new(0));
+        let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut config = config(&["pso"], 16); config.problem = ComponentSpec::new("credit");
+        config.learning.reward = ComponentSpec::new("capture-credit"); config.execution.mode = mode; config.execution.parallelism = 2;
+        config.budget.slice_evaluations = 4;
+        let solver = HyperHeuristicSolver::new(config, credit_registry(calls.clone(), contexts.clone(), true, true, false)).unwrap();
+        let mut run = solver.open().unwrap();
+        assert!(run.advance().is_err());
+        assert_eq!(run.result().evaluations, 4);
+        assert_eq!(run.result().objective_calls, 4);
+        assert_eq!(run.result().archive.len(), 4);
+        assert_eq!(run.transitions().len(), 1);
+        assert!(run.transitions()[0].failed && run.transitions()[0].terminal);
+        assert_eq!(run.transitions()[0].reward, 0.0);
+        assert!(contexts.lock().unwrap().is_empty());
+        assert!(run.advance().is_ok());
+        assert_eq!(run.transitions().len(), 1);
+    }
+}
+
+#[test]
+fn invalid_local_coordinates_fail_used_slot_feedback_without_losing_native_progress() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let constructed = Arc::new(AtomicU64::new(0));
+        let mut registry = SearchRegistry::with_builtins();
+        registry.register_problem("credit", move |_, _| Ok(Box::new(CreditProblem {
+            inner: Quadratic { x: new_standalone_id(), calls: Arc::new(AtomicU64::new(0)), offset: 0.0, fingerprint: "credit:1".into() },
+            coordinates: true, malformed: constructed.fetch_add(1, Ordering::Relaxed) > 0,
+        }))).unwrap();
+        let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        registry.components.register_reward("capture-credit", move |_| Ok(Box::new(CaptureCredit { contexts: contexts.clone(), timed: false }))).unwrap();
+        let mut config = config(&["pso"], 16); config.problem = ComponentSpec::new("credit");
+        config.learning.reward = ComponentSpec::new("capture-credit"); config.persistence.enabled = true;
+        config.execution.mode = mode; config.execution.parallelism = 2; config.budget.slice_evaluations = 4;
+        config.algorithms[0].parameters.insert("inertia".into(), vec![ComponentSpec::new("constant")]);
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap(); run.advance().unwrap();
+        assert!(run.advance().is_err());
+        let saved = run.checkpoint().unwrap();
+        assert_eq!(saved.evaluations, 8);
+        assert_eq!(saved.steps, 2);
+        assert_eq!(saved.workers["algorithm-0"].session.state["session"]["iteration"], 2);
+        assert_eq!(saved.transitions.iter().filter(|event| event.scope == "algorithm").count(), 2);
+        let inner: Vec<_> = saved.transitions.iter().filter(|event| event.scope == "algorithm-0/inertia").collect();
+        assert_eq!(inner.len(), 1);
+        assert!(inner[0].failed && inner[0].terminal);
+        assert_eq!(inner[0].reward, 0.0);
+        assert_eq!(run.result().objective_calls, 8);
+        assert!(!run.result().archive.is_empty());
+    }
+}
+
+#[test]
+fn elapsed_time_rewards_reject_exact_schedule_control_but_allow_normal_search() {
+    let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut config = config(&["pso", "genetic"], 16); config.problem = ComponentSpec::new("credit");
+    config.learning.reward = ComponentSpec::new("capture-credit");
+    config.execution.mode = ExecutionMode::Asynchronous; config.execution.parallelism = 2;
+    config.budget.slice_evaluations = 4;
+    let solver = HyperHeuristicSolver::new(config, credit_registry(Arc::new(AtomicU64::new(0)), contexts, true, false, true)).unwrap();
+    let mut run = solver.open().unwrap();
+    assert!(run.record_schedule().is_err());
+    let source = ScheduleLog { version: 1, configuration: String::new(), problem: String::new(), events: Vec::new(), checksum: String::new() };
+    assert!(run.replay_schedule(&source).unwrap_err().to_string().contains("elapsed-time rewards"));
+    assert_eq!(run.run().unwrap().evaluations, 16);
+    assert!(run.transitions().iter().filter(|event| event.scope == "algorithm").all(|event| event.elapsed_nanos > 0));
+}
+
+#[test]
+fn coordinate_credit_preserves_composite_leaf_actions_and_checkpoint_recovery() {
+    let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut config = config(&["island"], 64); config.problem = ComponentSpec::new("credit");
+    config.learning.reward = ComponentSpec::new("capture-credit"); config.persistence.enabled = true;
+    config.budget.slice_evaluations = 16;
+    config.algorithms[0].import_mode = ImportMode::Native;
+    config.algorithms[0].children = ["pso", "genetic"].into_iter().enumerate().map(|(index, kind)| {
+        let mut child = AlgorithmConfig::new(format!("child-{index}"), kind); child.size = 4;
+        if index == 0 { child.parameters.insert("inertia".into(), vec![ComponentSpec::new("constant")]); }
+        child
+    }).collect();
+    let solver = HyperHeuristicSolver::new(config, credit_registry(Arc::new(AtomicU64::new(0)), contexts.clone(), true, false, false)).unwrap();
+    let mut run = solver.open().unwrap(); run.advance().unwrap();
+    let saved = run.checkpoint().unwrap();
+    let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+    run.run().unwrap(); resumed.run().unwrap();
+    assert_eq!(run.transitions(), resumed.transitions());
+    assert_eq!(run.result().best().unwrap().fitness, resumed.result().best().unwrap().fitness);
+    assert!(contexts.lock().unwrap().iter().any(|context| context.action.starts_with("inertia/constant:1:") && !context.reference.is_empty()));
+}
+
+struct CreditVector(VectorProblem);
+impl SearchProblem<Vec<f64>, f64> for CreditVector {
+    fn id(&self) -> &str { self.0.id() }
+    fn fingerprint(&self) -> &str { self.0.fingerprint() }
+    fn variable_order(&self) -> Vec<VariableId> { self.0.variable_order() }
+    fn lower_bound(&self, index: usize) -> Option<f64> { self.0.lower_bound(index) }
+    fn upper_bound(&self, index: usize) -> Option<f64> { self.0.upper_bound(index) }
+    fn initial_solutions(&self, amount: usize) -> Vec<Solution<f64>> { self.0.initial_solutions(amount) }
+    fn objective(&self, solution: &Solution<f64>) -> Option<Vec<f64>> { self.0.objective(solution) }
+    fn dominates(&self, lhs: &Vec<f64>, rhs: &Vec<f64>) -> bool { self.0.dominates(lhs, rhs) }
+    fn equivalent(&self, lhs: &Vec<f64>, rhs: &Vec<f64>) -> bool { self.0.equivalent(lhs, rhs) }
+    fn valid_objective(&self, objective: &Vec<f64>) -> bool { self.0.valid_objective(objective) }
+    fn feasible(&self, solution: &Solution<f64>) -> bool { self.0.feasible(solution) }
+    fn multi_objective(&self) -> bool { true }
+    fn has_objective_coordinates(&self) -> bool { true }
+    fn objective_coordinates(&self, objective: &Vec<f64>) -> crate::solver::heuristic::result::Result<Vec<f64>> {
+        Ok(objective.iter().map(|value| value / 10.0).collect())
+    }
+    fn has_constraint_violation(&self) -> bool { true }
+    fn constraint_violation(&self, _: &Solution<f64>) -> crate::solver::heuristic::result::Result<f64> { Ok(0.0) }
+    fn stateless(&self) -> bool { true }
+}
+
+#[test]
+fn scalarized_and_nsga_credit_keep_normalized_canonical_vectors_after_recovery() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let contexts = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut registry = SearchRegistry::with_multi_objective_builtins();
+        registry.register_problem("vector", |_, _| Ok(Box::new(CreditVector(VectorProblem { x: new_standalone_id() })))).unwrap();
+        registry.register_scalarization("weighted", |values| Ok(values[0] * 0.25 + values[1] * 0.75)).unwrap();
+        let captured = contexts.clone();
+        registry.components.register_reward("capture-credit", move |_| Ok(Box::new(CaptureCredit { contexts: captured.clone(), timed: false }))).unwrap();
+        let mut config = config(&["pso", "nsga-ii", "nsga-iii"], 96); config.problem = ComponentSpec::new("vector");
+        config.learning.reward = ComponentSpec::new("capture-credit");
+        config.execution.mode = mode; config.execution.parallelism = 2;
+        config.budget.slice_evaluations = 12; config.persistence.enabled = true;
+        config.algorithms[0].scalarization = Some("weighted".into());
+        config.algorithms[0].parameters.insert("inertia".into(), vec![ComponentSpec::new("constant")]);
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap(); run.advance().unwrap();
+        let saved = run.checkpoint().unwrap();
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+        run.run().unwrap(); resumed.run().unwrap();
+        assert_eq!(run.transitions(), resumed.transitions());
+        assert_eq!(run.result().evaluations, 96);
+        assert!(run.result().archive.iter().all(|value| value.fitness.len() == 2));
+        let contexts = contexts.lock().unwrap();
+        assert!(contexts.iter().any(|context| context.action.starts_with("inertia/constant:1:")));
+        let points: Vec<_> = contexts.iter().flat_map(|context| &context.candidates).collect();
+        assert!(!points.is_empty());
+        assert!(points.iter().all(|point| point.len() == 2 && point.iter().all(|value| (0.0..=0.4).contains(value))));
+    }
+}
+
+fn adaptive_reward_specs() -> Vec<ComponentSpec> {
+    vec![ComponentSpec::new("extreme-value").parameter("window", 3), ComponentSpec::new("dominance"),
+        ComponentSpec::new("hypervolume-delta").parameter("calibrationObservations", 8),
+        ComponentSpec::new("hypervolume-delta").parameter("reference", serde_json::json!([1.0]))
+            .parameter("mode", "sampled").parameter("samples", 256)]
+}
+
+struct ScheduledCredit(ScheduledProblem);
+
+impl SearchProblem<f64, f64> for ScheduledCredit {
+    fn id(&self) -> &str { "scheduled-credit" }
+    fn fingerprint(&self) -> &str { "scheduled-credit:1" }
+    fn variable_order(&self) -> Vec<VariableId> { self.0.variable_order() }
+    fn lower_bound(&self, index: usize) -> Option<f64> { self.0.lower_bound(index) }
+    fn upper_bound(&self, index: usize) -> Option<f64> { self.0.upper_bound(index) }
+    fn initial_solutions(&self, amount: usize) -> Vec<Solution<f64>> { self.0.initial_solutions(amount) }
+    fn objective(&self, solution: &Solution<f64>) -> Option<f64> { self.0.objective(solution) }
+    fn dominates(&self, lhs: &f64, rhs: &f64) -> bool { lhs < rhs }
+    fn has_objective_coordinates(&self) -> bool { true }
+    fn objective_coordinates(&self, value: &f64) -> crate::solver::heuristic::result::Result<Vec<f64>> { Ok(vec![value / 100.0]) }
+    fn stateless(&self) -> bool { true }
+}
+
+fn adaptive_schedule_solver(reward: ComponentSpec, acceptance: &str, reverse: bool) -> HyperHeuristicSolver<f64, f64> {
+    let mut registry = SearchRegistry::with_builtins();
+    let factories = Arc::new(AtomicU64::new(0));
+    registry.register_problem("scheduled-credit", move |_, _| {
+        let role = factories.fetch_add(1, Ordering::SeqCst) % 3;
+        Ok(Box::new(ScheduledCredit(ScheduledProblem {
+            inner: Quadratic { x: new_standalone_id(), calls: Arc::new(AtomicU64::new(0)), offset: 0.0, fingerprint: "scheduled-credit:1".into() },
+            slow: role == if reverse { 2 } else { 1 }, fail: false, entered: None,
+        })))
+    }).unwrap();
+    let mut config = non_stationary_config("choice-function", ExecutionMode::Asynchronous);
+    config.problem = ComponentSpec::new("scheduled-credit"); config.budget.slice_evaluations = 8;
+    config.learning.reward = reward; config.memory.acceptance = ComponentSpec::new(acceptance);
+    HyperHeuristicSolver::new(config, registry).unwrap()
+}
+
+#[test]
+fn adaptive_credit_and_acceptance_replay_opposite_async_order_and_complete_prefix_state() {
+    for (reward, acceptance) in adaptive_reward_specs().into_iter().zip(["late", "auto", "record-to-record", "auto"]) {
+        let solver = adaptive_schedule_solver(reward.clone(), acceptance, false);
+        let mut run = solver.open().unwrap(); run.record_schedule().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+        let prefix = run.checkpoint().unwrap(); run.run().unwrap();
+        let expected = run.checkpoint().unwrap(); let log = run.export_schedule().unwrap();
+        let solver = adaptive_schedule_solver(reward.clone(), acceptance, true);
+        let mut replay = solver.open().unwrap(); replay.replay_schedule(&log).unwrap(); replay.run().unwrap();
+        assert_deterministic_checkpoint_eq(&replay.checkpoint().unwrap(), &expected, &format!("adaptive/{}/{acceptance}", reward.r#type));
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&prefix), policy: None }).unwrap();
+        resumed.replay_schedule(&log).unwrap(); resumed.run().unwrap();
+        assert_deterministic_checkpoint_eq(&resumed.checkpoint().unwrap(), &expected, &format!("adaptive-prefix/{}/{acceptance}", reward.r#type));
+        assert_eq!(resumed.export_schedule().unwrap(), log);
+    }
+}
+
+#[test]
+fn adaptive_rewards_and_acceptance_resume_full_both_level_state_without_extra_evaluations() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        for reward in adaptive_reward_specs() {
+            for acceptance in ["late", "record-to-record", "auto"] {
+                let calls = Arc::new(AtomicU64::new(0));
+                let registry = credit_registry(calls.clone(), Arc::new(std::sync::Mutex::new(Vec::new())), true, false, false);
+                let mut config = non_stationary_config("choice-function", mode);
+                config.problem = ComponentSpec::new("credit");
+                config.learning.reward = reward.clone(); config.memory.acceptance = ComponentSpec::new(acceptance);
+                let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+                let mut run = solver.open().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+                let saved = run.checkpoint().unwrap();
+                assert!(saved.validate_kotlin_v1().is_err());
+                let before_restore = calls.load(Ordering::Relaxed);
+                let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+                assert_eq!(calls.load(Ordering::Relaxed), before_restore);
+                run.run().unwrap(); resumed.run().unwrap();
+                assert_eq!(run.result().evaluations, 128);
+                assert_eq!(run.result().objective_calls, 128);
+                assert_deterministic_checkpoint_eq(&resumed.checkpoint().unwrap(), &run.checkpoint().unwrap(),
+                    &format!("{mode:?}/{}/{acceptance}", reward.r#type));
+                let stateful_reward = reward.r#type != "dominance";
+                assert_eq!(saved.components.contains_key("reward"), stateful_reward);
+                assert!(saved.components.contains_key("acceptance"));
+                for worker in saved.workers.values() {
+                    assert_eq!(!worker.session.state["rewardState"].is_null(), stateful_reward);
+                }
+            }
+        }
+    }
+}
+
+fn local_update_spec(kind: &str) -> ComponentSpec {
+    let mutation = ComponentSpec::new("mutation-stage").parameter("operator", serde_json::to_value(ComponentSpec::new("gaussian")).unwrap());
+    match kind {
+        "pipeline" | "vnd" | "elite-local" => ComponentSpec::new(kind).parameter("stages", serde_json::to_value(vec![mutation, ComponentSpec::new("opposition")]).unwrap()),
+        "mutation-stage" => mutation,
+        "neighborhood-stage" => ComponentSpec::new(kind).parameter("operator", serde_json::to_value(ComponentSpec::new("perturbation")).unwrap()),
+        _ => ComponentSpec::new(kind),
+    }
+}
+
+#[test]
+fn local_updates_meter_every_intermediate_and_restore_complete_serial_and_synchronous_state() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        for kind in ["pipeline", "vnd", "elite-local", "mutation-stage", "neighborhood-stage", "pattern-search", "opposition"] {
+            let calls = Arc::new(AtomicU64::new(0));
+            let mut config = config(&["genetic", "genetic"], 256);
+            config.execution.mode = mode; config.execution.parallelism = 2;
+            config.persistence.enabled = true; config.budget.slice_evaluations = 48;
+            config.selection = ComponentSpec::new("choice-function");
+            for algorithm in &mut config.algorithms {
+                algorithm.size = 2; algorithm.updates = vec![local_update_spec(kind)];
+                algorithm.mutations = vec![ComponentSpec::new("none")];
+                algorithm.selection = ComponentSpec::new("frr-mab");
+            }
+            let solver = HyperHeuristicSolver::new(config, registry(calls.clone())).unwrap();
+            let mut run = solver.open().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+            let saved = run.checkpoint().unwrap(); let before = calls.load(Ordering::Relaxed);
+            let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+            assert_eq!(calls.load(Ordering::Relaxed), before);
+            run.run().unwrap(); let after = calls.load(Ordering::Relaxed);
+            assert_eq!(after, run.result().objective_calls);
+            assert_eq!(run.result().evaluations, 256);
+            assert_eq!(run.result().objective_calls, 256);
+            resumed.run().unwrap();
+            assert_eq!(calls.load(Ordering::Relaxed) - after, 256 - saved.objective_calls);
+            assert_deterministic_checkpoint_eq(&run.checkpoint().unwrap(), &resumed.checkpoint().unwrap(), &format!("local/{kind}/{mode:?}"));
+            assert!(run.transitions().iter().any(|event| event.scope.ends_with("/update")));
+        }
+    }
+}
+
+#[test]
+fn local_vector_nsga_and_partial_steps_keep_original_objectives_and_actual_budget() {
+    for kind in ["pipeline", "vnd", "elite-local", "pattern-search"] {
+        let mut registry = SearchRegistry::with_multi_objective_builtins();
+        registry.register_problem("vector", |_, _| Ok(Box::new(VectorProblem { x: new_standalone_id() }))).unwrap();
+        let mut config = config(&["nsga-ii"], 97); config.problem = ComponentSpec::new("vector");
+        config.persistence.enabled = true; config.budget.slice_evaluations = 20;
+        config.algorithms[0].size = 2; config.algorithms[0].updates = vec![local_update_spec(kind)];
+        config.algorithms[0].mutations = vec![ComponentSpec::new("none")];
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+        let saved = run.checkpoint().unwrap();
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+        run.run().unwrap(); resumed.run().unwrap();
+        assert_eq!((run.result().evaluations, run.result().objective_calls), (97, 97), "{kind}");
+        assert_deterministic_checkpoint_eq(&run.checkpoint().unwrap(), &resumed.checkpoint().unwrap(), kind);
+        assert!(run.result().archive.iter().all(|entry| entry.fitness.len() == 2));
+    }
+}
+
+#[test]
+fn orthogonal_portfolios_preserve_small_niches_and_resume_native_state() {
+    assert!(OrthogonalOperatorPortfolio::continuous(3).is_err());
+    assert!(OrthogonalOperatorPortfolio::permutation(0).is_err());
+    for permutation in [false, true] {
+        let mut registry = registry(Arc::new(AtomicU64::new(0)));
+        let mut config = config(&[], 240); config.persistence.enabled = true; config.budget.slice_evaluations = 24;
+        config.algorithms = if permutation {
+            registry.register_problem("permutation", |_, _| Ok(Box::new(PermutationProblem { order: (0..4).map(|_| new_standalone_id()).collect() }))).unwrap();
+            config.problem = ComponentSpec::new("permutation");
+            OrthogonalOperatorPortfolio::permutation(4).unwrap()
+        } else { OrthogonalOperatorPortfolio::continuous(4).unwrap() };
+        assert!(config.algorithms.iter().all(|algorithm| algorithm.updates.len() <= 2 && algorithm.mutations.len() <= 2));
+        if !permutation { assert_eq!(config.algorithms.iter().map(|algorithm| algorithm.id.as_str()).collect::<Vec<_>>(), vec!["distribution", "adaptive-difference", "encircling", "escape", "intensification"]); }
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap(); for _ in 0..6 { run.advance().unwrap(); }
+        let saved = run.checkpoint().unwrap();
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+        run.run().unwrap(); resumed.run().unwrap();
+        assert_eq!(run.result().evaluations, 240);
+        assert_deterministic_checkpoint_eq(&run.checkpoint().unwrap(), &resumed.checkpoint().unwrap(), "orthogonal portfolio");
+        if permutation {
+            for entry in run.result().archive {
+                let mut values: Vec<_> = entry.solution.values().copied().collect(); values.sort_by(f64::total_cmp);
+                assert_eq!(values, vec![0.0, 1.0, 2.0, 3.0]);
+            }
+        }
+    }
+}
+
+fn local_schedule_solver(kind: &str, reverse: bool) -> HyperHeuristicSolver<f64, f64> {
+    let mut registry = SearchRegistry::with_builtins();
+    let factories = Arc::new(AtomicU64::new(0));
+    registry.register_problem("scheduled", move |_, _| {
+        let role = factories.fetch_add(1, Ordering::SeqCst) % 3;
+        Ok(Box::new(ScheduledProblem { inner: Quadratic { x: new_standalone_id(), calls: Arc::new(AtomicU64::new(0)),
+            offset: 0.0, fingerprint: "scheduled:1".into() }, slow: role == if reverse { 2 } else { 1 }, fail: false, entered: None }))
+    }).unwrap();
+    let mut config = config(&["genetic", "genetic"], 128);
+    config.problem = ComponentSpec::new("scheduled"); config.execution.mode = ExecutionMode::Asynchronous;
+    config.execution.parallelism = 2; config.persistence.enabled = true; config.budget.slice_evaluations = 16;
+    config.selection = ComponentSpec::new("choice-function");
+    for algorithm in &mut config.algorithms {
+        algorithm.size = 2; algorithm.updates = vec![local_update_spec(kind)];
+        algorithm.mutations = vec![ComponentSpec::new("none")]; algorithm.selection = ComponentSpec::new("adaptive-pursuit");
+    }
+    HyperHeuristicSolver::new(config, registry).unwrap()
+}
+
+#[test]
+fn local_updates_replay_opposite_async_completion_order_and_quiescent_prefixes() {
+    for kind in ["pipeline", "vnd", "elite-local", "pattern-search"] {
+        let solver = local_schedule_solver(kind, false);
+        let mut run = solver.open().unwrap(); run.record_schedule().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+        let prefix = run.checkpoint().unwrap(); run.run().unwrap();
+        let expected = run.checkpoint().unwrap(); let log = run.export_schedule().unwrap();
+        let solver = local_schedule_solver(kind, true);
+        let mut replay = solver.open().unwrap(); replay.replay_schedule(&log).unwrap(); replay.run().unwrap();
+        assert_deterministic_checkpoint_eq(&replay.checkpoint().unwrap(), &expected, &format!("local-e4/{kind}"));
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&prefix), policy: None }).unwrap();
+        resumed.replay_schedule(&log).unwrap(); resumed.run().unwrap();
+        assert_deterministic_checkpoint_eq(&resumed.checkpoint().unwrap(), &expected, &format!("local-e4-prefix/{kind}"));
+        assert_eq!(resumed.export_schedule().unwrap(), log);
+    }
+}
+
+#[test]
+fn local_composites_keep_native_constraint_ordering_and_restore_random_scan_state() {
+    use crate::solver::heuristic::session::{ConstraintHandlingConfig, ConstraintMode};
+    for mode in [ConstraintMode::FeasibilityFirst, ConstraintMode::Epsilon, ConstraintMode::StochasticRanking] {
+        let registry = constraint_registry(Arc::new(std::sync::atomic::AtomicBool::new(false)));
+        let mut config = config(&["genetic"], 160); config.persistence.enabled = true; config.budget.slice_evaluations = 32;
+        config.algorithms[0].size = 2;
+        config.algorithms[0].updates = ["pipeline", "vnd", "pattern-search"].map(local_update_spec).to_vec();
+        config.algorithms[0].mutations = vec![ComponentSpec::new("none")];
+        config.algorithms[0].constraints = Some(ConstraintHandlingConfig { mode, horizon: 5, ..Default::default() });
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+        let saved = run.checkpoint().unwrap();
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+        run.run().unwrap(); resumed.run().unwrap();
+        assert_eq!(run.result().evaluations, 160);
+        assert!(run.result().diagnostics.is_empty(), "{:?}", run.result().diagnostics);
+        assert!(run.result().archive.iter().all(|entry| *entry.solution.values().next().unwrap() >= 0.0));
+        assert_deterministic_checkpoint_eq(&run.checkpoint().unwrap(), &resumed.checkpoint().unwrap(), &format!("local-constraint/{mode:?}"));
+    }
+}
+
+#[test]
+fn built_in_time_rewards_reject_exact_replay_before_objective_calls_but_allow_normal_execution() {
+    let calls = Arc::new(AtomicU64::new(0));
+    let registry = credit_registry(calls.clone(), Arc::new(std::sync::Mutex::new(Vec::new())), true, false, false);
+    let mut config = non_stationary_config("choice-function", ExecutionMode::Asynchronous);
+    config.problem = ComponentSpec::new("credit"); config.learning.reward = ComponentSpec::new("time-normalized");
+    let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+    let mut run = solver.open().unwrap(); assert!(run.record_schedule().is_err());
+    let log = ScheduleLog { version: 1, configuration: String::new(), problem: String::new(), events: Vec::new(), checksum: String::new() };
+    assert!(run.replay_schedule(&log).is_err()); assert_eq!(calls.load(Ordering::Relaxed), 0);
+    run.run().unwrap(); assert_eq!(run.result().evaluations, 128);
+    assert!(run.transitions().iter().all(|event| event.elapsed_nanos > 0 && event.reward.is_finite()));
+}
+
+#[test]
+fn old_export_rejects_local_update_components_before_initialization_and_inside_children() {
+    for kind in ["pattern-search", "opposition", "levy", "pipeline", "vnd", "elite-local", "mutation-stage", "neighborhood-stage"] {
+        let mut config = config(&["genetic"], 16); config.persistence.enabled = true;
+        let mut run = HyperHeuristicSolver::new(config, registry(Arc::new(AtomicU64::new(0)))).unwrap().open().unwrap();
+        let saved = run.checkpoint().unwrap();
+        for nested in [false, true] {
+            let mut checkpoint = saved.clone();
+            let mut algorithm = serde_json::json!({"id": "leaf", "algorithm": {"type": "genetic"}, "updates": [{"type": kind}]});
+            if nested { algorithm = serde_json::json!({"id": "parent", "algorithm": {"type": "memetic"}, "children": [algorithm]}); }
+            checkpoint.configuration_data["algorithms"] = serde_json::json!([algorithm]);
+            let error = checkpoint.validate_kotlin_v1().unwrap_err().to_string();
+            assert!(error.contains("local update components"), "{kind}/{nested}: {error}");
+        }
+    }
+}
+
+#[test]
+fn old_export_rejects_adaptive_components_even_without_new_selector_or_inner_slots() {
+    for kind in ["time-normalized", "extreme-value", "dominance", "hypervolume-delta", "late", "record-to-record", "auto"] {
+        let registry = credit_registry(Arc::new(AtomicU64::new(0)), Arc::new(std::sync::Mutex::new(Vec::new())), true, false, false);
+        let mut config = config(&["pso"], 16); config.problem = ComponentSpec::new("credit"); config.persistence.enabled = true;
+        let acceptance = ["late", "record-to-record", "auto"].contains(&kind);
+        if acceptance { config.memory.acceptance = ComponentSpec::new(kind); } else { config.learning.reward = ComponentSpec::new(kind); }
+        let mut run = HyperHeuristicSolver::new(config, registry).unwrap().open().unwrap();
+        let saved = run.checkpoint().unwrap();
+        let error = saved.validate_kotlin_v1().unwrap_err().to_string();
+        assert!(error.contains(if acceptance { "adaptive acceptance" } else { "adaptive rewards" }), "{kind}: {error}");
+    }
+}
+
+#[test]
+fn adaptive_capability_preflight_rejects_missing_coordinates_and_wrong_objective_modes() {
+    for kind in ["time-normalized", "extreme-value", "hypervolume-delta"] {
+        let calls = Arc::new(AtomicU64::new(0));
+        let mut config = config(&["pso"], 16); config.learning.reward = ComponentSpec::new(kind);
+        let solver = HyperHeuristicSolver::new(config, registry(calls.clone())).unwrap();
+        assert!(solver.open().is_err()); assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+    for acceptance in ["late", "record-to-record"] {
+        let mut registry = SearchRegistry::with_multi_objective_builtins();
+        registry.register_problem("vector", |_, _| Ok(Box::new(CreditVector(VectorProblem { x: new_standalone_id() })))).unwrap();
+        let mut config = config(&["nsga-ii"], 16); config.problem = ComponentSpec::new("vector");
+        config.memory.acceptance = ComponentSpec::new(acceptance);
+        assert!(HyperHeuristicSolver::new(config, registry).unwrap().open().is_err());
+    }
+    for reward in ["time-normalized", "extreme-value"] {
+        let mut registry = SearchRegistry::with_multi_objective_builtins();
+        registry.register_problem("vector", |_, _| Ok(Box::new(CreditVector(VectorProblem { x: new_standalone_id() })))).unwrap();
+        let mut config = config(&["nsga-ii"], 16); config.problem = ComponentSpec::new("vector");
+        config.learning.reward = ComponentSpec::new(reward);
+        assert!(HyperHeuristicSolver::new(config, registry).unwrap().open().is_err());
+    }
+    let mut config = config(&["pso"], 16); config.memory.acceptance = ComponentSpec::new("record-to-record");
+    let calls = Arc::new(AtomicU64::new(0));
+    assert!(HyperHeuristicSolver::new(config, registry(calls.clone())).unwrap().open().is_err());
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn vector_hv_and_auto_acceptance_keep_original_objectives_and_restore_frozen_geometry() {
+    for mode in [ExecutionMode::Serial, ExecutionMode::Synchronous] {
+        let mut registry = SearchRegistry::with_multi_objective_builtins();
+        registry.register_problem("vector", |_, _| Ok(Box::new(CreditVector(VectorProblem { x: new_standalone_id() })))).unwrap();
+        let mut config = config(&["nsga-ii", "nsga-iii"], 96); config.problem = ComponentSpec::new("vector");
+        config.execution.mode = mode; config.execution.parallelism = 2; config.persistence.enabled = true;
+        config.budget.slice_evaluations = 12; config.selection = ComponentSpec::new("adaptive-pursuit");
+        config.learning.reward = ComponentSpec::new("hypervolume-delta").parameter("calibrationObservations", 4);
+        config.memory.acceptance = ComponentSpec::new("auto");
+        for algorithm in &mut config.algorithms { algorithm.updates = vec![ComponentSpec::new("single-point")]; }
+        let solver = HyperHeuristicSolver::new(config, registry).unwrap();
+        let mut run = solver.open().unwrap(); run.advance().unwrap(); run.advance().unwrap();
+        let saved = run.checkpoint().unwrap();
+        assert!(saved.components["reward"]["reference"].as_array().is_some_and(|value| value.len() == 2));
+        let mut resumed = solver.open_with(RunOptions { checkpoint: Some(&saved), policy: None }).unwrap();
+        run.run().unwrap(); resumed.run().unwrap();
+        assert_deterministic_checkpoint_eq(&resumed.checkpoint().unwrap(), &run.checkpoint().unwrap(), &format!("vector/{mode:?}"));
+        assert!(run.result().archive.iter().all(|value| value.fitness.len() == 2));
+    }
 }

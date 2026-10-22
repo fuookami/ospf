@@ -3,11 +3,13 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use serde_json::Value;
+use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::model::HeuristicValue;
 use crate::solver::heuristic::result::Result;
+use crate::solver::heuristic::session::SearchProblem;
 use crate::solver::hyper_heuristic::config::{ComponentSpec, HyperHeuristicConfig};
 use crate::solver::hyper_heuristic::memory::{AcceptancePolicy, AlwaysAcceptance, NotWorseAcceptance};
-use crate::solver::hyper_heuristic::selection::{SelectionContext, SelectionPolicy, TabularSelectionPolicy};
+use crate::solver::hyper_heuristic::selection::{SelectionContext, SelectionPolicy, builtin_selector};
 use crate::solver::hyper_heuristic::invalid;
 
 /// 显式恢复协议；有状态组件不得伪装为无状态 / Explicit recovery protocol; stateful components must not claim statelessness
@@ -51,6 +53,7 @@ pub trait FeatureExtractor: RecoverableComponent {
 }
 
 /// 相对派发档案的奖励输入 / Reward input relative to the dispatch archive
+#[derive(Clone, Debug, Default)]
 pub struct RewardContext {
     /// 是否改善 / Whether improved
     pub improved: bool,
@@ -60,10 +63,72 @@ pub struct RewardContext {
     pub evaluations: u64,
     /// 稳定动作 ID；内层为槽位/动作 / Stable action ID; inner rewards use slot/action
     pub action: String,
+    /// worker 内实际执行耗时，不含协调器排队和等待 / Actual worker execution duration, excluding coordinator queueing and waiting
+    pub elapsed_nanos: u64,
+    /// 派发时冻结的严格有效档案坐标 / Strictly valid archive coordinates frozen at dispatch
+    pub reference: Vec<Vec<f64>>,
+    /// 严格有效候选坐标，不包含禁区或不可行候选 / Strictly valid candidate coordinates, excluding forbidden or infeasible candidates
+    pub candidates: Vec<Vec<f64>>,
+}
+
+impl RewardContext {
+    pub(crate) fn with_reference<O: Clone, V: HeuristicValue>(
+        mut self,
+        problem: &dyn SearchProblem<O, V>,
+        entries: &[Individual<O, V>],
+    ) -> Result<Self> {
+        self.reference = Self::coordinates(problem, entries)?;
+        Self::validate_dimensions(&self.reference, &self.candidates)?;
+        Ok(self)
+    }
+
+    pub(crate) fn with_candidates<O: Clone, V: HeuristicValue>(
+        mut self,
+        problem: &dyn SearchProblem<O, V>,
+        entries: &[Individual<O, V>],
+    ) -> Result<Self> {
+        self.candidates = Self::coordinates(problem, entries)?;
+        Self::validate_dimensions(&self.reference, &self.candidates)?;
+        Ok(self)
+    }
+
+    fn coordinates<O: Clone, V: HeuristicValue>(
+        problem: &dyn SearchProblem<O, V>,
+        entries: &[Individual<O, V>],
+    ) -> Result<Vec<Vec<f64>>> {
+        if !problem.has_objective_coordinates() { return Ok(Vec::new()); }
+        entries.iter().filter(|value| problem.valid_solution(&value.solution) && problem.valid_objective(&value.fitness)
+            && problem.admissible(&value.solution) && problem.feasible(&value.solution))
+            .map(|value| problem.checked_objective_coordinates(&value.fitness)).collect()
+    }
+
+    fn validate_dimensions(reference: &[Vec<f64>], candidates: &[Vec<f64>]) -> Result<()> {
+        let mut points = reference.iter().chain(candidates);
+        if let Some(first) = points.next() {
+            if points.any(|point| point.len() != first.len()) { return Err(invalid("inconsistent reward coordinate dimensions")); }
+        }
+        Ok(())
+    }
 }
 
 /// 可注册奖励策略 / Registerable reward policy
 pub trait RewardPolicy: RecoverableComponent {
+    /// 是否必须显式提供业务最小化坐标 / Whether explicit business minimization coordinates are required
+    fn requires_coordinates(&self) -> bool { false }
+    /// 是否只支持单目标标量信用坐标 / Whether only single-objective scalar credit coordinates are supported
+    fn requires_scalar_coordinates(&self) -> bool { false }
+    /// 是否依赖真实耗时；此类奖励不支持当前精确调度重放 / Whether real elapsed time affects credit; unsupported by current exact schedule replay
+    fn requires_elapsed_time(&self) -> bool { false }
+    /// 无目标调用的前置能力检查 / Preflight capability checks without objective calls
+    fn validate_problem(&self, has_coordinates: bool) -> Result<()> {
+        if self.requires_coordinates() && !has_coordinates { Err(invalid("reward requires explicit normalized minimization coordinates")) }
+        else { Ok(()) }
+    }
+    /// 验证目标模式及显式能力，保留旧自定义检查 / Validate objective mode and explicit capabilities, retaining custom legacy checks
+    fn validate_mode(&self, multi_objective: bool, has_coordinates: bool) -> Result<()> {
+        self.validate_problem(has_coordinates)?;
+        if multi_objective && self.requires_scalar_coordinates() { Err(invalid("reward requires a scalar objective")) } else { Ok(()) }
+    }
     /// 计算有限奖励 / Compute a finite reward
     fn reward(&mut self, context: &RewardContext) -> Result<f64>;
 }
@@ -200,17 +265,21 @@ impl<O: Clone + 'static, V: HeuristicValue> ComponentRegistry<O, V> {
 
     pub(crate) fn selector(&self, spec: &ComponentSpec, actions: Vec<String>, learning: bool) -> Result<Box<dyn SelectionPolicy>> {
         if let Some(factory) = self.selectors.get(&spec.r#type) { return factory(spec, actions, learning); }
-        Ok(Box::new(TabularSelectionPolicy::new(spec, actions, learning)?))
+        builtin_selector(spec, actions, learning)
     }
 
     pub(crate) fn reward(&self, spec: &ComponentSpec) -> Result<Box<dyn RewardPolicy>> {
         if let Some(factory) = self.rewards.get(&spec.r#type) { return factory(spec); }
+        if !["improvement", "cost-aware"].contains(&spec.r#type.as_str()) { return super::reward::builtin_reward(spec); }
         spec.validate_parameters(&[])?;
-        if !["improvement", "cost-aware"].contains(&spec.r#type.as_str()) { return Err(invalid("unknown reward policy")); }
         Ok(Box::new(ImprovementReward(spec.r#type == "cost-aware")))
     }
 
-    pub(crate) fn instantiate(&self, config: &HyperHeuristicConfig) -> Result<RuntimeComponents<O, V>> {
+    pub(crate) fn instantiate(
+        &self,
+        config: &HyperHeuristicConfig,
+        objective_codec: Option<Box<dyn crate::solver::heuristic::session::SearchCodec<O>>>,
+    ) -> Result<RuntimeComponents<O, V>> {
         let spec = &config.learning.features;
         let features = if let Some(factory) = self.features.get(&spec.r#type) { factory(spec)? }
             else { spec.validate_parameters(&[])?; if spec.r#type != "progress" { return Err(invalid("unknown feature extractor")); } Box::new(ProgressFeatures) };
@@ -221,11 +290,13 @@ impl<O: Clone + 'static, V: HeuristicValue> ComponentRegistry<O, V> {
         let spec = &config.memory.acceptance;
         let acceptance = if let Some(factory) = self.acceptance.get(&spec.r#type) { factory(spec)? }
             else {
-                spec.validate_parameters(&[])?;
                 match spec.r#type.as_str() {
-                    "not-worse" => Box::new(NotWorseAcceptance) as Box<dyn AcceptancePolicy<O, V>>,
-                    "always" => Box::new(AlwaysAcceptance),
-                    _ => return Err(invalid("unknown acceptance policy")),
+                    "not-worse" => { spec.validate_parameters(&[])?; Box::new(NotWorseAcceptance) as Box<dyn AcceptancePolicy<O, V>> }
+                    "always" => { spec.validate_parameters(&[])?; Box::new(AlwaysAcceptance) }
+                    _ => {
+                        let horizon = config.budget.decisions.or(config.budget.steps).or(config.budget.evaluations).unwrap_or(i64::MAX as u64);
+                        super::memory::builtin_acceptance(spec, objective_codec, horizon)?
+                    }
                 }
             };
         let spec = &config.memory.exchange;
@@ -277,5 +348,106 @@ impl<O: Clone, V: HeuristicValue> RuntimeComponents<O, V> {
             if let Some(state) = saved.get(id) { component.load(state)?; }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+    use crate::model::callback::Solution;
+    use crate::solver::heuristic::session::SearchBudget;
+    use crate::solver::hyper_heuristic::problem::ProblemHandle;
+    use crate::variable::{VariableId, new_standalone_id};
+    use super::*;
+
+    struct Coordinates {
+        x: VariableId,
+        bias: Arc<Cell<f64>>,
+    }
+
+    impl SearchProblem<Vec<f64>, f64> for Coordinates {
+        fn id(&self) -> &str { "coordinates" }
+        fn fingerprint(&self) -> &str { "coordinates:1" }
+        fn variable_order(&self) -> Vec<VariableId> { vec![self.x] }
+        fn initial_solutions(&self, _: usize) -> Vec<Solution<f64>> { Vec::new() }
+        fn objective(&self, _: &Solution<f64>) -> Option<Vec<f64>> { panic!("coordinate projection must not evaluate objectives") }
+        fn dominates(&self, lhs: &Vec<f64>, rhs: &Vec<f64>) -> bool { lhs.iter().zip(rhs).all(|(a, b)| a < b) }
+        fn multi_objective(&self) -> bool { true }
+        fn valid_objective(&self, objective: &Vec<f64>) -> bool { objective.iter().all(|value| value.is_finite()) }
+        fn feasible(&self, solution: &Solution<f64>) -> bool { solution[&self.x] >= 1.0 }
+        fn admissible(&self, solution: &Solution<f64>) -> bool { (0.0..=10.0).contains(&solution[&self.x]) }
+        fn has_objective_coordinates(&self) -> bool { true }
+        fn objective_coordinates(&self, objective: &Vec<f64>) -> Result<Vec<f64>> {
+            Ok(objective.iter().map(|value| -value / 100.0 + self.bias.get()).collect())
+        }
+        fn has_constraint_violation(&self) -> bool { true }
+        fn constraint_violation(&self, solution: &Solution<f64>) -> Result<f64> { Ok((1.0 - solution[&self.x]).max(0.0)) }
+    }
+
+    fn point(x: VariableId, value: f64, fitness: Vec<f64>) -> Individual<Vec<f64>, f64> {
+        Individual::new(Solution::from([(x, value)]), fitness)
+    }
+
+    #[test]
+    fn frozen_reference_coordinates_do_not_follow_stateful_projection_changes() {
+        let x = new_standalone_id();
+        let bias = Arc::new(Cell::new(0.0));
+        let problem = ProblemHandle::new(Box::new(Coordinates { x, bias: bias.clone() }));
+        let reference = point(x, 2.0, vec![20.0, 40.0]);
+        let frozen = RewardContext::default().with_reference(&problem, &[reference.clone()]).unwrap();
+        bias.set(1.0);
+        let context = frozen.with_candidates(&problem, &[point(x, 3.0, vec![30.0, 50.0])]).unwrap();
+        assert_eq!(context.reference, vec![vec![-0.2, -0.4]]);
+        assert_eq!(context.candidates, vec![vec![0.7, 0.5]]);
+        assert_eq!(reference.fitness, vec![20.0, 40.0]);
+        assert_eq!(problem.checked_constraint_violation(&Solution::from([(x, 0.5)])).unwrap(), 0.5);
+        assert!(problem.has_objective_coordinates() && problem.has_constraint_violation());
+    }
+
+    #[test]
+    fn credit_excludes_infeasible_forbidden_and_invalid_candidates_without_charging_budget() {
+        let x = new_standalone_id();
+        let problem = Coordinates { x, bias: Arc::new(Cell::new(0.0)) };
+        let budget = SearchBudget::new(10);
+        let entries = vec![point(x, 0.5, vec![10.0, 20.0]), point(x, 12.0, vec![10.0, 20.0]),
+            point(x, 2.0, vec![f64::NAN, 20.0]), Individual::new(Solution::new(), vec![10.0, 20.0]),
+            point(x, 2.0, vec![10.0, 20.0])];
+        let context = RewardContext::default().with_candidates(&problem, &entries).unwrap();
+        assert_eq!(context.candidates, vec![vec![-0.1, -0.2]]);
+        assert_eq!(budget.used(), 0);
+        assert_eq!(budget.objective_calls(), 0);
+    }
+
+    #[test]
+    fn credit_rejects_empty_nonfinite_and_cross_batch_coordinate_dimensions() {
+        let x = new_standalone_id();
+        let bias = Arc::new(Cell::new(0.0));
+        let problem = Coordinates { x, bias: bias.clone() };
+        let frozen = RewardContext::default().with_reference(&problem, &[point(x, 2.0, vec![1.0, 2.0])]).unwrap();
+        assert!(frozen.with_candidates(&problem, &[point(x, 2.0, vec![1.0, 2.0, 3.0])]).is_err());
+        assert!(RewardContext::default().with_candidates(&problem, &[point(x, 2.0, Vec::new())]).is_err());
+        assert!(RewardContext::default().with_reference(&problem, &[
+            point(x, 2.0, vec![1.0]), point(x, 2.0, vec![1.0, 2.0]),
+        ]).is_err());
+        bias.set(f64::NAN);
+        assert!(RewardContext::default().with_candidates(&problem, &[point(x, 2.0, vec![1.0])]).is_err());
+    }
+
+    #[test]
+    fn strict_memory_never_accepts_search_infeasibility_or_forbidden_feasible_points() {
+        let x = new_standalone_id();
+        let problem = Coordinates { x, bias: Arc::new(Cell::new(0.0)) };
+        let mut memory = crate::solver::hyper_heuristic::memory::SearchMemory::new(5, 5);
+        let infeasible = point(x, 0.5, vec![0.0, 0.0]);
+        let forbidden = point(x, 12.0, vec![0.0, 0.0]);
+        let valid = point(x, 2.0, vec![1.0, 1.0]);
+        assert!(memory.offer(&problem, vec![infeasible.clone(), forbidden.clone(), valid.clone()],
+            &mut crate::solver::hyper_heuristic::memory::AlwaysAcceptance));
+        assert_eq!(memory.archive().len(), 1);
+        assert_eq!(memory.working().len(), 1);
+        assert_eq!(memory.archive()[0].solution, valid.solution);
+        assert!(memory.restore(&problem, vec![infeasible], Vec::new()).is_err());
+        assert!(memory.restore(&problem, vec![forbidden], Vec::new()).is_err());
+        assert_eq!(memory.archive()[0].solution, valid.solution);
     }
 }

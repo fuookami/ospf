@@ -6,8 +6,15 @@ use crate::solver::heuristic::operator::multi_objective::CrowdingDistance;
 use crate::solver::heuristic::session::{SearchProblem, archive::ObjectiveComponents};
 use crate::solver::hyper_heuristic::components::RecoverableComponent;
 
+mod adaptive;
+
+pub use adaptive::{AutoAcceptance, LateAcceptance, RecordToRecordAcceptance};
+pub(crate) use adaptive::builtin_acceptance;
+
 /// 接受策略，仅影响工作集，不回滚算法原生状态 / Acceptance policy affecting working sets without rolling back native state
 pub trait AcceptancePolicy<O: Clone, V: HeuristicValue>: RecoverableComponent {
+    /// 不执行目标调用的接受能力预检 / Preflight acceptance capabilities without objective calls
+    fn validate_problem(&self, _problem: &dyn SearchProblem<O, V>) -> crate::solver::heuristic::result::Result<()> { Ok(()) }
     /// 是否接收有效候选 / Whether to accept a valid candidate
     fn accept(
         &mut self,
@@ -85,7 +92,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchMemory<O, V> {
     ) -> crate::solver::heuristic::result::Result<()> {
         if archive.len() > self.capacity || working.len() > self.working_capacity
             || archive.iter().chain(&working).any(|value| !problem.valid_solution(&value.solution)
-                || !problem.valid_objective(&value.fitness) || !problem.feasible(&value.solution)) {
+                || !problem.valid_objective(&value.fitness) || !problem.admissible(&value.solution) || !problem.feasible(&value.solution)) {
             return Err(super::invalid("invalid checkpoint memory"));
         }
         self.archive = archive;
@@ -119,7 +126,8 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchMemory<O, V> {
     ) -> Vec<Individual<O, V>> {
         let mut all = Vec::new();
         for value in reference.iter().chain(candidates) {
-            if problem.valid_solution(&value.solution) && problem.valid_objective(&value.fitness) && problem.feasible(&value.solution)
+            if problem.valid_solution(&value.solution) && problem.valid_objective(&value.fitness)
+                && problem.admissible(&value.solution) && problem.feasible(&value.solution)
                 && !all.iter().any(|old: &Individual<O, V>| old.solution == value.solution) {
                 all.push(value.clone());
             }
@@ -160,7 +168,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchMemory<O, V> {
         acceptance: &mut dyn AcceptancePolicy<O, V>,
     ) -> bool {
         let valid: Vec<_> = candidates.into_iter().filter(|value| problem.valid_solution(&value.solution)
-            && problem.valid_objective(&value.fitness) && problem.feasible(&value.solution)).collect();
+            && problem.valid_objective(&value.fitness) && problem.admissible(&value.solution) && problem.feasible(&value.solution)).collect();
         let improved = self.contribution(problem, &self.archive, &valid).0;
         self.archive = self.merged(problem, &self.archive, &valid);
         for candidate in &valid {

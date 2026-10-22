@@ -5,6 +5,10 @@ use crate::model::callback::Solution;
 use super::super::individual::Individual;
 use super::super::model::{HeuristicValue, ObjectiveModel, to_f64};
 
+pub mod constraint_ranking;
+
+pub use constraint_ranking::{ConstraintAssessment, EpsilonConstraintEvaluator, StochasticRanking};
+
 /// 适应度评估算子契约 / Fitness evaluator contract
 ///
 /// 把解转成个体：计算目标值并拒绝不可比较的结果。所有入口都必须经过「非有限值过滤」，否则 NaN/±∞ 会
