@@ -20,6 +20,23 @@ pub type InitialSolutionProvider<V> = Arc<dyn Fn(usize) -> Vec<Solution<V>> + Se
 pub type ObjectiveEvaluator<V> = Arc<dyn Fn(&Solution<V>) -> Option<V> + Send + Sync>;
 /// 启发式值域收敛器 / Heuristic value coercer
 pub type ValueCoercer<V> = Arc<dyn Fn(usize, V) -> V + Send + Sync>;
+/// 启发式约束评估器 / Heuristic constraint evaluator
+///
+/// `Some(true)` 表示满足全部约束，`Some(false)` 表示违反，`None` 表示无法判定。
+/// `Some(true)` means all constraints hold, `Some(false)` means violated, `None` means undetermined.
+pub type ConstraintEvaluator<V> = Arc<dyn Fn(&Solution<V>) -> Option<bool> + Send + Sync>;
+/// 启发式变量上下界提供器 / Heuristic variable bounds provider
+///
+/// 返回 `(下界, 上界)`；任一维可为 `None` 表示该侧无界。
+/// Returns `(lower, upper)`; either side may be `None` when unbounded.
+pub type VariableBoundsProvider<V> =
+    Arc<dyn Fn(VariableId) -> Option<(Option<V>, Option<V>)> + Send + Sync>;
+/// 启发式目标比较器 / Heuristic objective comparator
+///
+/// 返回 `Some(Less)` 表示左侧更优；`None` 表示不可比较。
+/// `Some(Less)` means the left side is better; `None` means incomparable.
+pub type ObjectiveComparator<V> =
+    Arc<dyn Fn(&V, &V) -> Option<std::cmp::Ordering> + Send + Sync>;
 
 /// 抽象回调模型 / Abstract Callback Model
 ///
@@ -53,6 +70,12 @@ pub struct AbstractCallBackModel<V> {
     pub objective_evaluator: Option<ObjectiveEvaluator<V>>,
     /// 启发式值域收敛器 / Heuristic value coercer
     pub value_coercer: Option<ValueCoercer<V>>,
+    /// 启发式约束评估器 / Heuristic constraint evaluator
+    pub constraint_evaluator: Option<ConstraintEvaluator<V>>,
+    /// 启发式变量上下界提供器 / Heuristic variable bounds provider
+    pub variable_bounds_provider: Option<VariableBoundsProvider<V>>,
+    /// 启发式目标比较器 / Heuristic objective comparator
+    pub objective_comparator: Option<ObjectiveComparator<V>>,
     /// 最近一次求解输出 / Last solver output
     pub last_solver_output: Option<SolverOutput>,
 }
@@ -78,6 +101,18 @@ impl<V: Debug> std::fmt::Debug for AbstractCallBackModel<V> {
                 &self.objective_evaluator.is_some(),
             )
             .field("value_coercer_registered", &self.value_coercer.is_some())
+            .field(
+                "constraint_evaluator_registered",
+                &self.constraint_evaluator.is_some(),
+            )
+            .field(
+                "variable_bounds_provider_registered",
+                &self.variable_bounds_provider.is_some(),
+            )
+            .field(
+                "objective_comparator_registered",
+                &self.objective_comparator.is_some(),
+            )
             .field("last_solver_output", &self.last_solver_output)
             .finish()
     }
@@ -99,6 +134,9 @@ impl<V> AbstractCallBackModel<V> {
             initial_solution_provider: None,
             objective_evaluator: None,
             value_coercer: None,
+            constraint_evaluator: None,
+            variable_bounds_provider: None,
+            objective_comparator: None,
             last_solver_output: None,
         }
     }
@@ -260,6 +298,102 @@ impl<V> AbstractCallBackModel<V> {
             coercer(index, value)
         } else {
             value
+        }
+    }
+
+    /// 设置启发式约束评估器 / Set heuristic constraint evaluator
+    pub fn set_constraint_evaluator(&mut self, evaluator: ConstraintEvaluator<V>) {
+        self.constraint_evaluator = Some(evaluator);
+    }
+
+    /// 链式设置启发式约束评估器 / Builder-style constraint evaluator setter
+    pub fn with_constraint_evaluator(mut self, evaluator: ConstraintEvaluator<V>) -> Self {
+        self.constraint_evaluator = Some(evaluator);
+        self
+    }
+
+    /// 清除启发式约束评估器 / Clear heuristic constraint evaluator
+    pub fn clear_constraint_evaluator(&mut self) {
+        self.constraint_evaluator = None;
+    }
+
+    /// 是否已设置启发式约束评估器 / Whether heuristic constraint evaluator is set
+    pub fn has_constraint_evaluator(&self) -> bool {
+        self.constraint_evaluator.is_some()
+    }
+
+    /// 为启发式评估约束满足情况 / Evaluate constraint satisfaction for heuristic
+    pub fn evaluate_constraint_for_heuristic(&self, solution: &Solution<V>) -> Option<bool> {
+        self.constraint_evaluator
+            .as_ref()
+            .and_then(|evaluator| evaluator(solution))
+    }
+
+    /// 设置启发式变量上下界提供器 / Set heuristic variable bounds provider
+    pub fn set_variable_bounds_provider(&mut self, provider: VariableBoundsProvider<V>) {
+        self.variable_bounds_provider = Some(provider);
+    }
+
+    /// 链式设置启发式变量上下界提供器 / Builder-style variable bounds provider setter
+    pub fn with_variable_bounds_provider(mut self, provider: VariableBoundsProvider<V>) -> Self {
+        self.variable_bounds_provider = Some(provider);
+        self
+    }
+
+    /// 清除启发式变量上下界提供器 / Clear heuristic variable bounds provider
+    pub fn clear_variable_bounds_provider(&mut self) {
+        self.variable_bounds_provider = None;
+    }
+
+    /// 是否已设置启发式变量上下界提供器 / Whether heuristic variable bounds provider is set
+    pub fn has_variable_bounds_provider(&self) -> bool {
+        self.variable_bounds_provider.is_some()
+    }
+
+    /// 获取启发式变量上下界 / Get heuristic variable bounds
+    pub fn variable_bounds_for_heuristic(
+        &self,
+        id: VariableId,
+    ) -> Option<(Option<V>, Option<V>)> {
+        self.variable_bounds_provider
+            .as_ref()
+            .and_then(|provider| provider(id))
+    }
+
+    /// 设置启发式目标比较器 / Set heuristic objective comparator
+    pub fn set_objective_comparator(&mut self, comparator: ObjectiveComparator<V>) {
+        self.objective_comparator = Some(comparator);
+    }
+
+    /// 链式设置启发式目标比较器 / Builder-style objective comparator setter
+    pub fn with_objective_comparator(mut self, comparator: ObjectiveComparator<V>) -> Self {
+        self.objective_comparator = Some(comparator);
+        self
+    }
+
+    /// 清除启发式目标比较器 / Clear heuristic objective comparator
+    pub fn clear_objective_comparator(&mut self) {
+        self.objective_comparator = None;
+    }
+
+    /// 是否已设置启发式目标比较器 / Whether heuristic objective comparator is set
+    pub fn has_objective_comparator(&self) -> bool {
+        self.objective_comparator.is_some()
+    }
+
+    /// 比较两个目标值（更优返回 `Ordering::Less`）/ Compare objectives (`Ordering::Less` means better)
+    ///
+    /// 默认按偏序升序比较（最小化语义），并保证相等目标返回 `Equal`，不会同时判为更优。
+    /// Defaults to ascending partial order (minimisation semantics), guaranteeing equal objectives compare as `Equal`
+    /// instead of being better in both directions.
+    pub fn compare_objective_for_heuristic(&self, lhs: &V, rhs: &V) -> Option<std::cmp::Ordering>
+    where
+        V: PartialOrd,
+    {
+        if let Some(comparator) = self.objective_comparator.as_ref() {
+            comparator(lhs, rhs)
+        } else {
+            lhs.partial_cmp(rhs)
         }
     }
 
@@ -482,5 +616,59 @@ mod tests {
         assert_eq!(provider_called.load(Ordering::Relaxed), 1);
         assert_eq!(evaluator_called.load(Ordering::Relaxed), 1);
         assert_eq!(coercer_called.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn abstract_callback_model_heuristic_constraint_bounds_and_comparator_hooks() {
+        let x = new_standalone_id();
+        let y = new_standalone_id();
+        let mut model = AbstractCallBackModel::<f64>::new("heuristic_extra_hooks");
+        model.set_constraint_evaluator(Arc::new(move |solution| {
+            Some(solution.get(&x).copied().unwrap_or_default() >= 0.0)
+        }));
+        model.set_variable_bounds_provider(Arc::new(move |id| {
+            if id == x {
+                Some((Some(-2.0), Some(3.0)))
+            } else if id == y {
+                Some((Some(0.0), None))
+            } else {
+                None
+            }
+        }));
+        model.set_objective_comparator(Arc::new(|lhs, rhs| rhs.partial_cmp(lhs)));
+
+        assert_eq!(
+            model.evaluate_constraint_for_heuristic(&HashMap::from([(x, 1.0)])),
+            Some(true)
+        );
+        assert_eq!(
+            model.evaluate_constraint_for_heuristic(&HashMap::from([(x, -1.0)])),
+            Some(false)
+        );
+        assert_eq!(
+            model.variable_bounds_for_heuristic(x),
+            Some((Some(-2.0), Some(3.0)))
+        );
+        assert_eq!(
+            model.variable_bounds_for_heuristic(y),
+            Some((Some(0.0), None))
+        );
+        // 自定义比较器为降序（最大化）：2.0 优于 1.0。
+        // The custom comparator is descending (maximisation): 2.0 is better than 1.0.
+        assert_eq!(
+            model.compare_objective_for_heuristic(&2.0, &1.0),
+            Some(std::cmp::Ordering::Less)
+        );
+        // 未注册比较器时默认升序且相等返回 Equal。
+        // Without a registered comparator the default is ascending and equality stays `Equal`.
+        let plain = AbstractCallBackModel::<f64>::new("plain");
+        assert_eq!(
+            plain.compare_objective_for_heuristic(&1.0, &1.0),
+            Some(std::cmp::Ordering::Equal)
+        );
+        assert_eq!(
+            plain.compare_objective_for_heuristic(&1.0, &2.0),
+            Some(std::cmp::Ordering::Less)
+        );
     }
 }

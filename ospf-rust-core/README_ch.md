@@ -13,7 +13,7 @@
 1. 变量与 token 系统。
 2. 符号表达式和函数符号系统。
 3. `MetaModel`、mechanism model、intermediate standard-form model 和 callback model 层。
-4. solver trait、options、outputs、value conversion、heuristic interface、IIS diagnostics 和 Gurobi/SCIP adapter 边界。
+4. solver trait、options、outputs、value conversion、启发式求解器、IIS diagnostics 和 Gurobi/SCIP adapter 边界。
 
 明确非目标：
 
@@ -29,7 +29,7 @@
 | `token` | `core/token` | 变量-token 映射、token list/table、缓存值和 solver result access。 |
 | `symbol` | `core/symbol` | 表达式符号、monomial cell、函数符号、中间符号和 flattening helper。 |
 | `model` | `core/model` | `MetaModel`、mechanism model、intermediate triad/tetrad model、callback model、constraint/objective DSL 和 model state。 |
-| `solver` | `core/solver` | solver trait、options、backend config、output type、value conversion、heuristic helper、IIS diagnostics 和 backend adapter。 |
+| `solver` | `core/solver` | solver trait、options、backend config、output type、value conversion、启发式求解器、IIS diagnostics 和 backend adapter。 |
 | `error` | `core/error` | core error 和 result 类型。 |
 
 
@@ -40,11 +40,11 @@
 | 子包 | 描述 |
 |------|------|
 | config | 求解器特定配置（COPT、Gurobi、SCIP）。 |
-| heuristic | 元启发式框架（PSO、选择、交叉、变异）。 |
-| iis | 不可约不可行子系统诊断。 |
-| output | 求解器输出数据结构（可行/不可行）。 |
-| alue | 值类型转换（IntoValue trait）。 |
-| ackend | 特性门控后端适配器（Gurobi、SCIP）。 |
+| `heuristic` | 元启发式框架：生命周期骨架、18 个算子族、组合工厂与算法入口。 |
+| `iis` | 不可约不可行子系统诊断。 |
+| `output` | 求解器输出数据结构（可行/不可行）。 |
+| `value` | 值类型转换（IntoValue trait）。 |
+| `backend` | 特性门控后端适配器（Gurobi、SCIP）。 |
 
 ### model/
 

@@ -13,7 +13,7 @@ This crate covers:
 1. Variable and token systems.
 2. Symbolic expression and function-symbol systems.
 3. `MetaModel`, mechanism model, intermediate standard-form models, and callback model layers.
-4. Solver traits, options, outputs, value conversion, heuristic interfaces, IIS diagnostics, and Gurobi/SCIP adapter boundaries.
+4. Solver traits, options, outputs, value conversion, heuristic solvers, IIS diagnostics, and Gurobi/SCIP adapter boundaries.
 
 Explicit non-goals:
 
@@ -29,7 +29,7 @@ Explicit non-goals:
 | `token` | `core/token` | Variable-token mapping, token lists/tables, cached values, and solver result access. |
 | `symbol` | `core/symbol` | Expression symbols, monomial cells, function symbols, intermediate symbols, and flattening helpers. |
 | `model` | `core/model` | `MetaModel`, mechanism model, intermediate triad/tetrad models, callback model, constraint/objective DSL, and model state. |
-| `solver` | `core/solver` | Solver traits, options, backend configs, output types, value conversion, heuristic helpers, IIS diagnostics, and backend adapters. |
+| `solver` | `core/solver` | Solver traits, options, backend configs, output types, value conversion, heuristic solvers, IIS diagnostics, and backend adapters. |
 | `error` | `core/error` | Core error and result types. |
 
 
@@ -40,7 +40,7 @@ Explicit non-goals:
 | Sub-package | Description |
 |-------------|-------------|
 | `config` | Solver-specific configuration (COPT, Gurobi, SCIP). |
-| `heuristic` | Metaheuristic framework (PSO, selection, crossover, mutation). |
+| `heuristic` | Metaheuristic framework: lifecycle skeletons, 18 operator families, composition factories, and algorithm entries. |
 | `iis` | Irreducible Infeasible Subsystem diagnostics. |
 | `output` | Solver output data structures (feasible/infeasible). |
 | `value` | Value type conversion (IntoValue trait). |

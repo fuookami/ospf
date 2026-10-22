@@ -26,8 +26,10 @@
 //!
 //! # 启发式算法 / Heuristic Algorithms
 //!
-//! - [`heuristic::Individual`] - 个体 trait
-//! - [`heuristic::Population`] - 种群
+//! - [`heuristic::HeuristicSolver`] - 启发式求解器契约
+//! - [`heuristic::Individual`] - 带适应度的个体
+//! - [`heuristic::runner`] - 生命周期骨架 / Lifecycle skeletons
+//! - [`heuristic::operator`] - 算子族 / Operator families
 
 pub mod audit;
 pub mod backend;

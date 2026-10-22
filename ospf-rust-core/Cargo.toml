@@ -18,8 +18,10 @@ ospf-rust-multiarray = { path = "../ospf-rust-multiarray", version = "1.1.0" }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync"], optional = true }
 
 # 序列化 / Serialization
-serde = { version = "1.0.229", features = ["derive"], optional = true }
-serde_json = { version = "1.0.151", optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+# `preserve_order` 让 JSON 对象保持插入顺序，使会话快照的字段顺序与 Kotlin 的声明顺序一致。
+# `preserve_order` keeps JSON object insertion order so session snapshots match Kotlin's declaration order.
+serde_json = { version = "1.0.151", features = ["preserve_order"] }
 
 # 错误处理 / Error handling
 thiserror = "2.0.20"
@@ -55,7 +57,9 @@ russcip = { version = "0.9.1", optional = true }
 
 [features]
 default = []
-serde = ["dep:serde", "dep:serde_json"]
+# 兼容保留：serde 相关派生已常开，该特性不再控制依赖开关。
+# Kept for compatibility: serde derives are always available now; this feature no longer gates the dependencies.
+serde = []
 async = ["dep:tokio"]
 rand = ["dep:rand"]
 nightly = []

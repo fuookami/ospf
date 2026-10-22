@@ -348,6 +348,58 @@ impl<V> MultiObjectiveCallBackModel<V> {
     pub fn as_base_mut(&mut self) -> &mut AbstractCallBackModel<V> {
         &mut self.base
     }
+
+    /// 设置启发式约束评估器 / Set heuristic constraint evaluator
+    pub fn set_constraint_evaluator(
+        &mut self,
+        evaluator: super::abstract_callback_model::ConstraintEvaluator<V>,
+    ) {
+        self.base.set_constraint_evaluator(evaluator);
+    }
+
+    /// 设置启发式变量上下界提供器 / Set heuristic variable bounds provider
+    pub fn set_variable_bounds_provider(
+        &mut self,
+        provider: super::abstract_callback_model::VariableBoundsProvider<V>,
+    ) {
+        self.base.set_variable_bounds_provider(provider);
+    }
+
+    /// 设置启发式目标比较器 / Set heuristic objective comparator
+    pub fn set_objective_comparator(
+        &mut self,
+        comparator: super::abstract_callback_model::ObjectiveComparator<V>,
+    ) {
+        self.base.set_objective_comparator(comparator);
+    }
+
+    /// 为启发式评估约束满足情况 / Evaluate constraint satisfaction for heuristic
+    pub fn evaluate_constraint_for_heuristic(
+        &self,
+        solution: &super::solution::Solution<V>,
+    ) -> Option<bool> {
+        self.base.evaluate_constraint_for_heuristic(solution)
+    }
+
+    /// 获取启发式变量上下界 / Get heuristic variable bounds
+    pub fn variable_bounds_for_heuristic(
+        &self,
+        id: VariableId,
+    ) -> Option<(Option<V>, Option<V>)> {
+        self.base.variable_bounds_for_heuristic(id)
+    }
+
+    /// 比较两个目标值（更优返回 `Ordering::Less`）/ Compare objectives (`Ordering::Less` means better)
+    pub fn compare_objective_for_heuristic(
+        &self,
+        lhs: &V,
+        rhs: &V,
+    ) -> Option<std::cmp::Ordering>
+    where
+        V: PartialOrd,
+    {
+        self.base.compare_objective_for_heuristic(lhs, rhs)
+    }
 }
 
 // 委托实现 CallBackModelInterface / Delegate implementation of CallBackModelInterface
