@@ -9,6 +9,7 @@ pub mod archive;
 pub mod budget;
 pub mod codecs;
 pub mod json;
+pub mod native;
 pub mod protocol;
 pub mod runner_session;
 
@@ -26,7 +27,7 @@ pub use codecs::{
 };
 pub use json::{JsonValue, ListCodec, NullableCodec, SearchCodec};
 pub use protocol::{
-    Result, SearchEncoding, SearchProblem, SearchSession, SearchSessionSnapshot,
+    Result, SearchEncoding, SearchEvaluationResult, SearchProblem, SearchSession, SearchSessionSnapshot,
     SearchStepResult, SearchTermination,
 };
 pub use runner_session::{

@@ -5,7 +5,7 @@
 //! A session models compute as claimable evaluation tokens: a global budget holds the total, a slice holds a one-shot
 //! allowance. Only a successful claim consumes allowance, so exhaustion never leaves a half-finished evaluation behind.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -89,15 +89,16 @@ impl SearchBudget {
 /// Slices nest: every claim of a child slice is charged to its parent and to the global budget, so a child cannot overspend its
 /// parent's allowance. Claims use an atomic counter, so one slice may be shared across threads (Kotlin achieves the same with
 /// `@Synchronized`).
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SearchSlice {
     global: Arc<SearchBudget>,
-    evaluations: AtomicU64,
+    evaluations: Arc<AtomicU64>,
     steps: u64,
     duration: Option<Duration>,
     begin: Instant,
-    used: AtomicU64,
+    used: Arc<AtomicU64>,
     parent: Option<Arc<SearchSlice>>,
+    denied: Arc<AtomicBool>,
 }
 
 impl SearchSlice {
@@ -105,12 +106,13 @@ impl SearchSlice {
     pub fn new(global: Arc<SearchBudget>, evaluations: u64, steps: u64) -> Self {
         Self {
             global,
-            evaluations: AtomicU64::new(evaluations),
+            evaluations: Arc::new(AtomicU64::new(evaluations)),
             steps,
             duration: None,
             begin: Instant::now(),
-            used: AtomicU64::new(0),
+            used: Arc::new(AtomicU64::new(0)),
             parent: None,
+            denied: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -127,12 +129,13 @@ impl SearchSlice {
     pub fn child(parent: &Arc<SearchSlice>, evaluations: u64, steps: u64) -> Arc<Self> {
         Arc::new(Self {
             global: Arc::clone(&parent.global),
-            evaluations: AtomicU64::new(evaluations),
+            evaluations: Arc::new(AtomicU64::new(evaluations)),
             steps,
             duration: parent.duration,
             begin: parent.begin,
-            used: AtomicU64::new(0),
+            used: Arc::new(AtomicU64::new(0)),
             parent: Some(Arc::clone(parent)),
+            denied: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -156,6 +159,18 @@ impl SearchSlice {
         self.used.load(Ordering::Relaxed)
     }
 
+    /// 是否拒绝过评估请求，用于阻止残缺代提交 / Whether admission failed, preventing partial-generation commits
+    pub fn denied(&self) -> bool {
+        self.denied.load(Ordering::Relaxed)
+    }
+
+    /// 剩余请求额度，含父片段与全局预算 / Remaining requests including parent and global limits
+    pub fn remaining(&self) -> u64 {
+        let parent = self.parent.as_ref().map(|parent| parent.remaining())
+            .unwrap_or_else(|| self.global.remaining());
+        self.evaluations().saturating_sub(self.used()).min(parent)
+    }
+
     /// 时间额度是否用尽（含父片段）/ Whether the deadline expired (including the parent)
     pub fn expired(&self) -> bool {
         let local = matches!(self.duration, Some(duration) if self.begin.elapsed() >= duration);
@@ -170,11 +185,13 @@ impl SearchSlice {
     /// 以共享引用申请评估 / Admit one evaluation through a shared reference
     pub fn acquire_shared(&self) -> bool {
         if self.expired() {
+            self.denied.store(true, Ordering::Relaxed);
             return false;
         }
         let mut current = self.used.load(Ordering::Relaxed);
         loop {
             if current >= self.evaluations.load(Ordering::Relaxed) {
+                self.denied.store(true, Ordering::Relaxed);
                 return false;
             }
             match self.used.compare_exchange_weak(
@@ -198,6 +215,7 @@ impl SearchSlice {
             true
         } else {
             self.used.fetch_sub(1, Ordering::AcqRel);
+            self.denied.store(true, Ordering::Relaxed);
             false
         }
     }
@@ -227,8 +245,8 @@ impl SearchRandom {
     /// 派生稳定子流，不消费父流 / Derive a stable child stream without consuming the parent
     pub fn split(&self, id: &str) -> Self {
         let mut seed = self.state;
-        for byte in id.bytes() {
-            seed = (seed ^ byte as u64).wrapping_mul(1_099_511_628_211);
+        for character in id.encode_utf16() {
+            seed = (seed ^ character as u64).wrapping_mul(1_099_511_628_211);
         }
         Self::new(seed)
     }

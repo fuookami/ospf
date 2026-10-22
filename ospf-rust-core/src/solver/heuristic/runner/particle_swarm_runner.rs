@@ -25,7 +25,6 @@ use crate::solver::heuristic::operator::stopping::NeverStop;
 use crate::solver::heuristic::operator::unit;
 use crate::solver::heuristic::operator::value_at;
 use crate::solver::heuristic::result::Result;
-use crate::solver::heuristic::runner::drive::drive;
 use crate::solver::heuristic::runner::runner_core::RunnerCore;
 
 /// 粒子状态 / Particle state
@@ -133,8 +132,30 @@ where
     where
         M: ObjectiveModel<V, V>,
     {
+        let mut entropy = std::mem::replace(
+            &mut self.entropy,
+            Box::new(crate::solver::heuristic::entropy::SeededEntropy::default()),
+        );
+        let result = crate::solver::heuristic::runner::native::run_native(self, model, iteration, entropy.as_mut());
+        self.entropy = entropy;
+        result
+    }
+}
+
+impl<V> crate::solver::heuristic::runner::native::NativeRunner<V> for ParticleSwarmRunner<V>
+where
+    V: HeuristicValue,
+{
+    type State = Vec<ParticleState<V>>;
+
+    #[allow(unused_variables)]
+    fn initialize_native<M>(&mut self, model: &M, entropy: &mut dyn Entropy) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
         let Self {
-            core,
+            core: _,
+            entropy: _,
             size,
             inertia,
             personal_weight,
@@ -142,11 +163,10 @@ where
             max_velocity,
             initializer,
             fitness_evaluator,
-            entropy,
         } = self;
 
         let state: Vec<ParticleState<V>> = initializer
-            .initialize(model, *size, entropy.as_mut())
+            .initialize(model, *size, entropy)
             .into_iter()
             .filter_map(|solution| fitness_evaluator.evaluate(model, &solution))
             .take(*size)
@@ -157,100 +177,119 @@ where
             })
             .collect();
 
-        drive(
-            core,
-            model,
-            iteration,
-            state,
-            |model, iteration, state, entropy| {
-                if state.is_empty() {
-                    return Ok(state);
+        Ok(state)
+    }
+
+    #[allow(unused_variables)]
+    fn advance_native<M>(
+        &mut self,
+        model: &M,
+        iteration: &Iteration,
+        state: Self::State,
+        entropy: &mut dyn Entropy,
+    ) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
+        let Self {
+            core: _,
+            entropy: _,
+            size,
+            inertia,
+            personal_weight,
+            social_weight,
+            max_velocity,
+            initializer,
+            fitness_evaluator,
+        } = self;
+
+        if state.is_empty() {
+            return Ok(state);
+        }
+
+        let mut best_index = 0;
+        for index in 1..state.len() {
+            if compare_strictly(
+                model,
+                &state[index].individual.fitness,
+                &state[best_index].individual.fitness,
+            ) == std::cmp::Ordering::Less
+            {
+                best_index = index;
+            }
+        }
+        let global_best = state[best_index].individual.solution.clone();
+
+        let weight = inertia.value(iteration, entropy);
+        let personal = personal_weight.value(iteration, entropy);
+        let social = social_weight.value(iteration, entropy);
+        let velocity_limit = *max_velocity;
+        let order = model.variable_order();
+
+        let advanced = state
+            .iter()
+            .map(|particle| {
+                let mut velocity = vec![0.0; order.len()];
+                let mut solution = particle.individual.solution.clone();
+
+                for index in 0..order.len() {
+                    let current = value_at(&particle.individual.solution, &order, index)
+                        .map(|value| to_f64(&value))
+                        .unwrap_or(0.0);
+                    let personal_target = value_at(&particle.best.solution, &order, index)
+                        .map(|value| to_f64(&value))
+                        .unwrap_or(current);
+                    let global_target = value_at(&global_best, &order, index)
+                        .map(|value| to_f64(&value))
+                        .unwrap_or(current);
+
+                    let mut speed = weight
+                        * particle.velocity.get(index).copied().unwrap_or(0.0)
+                        + personal * unit(entropy) * (personal_target - current)
+                        + social * unit(entropy) * (global_target - current);
+                    speed = speed.clamp(-velocity_limit, velocity_limit);
+                    velocity[index] = speed;
+
+                    let (lower, upper) = model.bounds_at(index);
+                    set_value_at(
+                        &mut solution,
+                        &order,
+                        index,
+                        clamped_value(current + speed, lower, upper),
+                    );
                 }
 
-                let mut best_index = 0;
-                for index in 1..state.len() {
-                    if compare_strictly(
-                        model,
-                        &state[index].individual.fitness,
-                        &state[best_index].individual.fitness,
-                    ) == std::cmp::Ordering::Less
-                    {
-                        best_index = index;
+                match fitness_evaluator.evaluate(model, &solution) {
+                    Some(candidate) => {
+                        let improved = compare_strictly(
+                            model,
+                            &candidate.fitness,
+                            &particle.best.fitness,
+                        ) == std::cmp::Ordering::Less;
+                        let best = if improved {
+                            candidate.clone()
+                        } else {
+                            particle.best.clone()
+                        };
+                        ParticleState {
+                            individual: candidate,
+                            velocity,
+                            best,
+                        }
                     }
+                    None => particle.clone(),
                 }
-                let global_best = state[best_index].individual.solution.clone();
+            })
+            .collect();
 
-                let weight = inertia.value(iteration, entropy);
-                let personal = personal_weight.value(iteration, entropy);
-                let social = social_weight.value(iteration, entropy);
-                let velocity_limit = *max_velocity;
-                let order = model.variable_order();
+        Ok(advanced)
+    }
 
-                let advanced = state
-                    .iter()
-                    .map(|particle| {
-                        let mut velocity = vec![0.0; order.len()];
-                        let mut solution = particle.individual.solution.clone();
+    fn members_native(state: &Self::State) -> Vec<Individual<V, V>> {
+        state.iter().map(|particle| particle.individual.clone()).collect()
+    }
 
-                        for index in 0..order.len() {
-                            let current = value_at(&particle.individual.solution, &order, index)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(0.0);
-                            let personal_target = value_at(&particle.best.solution, &order, index)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(current);
-                            let global_target = value_at(&global_best, &order, index)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(current);
-
-                            let mut speed = weight
-                                * particle.velocity.get(index).copied().unwrap_or(0.0)
-                                + personal * unit(entropy) * (personal_target - current)
-                                + social * unit(entropy) * (global_target - current);
-                            speed = speed.clamp(-velocity_limit, velocity_limit);
-                            velocity[index] = speed;
-
-                            let (lower, upper) = model.bounds_at(index);
-                            set_value_at(
-                                &mut solution,
-                                &order,
-                                index,
-                                clamped_value(current + speed, lower, upper),
-                            );
-                        }
-
-                        match fitness_evaluator.evaluate(model, &solution) {
-                            Some(candidate) => {
-                                let improved = compare_strictly(
-                                    model,
-                                    &candidate.fitness,
-                                    &particle.best.fitness,
-                                ) == std::cmp::Ordering::Less;
-                                let best = if improved {
-                                    candidate.clone()
-                                } else {
-                                    particle.best.clone()
-                                };
-                                ParticleState {
-                                    individual: candidate,
-                                    velocity,
-                                    best,
-                                }
-                            }
-                            None => particle.clone(),
-                        }
-                    })
-                    .collect();
-
-                Ok(advanced)
-            },
-            |state| {
-                state
-                    .iter()
-                    .map(|particle| particle.individual.clone())
-                    .collect()
-            },
-            entropy.as_mut(),
-        )
+    fn core_native(&mut self) -> &mut RunnerCore<V, V> {
+        &mut self.core
     }
 }

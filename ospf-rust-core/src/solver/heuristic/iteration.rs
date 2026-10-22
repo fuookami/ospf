@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 pub struct Iteration {
     iteration: u64,
     not_better_iteration: u64,
-    begin: Instant,
+    begin: Option<Instant>,
+    elapsed: Duration,
 }
 
 impl Iteration {
@@ -25,7 +26,8 @@ impl Iteration {
         Self {
             iteration: 0,
             not_better_iteration: 0,
-            begin,
+            begin: Some(begin),
+            elapsed: Duration::ZERO,
         }
     }
 
@@ -34,7 +36,8 @@ impl Iteration {
         Self {
             iteration,
             not_better_iteration,
-            begin: Instant::now(),
+            begin: Some(Instant::now()),
+            elapsed: Duration::ZERO,
         }
     }
 
@@ -50,7 +53,27 @@ impl Iteration {
 
     /// 已用时间 / Elapsed time
     pub fn time(&self) -> Duration {
-        self.begin.elapsed()
+        self.elapsed + self.begin.map(|begin| begin.elapsed()).unwrap_or_default()
+    }
+
+    /// 暂停有效计时 / Pause active timing
+    pub fn pause(&mut self) {
+        if let Some(begin) = self.begin.take() {
+            self.elapsed += begin.elapsed();
+        }
+    }
+
+    /// 恢复有效计时 / Resume active timing
+    pub fn resume(&mut self) {
+        if self.begin.is_none() {
+            self.begin = Some(Instant::now());
+        }
+    }
+
+    /// 恢复已保存的有效时间并暂停 / Restore saved active time and pause
+    pub fn restore_time(&mut self, elapsed: Duration) {
+        self.begin = None;
+        self.elapsed = elapsed;
     }
 
     /// 推进迭代计数器 / Advance the iteration counter

@@ -45,6 +45,14 @@ where
 
     /// 把状态摊平为个体 / Flatten the state into individuals
     fn members(&self, state: &S) -> Vec<Individual<O, V>>;
+
+    /// 消费本轮全部有效评估，包含未进入原生状态的候选 / Drain all valid evaluations, including rejected offspring
+    fn drain_candidates(&mut self) -> Vec<Individual<O, V>> {
+        Vec::new()
+    }
+
+    /// 收集适配器中无法通过 Option 传播的评估错误 / Collect evaluation errors that Option-based adapters cannot propagate
+    fn drain_errors(&mut self) -> Vec<String> { Vec::new() }
 }
 
 /// 会话钩子包装的骨架 / A skeleton wrapped by the session hooks
@@ -165,6 +173,7 @@ where
     iteration: Iteration,
     state: Option<S>,
     archive: SessionArchive<O, V>,
+    archive_evaluations: bool,
     active_nanos: u64,
 }
 
@@ -205,9 +214,10 @@ where
             codecs,
             importer: None,
             observers: Vec::new(),
-            iteration: Iteration::new(),
+            iteration: { let mut iteration = Iteration::new(); iteration.restore_time(std::time::Duration::ZERO); iteration },
             state: None,
             archive: SessionArchive::new(capacity),
+            archive_evaluations: true,
             active_nanos: 0,
         }
     }
@@ -218,6 +228,14 @@ where
         importer: impl Fn(&S, &[Individual<O, V>]) -> Result<S> + 'static,
     ) -> Self {
         self.importer = Some(Box::new(importer));
+        self
+    }
+
+    /// 只归档已提交状态的成员及导入候选，单目标保留等值成员；评估报告仍包含所有有效候选。
+    /// Archive only committed state members and imported candidates, retaining scalar equivalents; reports still contain all valid evaluations.
+    pub fn with_committed_archive(mut self) -> Self {
+        self.archive_evaluations = false;
+        self.archive.preserve_equivalent();
         self
     }
 
@@ -253,18 +271,6 @@ where
     fn refresh_archive(&mut self, members: &[Individual<O, V>]) -> bool {
         self.archive
             .update(&self.problem, members.to_vec())
-    }
-
-    /// 评估单个解 / Evaluate one solution
-    fn evaluate(&self, solution: Solution<V>) -> Option<Individual<O, V>> {
-        if !self.problem.valid_solution(&solution) || !self.problem.feasible(&solution) {
-            return None;
-        }
-        let objective = self.problem.objective(&solution)?;
-        if !self.problem.valid_objective(&objective) {
-            return None;
-        }
-        Some(Individual::new(solution, objective))
     }
 
     fn encode_archive(&self) -> Result<JsonValue> {
@@ -318,102 +324,74 @@ where
     }
 
     fn step(&mut self, slice: &mut SearchSlice) -> Result<SearchStepResult<O, V>> {
-        let mut completed = 0_u64;
-        let mut reason = SearchTermination::SliceComplete;
-        let mut candidates: Vec<Individual<O, V>> = Vec::new();
-
-        // 首次推进负责建立初始状态，与 Kotlin 会话的「previous == null 时 initialize」一致。
-        // The first advance builds the initial state, matching Kotlin's "initialize when previous == null".
-        if self.state.is_none() {
-            let state = match self.hooks.initialize(&self.problem, slice) {
-                Ok(state) => state,
-                Err(error) => {
-                    return Ok(SearchStepResult {
-                        candidates: Vec::new(),
-                        evaluations: slice.used(),
-                        steps: 0,
-                        termination: SearchTermination::Failed,
-                        diagnostics: vec![error.to_string()],
-                    })
+        let start_used = slice.used();
+        let mut report = SearchStepResult::empty(SearchTermination::SliceComplete);
+        self.iteration.resume();
+        let execution = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            while report.steps < slice.steps() && !slice.expired() {
+                let result = match &self.state {
+                    None => self.hooks.initialize(&self.problem, slice),
+                    Some(state) => self.hooks.advance(&mut self.problem, &self.iteration, state, slice),
+                };
+                let evaluated = self.hooks.drain_candidates();
+                let no_evaluations = evaluated.is_empty();
+                let evaluated_improved = self.archive_evaluations && self.refresh_archive(&evaluated);
+                report.candidates.extend(evaluated);
+                let errors = self.hooks.drain_errors();
+                if !errors.is_empty() { return Err(HeuristicError::Model(errors.join("; "))); }
+                if slice.denied() {
+                    report.termination = if slice.expired() { SearchTermination::TimeLimit }
+                        else { SearchTermination::EvaluationLimit };
+                    break;
                 }
-            };
-            let members = self.hooks.members(&state);
-            if members.is_empty() {
-                return Ok(SearchStepResult {
-                    candidates: Vec::new(),
-                    evaluations: slice.used(),
-                    steps: 0,
-                    termination: SearchTermination::NoCandidate,
-                    diagnostics: Vec::new(),
+                let advanced = match result {
+                    Ok(state) => state,
+                    Err(HeuristicError::NoIndividual) => { report.termination = SearchTermination::NoCandidate; break; }
+                    Err(error) => return Err(error),
+                };
+                let members = self.hooks.members(&advanced);
+                let improved = self.refresh_archive(&members) || evaluated_improved;
+                // 无评估的自定义状态钩子仍可报告其成员 / Pure custom hooks can still report their members
+                if no_evaluations {
+                    report.candidates.extend(members.iter().cloned());
+                }
+                for observer in &mut self.observers {
+                    observer.observe(&self.iteration, &members, improved);
+                }
+                self.state = Some(advanced);
+                self.iteration.next(improved);
+                report.steps += 1;
+                self.problem.flush();
+                if members.is_empty() {
+                    report.termination = SearchTermination::NoCandidate;
+                    break;
+                }
+            }
+            Ok::<(), HeuristicError>(())
+        }));
+        self.iteration.pause();
+        self.active_nanos = self.iteration.time().as_nanos().min(u64::MAX as u128) as u64;
+        let evaluated = self.hooks.drain_candidates();
+        if self.archive_evaluations { self.refresh_archive(&evaluated); }
+        report.candidates.extend(evaluated);
+        let errors = self.hooks.drain_errors();
+        if !errors.is_empty() { report.diagnostics.extend(errors); report.termination = SearchTermination::Failed; }
+        report.evaluations = slice.used().saturating_sub(start_used);
+        match execution {
+            Ok(Ok(())) => {
+                if slice.expired() && report.termination == SearchTermination::SliceComplete {
+                    report.termination = SearchTermination::TimeLimit;
+                }
+            }
+            error => {
+                report.termination = SearchTermination::Failed;
+                report.diagnostics.push(match error {
+                    Ok(Err(error)) => error.to_string(),
+                    _ => "search callback panicked / 搜索回调异常".into(),
                 });
             }
-            self.refresh_archive(&members);
-            self.state = Some(state);
-            self.iteration.next(true);
         }
-
-        while completed < slice.steps() && !slice.expired() {
-            if !slice.acquire() {
-                reason = if slice.global().remaining() == 0 {
-                    SearchTermination::EvaluationLimit
-                } else {
-                    SearchTermination::SliceComplete
-                };
-                break;
-            }
-
-            let current = match &self.state {
-                Some(state) => state.clone(),
-                None => break,
-            };
-            let advanced = match self.hooks.advance(
-                &mut self.problem,
-                &self.iteration,
-                &current,
-                slice,
-            ) {
-                Ok(advanced) => advanced,
-                Err(error) => {
-                    return Ok(SearchStepResult {
-                        candidates,
-                        evaluations: slice.used(),
-                        steps: completed,
-                        termination: SearchTermination::Failed,
-                        diagnostics: vec![error.to_string()],
-                    })
-                }
-            };
-
-            let members = self.hooks.members(&advanced);
-            if members.is_empty() {
-                self.state = Some(advanced);
-                reason = SearchTermination::NoCandidate;
-                break;
-            }
-
-            candidates.extend(members.iter().cloned());
-            let improved = self.refresh_archive(&members);
-            for observer in self.observers.iter_mut() {
-                observer.observe(&self.iteration, &members, improved);
-            }
-            self.problem.flush();
-            self.state = Some(advanced);
-            self.iteration.next(improved);
-            completed += 1;
-            self.active_nanos = self.iteration.time().as_nanos() as u64;
-        }
-
-        if slice.expired() {
-            reason = SearchTermination::TimeLimit;
-        }
-
-        Ok(SearchStepResult {
-            candidates,
-            evaluations: slice.used(),
-            steps: completed,
-            termination: reason,
-            diagnostics: Vec::new(),
-        })
+        Ok(report)
     }
 
     fn import_solutions(
@@ -432,38 +410,38 @@ where
             )
         })?;
 
+        let start_used = slice.used();
         let mut candidates = Vec::new();
         let mut exhausted = false;
-        for solution in solutions {
-            if !slice.acquire() {
-                exhausted = true;
-                break;
+        let execution = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for solution in solutions {
+                let evaluated = self.problem.evaluate(solution, slice)?;
+                if !evaluated.admitted { exhausted = true; break; }
+                if let Some(individual) = evaluated.candidate { candidates.push(individual); }
             }
-            if let Some(individual) = self.evaluate(solution) {
-                candidates.push(individual);
+            importer(&state, &candidates)
+        }));
+        let mut diagnostics = Vec::new();
+        match execution {
+            Ok(Ok(imported)) => {
+                let members = self.hooks.members(&imported);
+                if self.archive_evaluations { self.refresh_archive(&members); }
+                self.state = Some(imported);
             }
+            Ok(Err(error)) => diagnostics.push(error.to_string()),
+            Err(_) => diagnostics.push("import callback panicked / 导入回调异常".into()),
         }
-
-        let imported = importer(&state, &candidates)?;
-        let members = self.hooks.members(&imported);
-        self.refresh_archive(&members);
         self.refresh_archive(&candidates);
-        self.state = Some(imported);
-
+        let termination = if !diagnostics.is_empty() { SearchTermination::Failed }
+            else if slice.expired() { SearchTermination::TimeLimit }
+            else if exhausted { SearchTermination::EvaluationLimit }
+            else { SearchTermination::SliceComplete };
         Ok(SearchStepResult {
             candidates,
-            evaluations: slice.used(),
+            evaluations: slice.used().saturating_sub(start_used),
             steps: 0,
-            termination: if exhausted {
-                if slice.global().remaining() == 0 {
-                    SearchTermination::EvaluationLimit
-                } else {
-                    SearchTermination::SliceComplete
-                }
-            } else {
-                SearchTermination::SliceComplete
-            },
-            diagnostics: Vec::new(),
+            termination,
+            diagnostics,
         })
     }
 
@@ -516,6 +494,7 @@ where
         self.iteration =
             Iteration::with_counts(snapshot.iteration, snapshot.stagnation);
         self.active_nanos = snapshot.active_nanos;
+        self.iteration.restore_time(std::time::Duration::from_nanos(snapshot.active_nanos));
         Ok(())
     }
 

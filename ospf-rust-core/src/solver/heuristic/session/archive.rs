@@ -40,6 +40,7 @@ where
 {
     capacity: usize,
     entries: Vec<Individual<O, V>>,
+    preserve_equivalent: bool,
 }
 
 impl<O, V> SessionArchive<O, V>
@@ -52,12 +53,17 @@ where
         Self {
             capacity: capacity.max(1),
             entries: Vec::new(),
+            preserve_equivalent: false,
         }
     }
 
     /// 容量 / Capacity
     pub fn capacity(&self) -> usize {
         self.capacity
+    }
+
+    pub(crate) fn preserve_equivalent(&mut self) {
+        self.preserve_equivalent = true;
     }
 
     /// 档案内容 / Archive content
@@ -118,9 +124,11 @@ where
                 std::cmp::Ordering::Equal
             }
         });
-        self.entries.dedup_by(|lhs, rhs| {
-            problem.equivalent(&lhs.fitness, &rhs.fitness)
-        });
+        if !self.preserve_equivalent {
+            self.entries.dedup_by(|lhs, rhs| {
+                problem.equivalent(&lhs.fitness, &rhs.fitness)
+            });
+        }
         self.entries.truncate(self.capacity);
 
         match (previous_best, self.entries.first()) {
@@ -148,8 +156,6 @@ where
             .iter()
             .map(|entry| entry.fitness.clone())
             .collect();
-        let mut improved = false;
-
         for candidate in candidates {
             // 已被档案成员支配：丢弃（实时检查，不能用本轮开始前的快照）。
             // Dominated by a member of the archive: discard. Checked live, not against the round-start snapshot.
@@ -168,18 +174,6 @@ where
                 continue;
             }
 
-            // 只有真正进入档案、且相对「本轮开始前」既未被支配也未被淘汰，才算改进。
-            // Only a candidate that actually enters the archive and was neither dominated by nor equal to a round-start
-            // member counts as an improvement.
-            if previous.is_empty()
-                || previous.iter().any(|entry| {
-                    !same_objective(entry, &candidate.fitness)
-                        && !problem.dominates(entry, &candidate.fitness)
-                })
-            {
-                improved = true;
-            }
-
             // 新解支配档案成员：淘汰它们。
             // The newcomer dominates some members: evict them.
             self.entries
@@ -188,7 +182,8 @@ where
         }
 
         self.trim_entries();
-        improved
+        self.entries.iter().any(|candidate| previous.iter().all(|entry|
+            !same_objective(entry, &candidate.fitness) && !problem.dominates(entry, &candidate.fitness)))
     }
 
     /// 按容量裁剪：多目标按拥挤距离从大到小，单目标按目标值顺序 / Trim to capacity: crowding distance for multi-objective, objective order for single-objective
@@ -215,6 +210,7 @@ where
                 .then_with(|| lhs.cmp(rhs))
         });
         retained.truncate(self.capacity);
+        retained.sort_unstable();
 
         let survivors: Vec<Individual<O, V>> = retained
             .into_iter()

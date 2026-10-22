@@ -16,7 +16,6 @@ use crate::solver::heuristic::operator::initializer::{Initializer, ModelInitiali
 use crate::solver::heuristic::operator::neighborhood::Neighborhood;
 use crate::solver::heuristic::operator::stopping::NeverStop;
 use crate::solver::heuristic::result::Result;
-use crate::solver::heuristic::runner::drive::drive;
 use crate::solver::heuristic::runner::runner_core::RunnerCore;
 
 /// 轨迹级搜索骨架 / Trajectory-level search skeleton
@@ -96,44 +95,86 @@ where
     where
         M: ObjectiveModel<V, V>,
     {
+        let mut entropy = std::mem::replace(
+            &mut self.entropy,
+            Box::new(crate::solver::heuristic::entropy::SeededEntropy::default()),
+        );
+        let result = crate::solver::heuristic::runner::native::run_native(self, model, iteration, entropy.as_mut());
+        self.entropy = entropy;
+        result
+    }
+}
+
+impl<V> crate::solver::heuristic::runner::native::NativeRunner<V> for TrajectoryRunner<V>
+where
+    V: HeuristicValue,
+{
+    type State = Option<Individual<V, V>>;
+
+    #[allow(unused_variables)]
+    fn initialize_native<M>(&mut self, model: &M, entropy: &mut dyn Entropy) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
         let Self {
-            core,
+            core: _,
+            entropy: _,
             initializer,
             neighborhood,
             acceptance,
             fitness_evaluator,
-            entropy,
         } = self;
 
         let state = initializer
-            .initialize(model, 1, entropy.as_mut())
+            .initialize(model, 1, entropy)
             .into_iter()
             .next()
             .and_then(|solution| fitness_evaluator.evaluate(model, &solution));
 
-        drive(
-            core,
-            model,
-            iteration,
-            state,
-            |model, iteration, state, entropy| {
-                let current = match state {
-                    Some(current) => current,
-                    None => return Ok(None),
-                };
-                let neighbour = neighborhood.neighbor(model, iteration, &current.solution, entropy);
-                let candidate = match fitness_evaluator.evaluate(model, &neighbour) {
-                    Some(candidate) => candidate,
-                    None => return Ok(Some(current)),
-                };
-                if acceptance.accept(model, iteration, &current, &candidate, entropy) {
-                    Ok(Some(candidate))
-                } else {
-                    Ok(Some(current))
-                }
-            },
-            |state| state.iter().cloned().collect::<Vec<_>>(),
-            entropy.as_mut(),
-        )
+        Ok(state)
+    }
+
+    #[allow(unused_variables)]
+    fn advance_native<M>(
+        &mut self,
+        model: &M,
+        iteration: &Iteration,
+        state: Self::State,
+        entropy: &mut dyn Entropy,
+    ) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
+        let Self {
+            core: _,
+            entropy: _,
+            initializer,
+            neighborhood,
+            acceptance,
+            fitness_evaluator,
+        } = self;
+
+        let current = match state {
+            Some(current) => current,
+            None => return Ok(None),
+        };
+        let neighbour = neighborhood.neighbor(model, iteration, &current.solution, entropy);
+        let candidate = match fitness_evaluator.evaluate(model, &neighbour) {
+            Some(candidate) => candidate,
+            None => return Ok(Some(current)),
+        };
+        if acceptance.accept(model, iteration, &current, &candidate, entropy) {
+            Ok(Some(candidate))
+        } else {
+            Ok(Some(current))
+        }
+    }
+
+    fn members_native(state: &Self::State) -> Vec<Individual<V, V>> {
+        state.iter().cloned().collect()
+    }
+
+    fn core_native(&mut self) -> &mut RunnerCore<V, V> {
+        &mut self.core
     }
 }

@@ -143,6 +143,11 @@ impl QTable {
         let target = reward + gamma * next_best;
         let current = self.entries[state][action];
         let updated = current + alpha * (target - current);
+        if !updated.is_finite() {
+            return Err(HeuristicError::InvalidArgument(
+                "Q update overflow / Q 值更新溢出".to_string(),
+            ));
+        }
         self.entries[state][action] = updated;
         Ok(updated)
     }

@@ -41,6 +41,7 @@
 |------|------|
 | config | 求解器特定配置（COPT、Gurobi、SCIP）。 |
 | `heuristic` | 元启发式框架：生命周期骨架、18 个算子族、组合工厂与算法入口。 |
+| [`hyper_heuristic`](src/solver/hyper_heuristic/README_ch.md) | 选择型超启发式：双层学习、持久化原生会话、线程调度、训练与恢复；兼容性边界见模块文档。 |
 | `iis` | 不可约不可行子系统诊断。 |
 | `output` | 求解器输出数据结构（可行/不可行）。 |
 | `value` | 值类型转换（IntoValue trait）。 |

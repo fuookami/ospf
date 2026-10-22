@@ -88,6 +88,8 @@ session.restore(&snapshot)?;          // 在别处恢复
 
 预算语义与 Kotlin 一致：一次领取依次记入片段、父片段（若有）与全局预算；任一层拒绝即回滚，因此只有成功才真正消费。
 
+原生会话按每次评估请求计费，而不是按一代或入选个体数计费；初始化也占一个完整低层步。残缺代不提交原生状态，但保留已评估的有效候选。`objective_calls` 单独统计实际目标调用。会话迭代计时在片段之间暂停，恢复保留有效时间。可通过 [`hyper_heuristic`](../hyper_heuristic/README_ch.md) 装配双层策略、并行调度与完整运行检查点。
+
 状态编解码与 Kotlin 的 `RunnerStateCodecs` 对应：`IndividualListCodec`（种群）、`IslandStateCodec`、
 `TrajectoryStateCodec`、`ParticleStateCodec`、`ClpsoStateCodec`、`ShadeStateCodec`、`CmaEsStateCodec`。
 提供 importer 时会话支持 `import_solutions`。

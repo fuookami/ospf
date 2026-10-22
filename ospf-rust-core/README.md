@@ -41,6 +41,7 @@ Explicit non-goals:
 |-------------|-------------|
 | `config` | Solver-specific configuration (COPT, Gurobi, SCIP). |
 | `heuristic` | Metaheuristic framework: lifecycle skeletons, 18 operator families, composition factories, and algorithm entries. |
+| [`hyper_heuristic`](src/solver/hyper_heuristic/README.md) | Selection hyper-heuristics: two-level learning, persistent native sessions, threaded scheduling, training, and recovery; see module compatibility boundaries. |
 | `iis` | Irreducible Infeasible Subsystem diagnostics. |
 | `output` | Solver output data structures (feasible/infeasible). |
 | `value` | Value type conversion (IntoValue trait). |

@@ -90,6 +90,8 @@ session.restore(&snapshot)?;          // resume elsewhere
 Budget semantics match Kotlin: a claim is charged to the slice, then to its parent (if nested), then to the global budget,
 and rolls back unless every level admits it.
 
+Native sessions charge every evaluation request rather than generations or selected members. Initialization consumes one complete low-level step. Partial generations do not commit native state, but retain completed valid candidates; `objective_calls` counts actual objective invocations separately. Session timers pause between slices and restore saved active time. See [`hyper_heuristic`](../hyper_heuristic/README.md) for two-level policies, threaded scheduling, and full-run checkpoints.
+
 State codecs mirror Kotlin's `RunnerStateCodecs`: `IndividualListCodec` (population), `IslandStateCodec`, `TrajectoryStateCodec`,
 `ParticleStateCodec`, `ClpsoStateCodec`, `ShadeStateCodec`, `CmaEsStateCodec`. Sessions support `import_solutions` when an
 importer is supplied.

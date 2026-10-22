@@ -25,7 +25,7 @@ use crate::solver::heuristic::session::budget::SearchSlice;
 use crate::solver::heuristic::session::json::JsonValue;
 
 /// 搜索终止原因 / Search termination reason
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SearchTermination {
     /// 片段额度用完 / The slice allowance is exhausted
     SliceComplete,
@@ -66,7 +66,7 @@ impl Display for SearchTermination {
 }
 
 /// 解编码能力 / Solution encoding capability
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum SearchEncoding {
     /// 连续编码 / Continuous encoding
     Continuous,
@@ -125,7 +125,7 @@ where
 
     /// 目标是否等价 / Whether two objectives are equivalent
     fn equivalent(&self, lhs: &O, rhs: &O) -> bool {
-        !self.dominates(lhs, rhs) && !self.dominates(rhs, lhs)
+        !self.multi_objective() && !self.dominates(lhs, rhs) && !self.dominates(rhs, lhs)
     }
 
     /// 目标是否有效 / Whether an objective value is valid
@@ -148,8 +148,54 @@ where
 
     /// 判断解维度是否与问题一致 / Check whether the solution dimension matches the problem
     fn valid_solution(&self, solution: &Solution<V>) -> bool {
-        solution.len() == self.variable_order().len()
+        let order = self.variable_order();
+        solution.len() == order.len() && order.iter().all(|id| solution.contains_key(id))
     }
+
+    /// 解编码能力 / Solution encoding capability
+    fn encoding(&self) -> SearchEncoding {
+        SearchEncoding::Continuous
+    }
+
+    /// 回调是否无状态；有状态回调必须提供恢复协议 / Whether callbacks are stateless; stateful callbacks require recovery
+    fn stateless(&self) -> bool {
+        false
+    }
+
+    /// 保存回调状态，不包含可丢弃缓存 / Save callback state excluding disposable caches
+    fn save_state(&self) -> Result<JsonValue> {
+        if self.stateless() { Ok(JsonValue::Null) } else {
+            Err(HeuristicError::InvalidArgument("problem state is not recoverable / 问题状态不可恢复".into()))
+        }
+    }
+
+    /// 恢复回调状态 / Restore callback state
+    fn load_state(&mut self, state: &JsonValue) -> Result<()> {
+        if self.stateless() && state.is_null() { Ok(()) } else {
+            Err(HeuristicError::InvalidArgument("problem state is not recoverable / 问题状态不可恢复".into()))
+        }
+    }
+
+    /// 统一计费评估，预算拒绝与无效候选分开表达 / Meter evaluations, separating denial from invalid candidates
+    fn evaluate(&self, solution: Solution<V>, slice: &SearchSlice) -> Result<SearchEvaluationResult<O, V>> {
+        if !slice.acquire_shared() {
+            return Ok(SearchEvaluationResult { admitted: false, candidate: None });
+        }
+        let candidate = if self.valid_solution(&solution) && self.feasible(&solution) {
+            slice.global().objective_called();
+            self.objective(&solution).filter(|objective| self.valid_objective(objective))
+                .map(|objective| Individual::new(solution, objective))
+        } else { None };
+        Ok(SearchEvaluationResult { admitted: true, candidate })
+    }
+}
+
+/// 单次请求结果 / Result of one evaluation request
+pub struct SearchEvaluationResult<O, V> {
+    /// 是否消耗请求额度 / Whether a request token was consumed
+    pub admitted: bool,
+    /// 有效候选；不可行或无效时为空 / Valid candidate, absent for infeasible or invalid evaluations
+    pub candidate: Option<Individual<O, V>>,
 }
 
 /// 一次片段的执行报告 / Execution report for one slice
@@ -273,6 +319,11 @@ where
 
     /// 迭代计数 / Iteration counters
     fn iteration(&self) -> &Iteration;
+
+    /// 释放会话资源 / Release session resources
+    fn close(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

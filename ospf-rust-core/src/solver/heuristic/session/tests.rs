@@ -12,7 +12,7 @@ use crate::variable::{VariableId, new_standalone_id};
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::iteration::Iteration;
 use crate::solver::heuristic::session::budget::{
-    SearchBudget, SearchRandom, SearchSlice,
+    SearchBudget, SearchSlice,
 };
 use crate::solver::heuristic::session::codecs::{
     ClpsoStateCodec, CmaEsStateCodec, IndividualListCodec, IslandStateCodec, NumberMatrixCodec,
@@ -93,33 +93,27 @@ fn quadratic_session(
         problem.variable_order()
     };
     let hooks = HookedSkeleton::<_, f64, f64, _>::new(
-        move |problem: &QuadraticProblem, _slice: &SearchSlice| {
+        move |problem: &QuadraticProblem, slice: &SearchSlice| {
             let order = problem.variable_order();
             let x = order[0];
             let population = (0..4)
-                .map(|index| {
+                .filter_map(|index| {
                     let value = index as f64 * 2.0 - 1.0;
-                    Individual::new(
-                        Solution::from([(x, value)]),
-                        (value - 1.0) * (value - 1.0),
-                    )
+                    problem.evaluate(Solution::from([(x, value)]), slice).unwrap().candidate
                 })
                 .collect::<Vec<_>>();
             Ok(population)
         },
-        move |_problem: &mut QuadraticProblem,
+        move |problem: &mut QuadraticProblem,
               _iteration: &Iteration,
               state: &Vec<Individual<f64, f64>>,
-              _slice: &SearchSlice| {
+              slice: &SearchSlice| {
             let advanced = state
                 .iter()
-                .map(|individual| {
+                .filter_map(|individual| {
                     let value = individual.solution.values().next().copied().unwrap_or(0.0);
                     let next = value + 0.5 * (1.0 - value);
-                    Individual::new(
-                        Solution::from([(individual.solution.keys().next().copied().unwrap(), next)]),
-                        (next - 1.0) * (next - 1.0),
-                    )
+                    problem.evaluate(Solution::from([(individual.solution.keys().next().copied().unwrap(), next)]), slice).unwrap().candidate
                 })
                 .collect();
             Ok(advanced)
@@ -155,7 +149,7 @@ fn generic_session_advances_and_tracks_iteration() {
     assert!(!report.candidates.is_empty());
     // 初次建立状态算一次迭代，之后每推进一次加一。
     // Building the initial state counts as one iteration and each advance adds one.
-    assert_eq!(session.iteration().iteration(), 4);
+    assert_eq!(session.iteration().iteration(), 3);
     assert!(!session.archive().is_empty());
 }
 
@@ -168,6 +162,40 @@ fn generic_session_stops_on_evaluation_limit() {
     let report = session.step(&mut slice).expect("step should succeed");
     assert_eq!(report.termination, SearchTermination::EvaluationLimit);
     assert_eq!(budget.remaining(), 0);
+}
+
+#[test]
+fn generic_session_distinguishes_slice_admission_failure_from_complete_steps() {
+    for (global_limit, allowance, steps, expected_steps, expected_termination) in [
+        (100, 1, 1, 0, SearchTermination::EvaluationLimit),
+        (100, 4, 1, 1, SearchTermination::SliceComplete),
+        (4, 4, 1, 1, SearchTermination::SliceComplete),
+        (100, 4, 2, 1, SearchTermination::EvaluationLimit),
+    ] {
+        let mut session = quadratic_session(false);
+        let budget = Arc::new(SearchBudget::new(global_limit));
+        let report = session.step(&mut SearchSlice::new(budget.clone(), allowance, steps)).unwrap();
+        assert_eq!(report.steps, expected_steps);
+        assert_eq!(report.termination, expected_termination);
+        assert_eq!(budget.used(), allowance);
+        assert_eq!(session.iteration().iteration(), expected_steps);
+    }
+}
+
+#[test]
+fn generic_import_reports_local_admission_failure_without_exhausting_global_budget() {
+    let mut session = quadratic_session(true);
+    let budget = Arc::new(SearchBudget::new(100));
+    session.step(&mut SearchSlice::new(budget.clone(), 4, 1)).unwrap();
+    let x = session.variable_order()[0];
+    let report = session.import_solutions(
+        vec![Solution::from([(x, 0.0)]), Solution::from([(x, 1.0)])],
+        &mut SearchSlice::new(budget.clone(), 1, 0),
+    ).unwrap();
+    assert_eq!(report.termination, SearchTermination::EvaluationLimit);
+    assert_eq!(report.candidates.len(), 1);
+    assert_eq!(report.evaluations, 1);
+    assert_eq!(budget.remaining(), 95);
 }
 
 #[test]
@@ -601,8 +629,9 @@ fn generic_session_broadcasts_observers_with_improvement_flag() {
     // 这正说明「改进」来自档案比较而不是「是否执行了推进」。
     // The initial population already contains the optimum x=1, so contraction cannot improve it and the flag stays false;
     // this shows "improved" comes from archive comparison rather than "an advance happened".
-    assert!(recorded.iter().all(|(_, improved)| !*improved));
-    assert!(recorded.iter().all(|(iteration, _)| *iteration >= 1));
+    assert!(recorded[0].1);
+    assert!(recorded[1..].iter().all(|(_, improved)| !*improved));
+    assert_eq!(recorded[0].0, 0);
 }
 
 /// 快照落盘：证明会话快照是真正的 serde JSON，可写入字符串再读回。
@@ -832,7 +861,7 @@ mod kotlin_wire_format {
         // The assertion pins the Rust-written shape so later changes cannot silently break interoperability.
         let mut session = session();
         let budget = Arc::new(SearchBudget::new(100));
-        let mut slice = SearchSlice::new(budget, 10, 2);
+        let mut slice = SearchSlice::new(budget, 10, 3);
         session.step(&mut slice).expect("step should succeed");
 
         let snapshot = session.snapshot().expect("snapshot should succeed");

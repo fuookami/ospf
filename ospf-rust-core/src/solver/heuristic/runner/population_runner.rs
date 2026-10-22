@@ -287,3 +287,38 @@ where
         )
     }
 }
+
+impl<V> crate::solver::heuristic::runner::native::NativeRunner<V> for PopulationRunner<V>
+where
+    V: HeuristicValue,
+{
+    type State = Population<V>;
+
+    fn initialize_native<M>(&mut self, model: &M, entropy: &mut dyn Entropy) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
+        Ok(self.initialize_island(model, entropy))
+    }
+
+    fn advance_native<M>(
+        &mut self,
+        model: &M,
+        iteration: &Iteration,
+        state: Self::State,
+        entropy: &mut dyn Entropy,
+    ) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
+        Ok(self.step_island(model, iteration, &state, entropy))
+    }
+
+    fn members_native(state: &Self::State) -> Vec<Individual<V, V>> {
+        state.clone()
+    }
+
+    fn core_native(&mut self) -> &mut RunnerCore<V, V> {
+        &mut self.core
+    }
+}

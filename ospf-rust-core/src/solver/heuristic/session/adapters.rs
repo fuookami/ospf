@@ -4,6 +4,7 @@
 //! The generic session only knows `SessionHooks`; this module wraps skeletons into those hooks so population and
 //! multi-objective (NSGA) skeletons both run under one session.
 
+use std::cell::RefCell;
 use crate::model::callback::Solution;
 use crate::variable::VariableId;
 
@@ -17,9 +18,8 @@ use crate::solver::heuristic::operator::multi_objective::{
 use crate::solver::heuristic::result::HeuristicError;
 use crate::solver::heuristic::runner::population_runner::{Population, PopulationRunner};
 use crate::solver::heuristic::session::budget::SearchSlice;
-use crate::solver::heuristic::session::json::{JsonValue, ListCodec, SearchCodec};
 use crate::solver::heuristic::session::protocol::{Result, SearchProblem};
-use crate::solver::heuristic::session::runner_session::{SessionHooks, solution_of, values_of};
+use crate::solver::heuristic::session::runner_session::SessionHooks;
 
 /// 单目标问题适配器：实现骨架所需的 `ObjectiveModel<V, V>` / Single-objective adapter implementing the skeleton's `ObjectiveModel<V, V>`
 ///
@@ -33,6 +33,8 @@ where
     V: HeuristicValue,
 {
     problem: &'p P,
+    meter: Option<(&'p SearchSlice, &'p RefCell<Vec<Individual<f64, V>>>)>,
+    errors: Option<&'p RefCell<Vec<String>>>,
     order: Vec<VariableId>,
     marker: std::marker::PhantomData<fn() -> V>,
 }
@@ -47,11 +49,33 @@ where
         Self {
             order: problem.variable_order(),
             problem,
+            meter: None,
+            errors: None,
             marker: std::marker::PhantomData,
         }
     }
 }
 
+impl<'p, P, V> ProblemModel<'p, P, V>
+where
+    P: SearchProblem<f64, V>,
+    V: HeuristicValue,
+{
+    /// 以预算和候选收集器创建 / Create with a budget and candidate collector
+    pub fn metered(
+        problem: &'p P,
+        slice: &'p SearchSlice,
+        candidates: &'p RefCell<Vec<Individual<f64, V>>>,
+    ) -> Self {
+        Self { meter: Some((slice, candidates)), ..Self::new(problem) }
+    }
+
+    /// 收集统一评估返回的错误，交由会话边界传播 / Collect metered evaluation errors for propagation at the session boundary
+    pub fn with_errors(mut self, errors: &'p RefCell<Vec<String>>) -> Self {
+        self.errors = Some(errors);
+        self
+    }
+}
 impl<'p, P, V> VariableModel<V> for ProblemModel<'p, P, V>
 where
     P: SearchProblem<f64, V>,
@@ -96,9 +120,20 @@ where
     }
 
     fn objective(&self, solution: &Solution<V>) -> Option<V> {
-        self.problem
-            .objective(solution)
-            .map(crate::solver::heuristic::model::from_f64::<V>)
+        if self.errors.is_some_and(|errors| !errors.borrow().is_empty()) { return None; }
+        let objective = if let Some((slice, candidates)) = self.meter {
+            let evaluated = match self.problem.evaluate(solution.clone(), slice) {
+                Ok(result) => result.candidate?,
+                Err(error) => { if let Some(errors) = self.errors { errors.borrow_mut().push(error.to_string()); } return None; }
+            };
+            let objective = evaluated.fitness;
+            if !objective.is_finite() { return None; }
+            candidates.borrow_mut().push(evaluated);
+            Some(objective)
+        } else {
+            self.problem.objective(solution)
+        };
+        objective.map(crate::solver::heuristic::model::from_f64::<V>)
     }
 
     fn compare_objective(&self, lhs: &V, rhs: &V) -> Option<std::cmp::Ordering> {
@@ -211,6 +246,8 @@ where
     runner: PopulationRunner<V>,
     entropy: Box<dyn Entropy>,
     state: Option<Population<V>>,
+    candidates: RefCell<Vec<Individual<f64, V>>>,
+    errors: RefCell<Vec<String>>,
     marker: std::marker::PhantomData<fn() -> P>,
 }
 
@@ -225,6 +262,8 @@ where
             runner,
             entropy,
             state: None,
+            candidates: RefCell::new(Vec::new()),
+            errors: RefCell::new(Vec::new()),
             marker: std::marker::PhantomData,
         }
     }
@@ -245,8 +284,8 @@ where
     P: SearchProblem<f64, V>,
     V: HeuristicValue,
 {
-    fn initialize(&mut self, problem: &P, _slice: &SearchSlice) -> Result<Population<V>> {
-        let model = ProblemModel::<P, V>::new(problem);
+    fn initialize(&mut self, problem: &P, slice: &SearchSlice) -> Result<Population<V>> {
+        let model = ProblemModel::<P, V>::metered(problem, slice, &self.candidates).with_errors(&self.errors);
         let population = self
             .runner
             .initialize_island(&model, self.entropy.as_mut());
@@ -262,9 +301,9 @@ where
         problem: &mut P,
         iteration: &Iteration,
         state: &Population<V>,
-        _slice: &SearchSlice,
+        slice: &SearchSlice,
     ) -> Result<Population<V>> {
-        let model = ProblemModel::<P, V>::new(problem);
+        let model = ProblemModel::<P, V>::metered(problem, slice, &self.candidates).with_errors(&self.errors);
         let advanced =
             self.runner
                 .step_island(&model, iteration, state, self.entropy.as_mut());
@@ -274,6 +313,12 @@ where
         self.state = Some(advanced.clone());
         Ok(advanced)
     }
+
+    fn drain_candidates(&mut self) -> Vec<Individual<f64, V>> {
+        self.candidates.replace(Vec::new())
+    }
+
+    fn drain_errors(&mut self) -> Vec<String> { self.errors.replace(Vec::new()) }
 
     fn members(&self, state: &Population<V>) -> Vec<Individual<f64, V>> {
         state
@@ -507,6 +552,8 @@ where
     divisions: Option<usize>,
     entropy: Box<dyn Entropy>,
     state: Option<Vec<Individual<Vec<f64>, V>>>,
+    candidates: RefCell<Vec<Individual<Vec<f64>, V>>>,
+    errors: RefCell<Vec<String>>,
     marker: std::marker::PhantomData<fn() -> P>,
 }
 
@@ -533,6 +580,8 @@ where
             divisions,
             entropy,
             state: None,
+            candidates: RefCell::new(Vec::new()),
+            errors: RefCell::new(Vec::new()),
             marker: std::marker::PhantomData,
         }
     }
@@ -548,25 +597,24 @@ where
         self.state.as_deref()
     }
 
-    fn evaluate(&self, problem: &P, solution: Solution<V>) -> Option<Individual<Vec<f64>, V>> {
-        if !problem.valid_solution(&solution) || !problem.feasible(&solution) {
+    fn evaluate(&self, problem: &P, solution: Solution<V>, slice: &SearchSlice) -> Option<Individual<Vec<f64>, V>> {
+        if !self.errors.borrow().is_empty() { return None; }
+        let evaluated = match problem.evaluate(solution, slice) {
+            Ok(result) => result.candidate?,
+            Err(error) => { self.errors.borrow_mut().push(error.to_string()); return None; }
+        };
+        if evaluated.fitness.is_empty() || evaluated.fitness.iter().any(|value| !value.is_finite()) {
             return None;
         }
-        let objectives = problem.objective(&solution)?;
-        if objectives.is_empty()
-            || !problem.valid_objective(&objectives)
-            || !objectives.iter().all(|value| value.is_finite())
-        {
-            return None;
-        }
-        Some(Individual::new(solution, objectives))
+        self.candidates.borrow_mut().push(evaluated.clone());
+        Some(evaluated)
     }
-
     fn breed(
         &mut self,
         problem: &mut P,
         iteration: &Iteration,
         population: &[Individual<Vec<f64>, V>],
+        slice: &SearchSlice,
     ) -> Vec<Individual<Vec<f64>, V>> {
         if population.is_empty() {
             return Vec::new();
@@ -583,7 +631,7 @@ where
                 .update
                 .update(&model, iteration, &parents, self.entropy.as_mut())
             {
-                if let Some(individual) = self.evaluate(problem, solution) {
+                if let Some(individual) = self.evaluate(problem, solution, slice) {
                     offspring.push(individual);
                 }
             }
@@ -598,7 +646,7 @@ where
                 self.mutation_rate,
                 self.entropy.as_mut(),
             );
-            if let Some(mutant) = self.evaluate(problem, solution) {
+            if let Some(mutant) = self.evaluate(problem, solution, slice) {
                 offspring.push(mutant);
             }
         }
@@ -616,12 +664,12 @@ where
     fn initialize(
         &mut self,
         problem: &P,
-        _slice: &SearchSlice,
+        slice: &SearchSlice,
     ) -> Result<Vec<Individual<Vec<f64>, V>>> {
         let population: Vec<Individual<Vec<f64>, V>> = problem
             .initial_solutions(self.size)
             .into_iter()
-            .filter_map(|solution| self.evaluate(problem, solution))
+            .filter_map(|solution| self.evaluate(problem, solution, slice))
             .take(self.size)
             .collect();
         if population.is_empty() {
@@ -642,9 +690,9 @@ where
         problem: &mut P,
         iteration: &Iteration,
         state: &Vec<Individual<Vec<f64>, V>>,
-        _slice: &SearchSlice,
+        slice: &SearchSlice,
     ) -> Result<Vec<Individual<Vec<f64>, V>>> {
-        let offspring = self.breed(problem, iteration, state);
+        let offspring = self.breed(problem, iteration, state, slice);
         let mut candidates = state.clone();
         candidates.extend(offspring);
         let selected = select_front(
@@ -659,6 +707,12 @@ where
         self.state = Some(selected.clone());
         Ok(selected)
     }
+
+    fn drain_candidates(&mut self) -> Vec<Individual<Vec<f64>, V>> {
+        self.candidates.replace(Vec::new())
+    }
+
+    fn drain_errors(&mut self) -> Vec<String> { self.errors.replace(Vec::new()) }
 
     fn members(&self, state: &Vec<Individual<Vec<f64>, V>>) -> Vec<Individual<Vec<f64>, V>> {
         state.clone()

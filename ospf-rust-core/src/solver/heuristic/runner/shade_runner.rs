@@ -5,8 +5,6 @@
 //! SHADE's adaptivity requires accumulating success history across iterations, which a stateless solution-update operator
 //! cannot do, so the memory bank is modelled as part of the state while the loop keeps the same structure.
 
-use ospf_rust_math::distribution::{Cauchy, Distribution, Gaussian};
-
 use crate::model::callback::Solution;
 
 use crate::solver::heuristic::contract::Runner;
@@ -26,8 +24,23 @@ use crate::solver::heuristic::operator::fitness::{
 use crate::solver::heuristic::operator::stopping::NeverStop;
 use crate::solver::heuristic::operator::{set_value_at, value_at};
 use crate::solver::heuristic::result::Result;
-use crate::solver::heuristic::runner::drive::drive;
 use crate::solver::heuristic::runner::runner_core::RunnerCore;
+
+/// SHADE 采样数值协议，原生模式保留历史轨迹 / SHADE sampling numerical contract; native mode preserves historical trajectories
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ShadeNumerics {
+    /// 平台原生正切 / Platform-native tangent
+    #[default]
+    Native,
+    /// fdlibm 正切与固定运算顺序；协议 shade-fdlibm-v1 / fdlibm tangent and fixed operation order; protocol shade-fdlibm-v1
+    FdlibmV1,
+}
+
+impl ShadeNumerics {
+    fn tangent(self, angle: f64) -> f64 {
+        match self { Self::Native => angle.tan(), Self::FdlibmV1 => libm::tan(angle) }
+    }
+}
 
 /// 一次参数采样结果 / One sampled parameter pair
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -71,21 +84,29 @@ impl ShadeMemory {
 
     /// 采样一组 `(F, CR)` / Sample one `(F, CR)` pair
     ///
-    /// `F` 取自柯西分布（重尾，偶尔产生大步长），`CR` 取自正态分布；两者都被裁剪到 `[0, 1]`。
-    /// `F` comes from a Cauchy distribution (heavy tailed, occasionally producing a long step) and `CR` from a normal
-    /// distribution; both are clamped to `[0, 1]`.
+    /// `F` 使用柯西采样；`CR` 与 Kotlin 协议一致，使用三次均匀采样的近似；两者裁剪到 `[0, 1]`。
+    /// `F` uses a Cauchy sample; `CR` uses the Kotlin protocol's three-uniform approximation; both are clamped to `[0, 1]`.
     pub fn sample(&self, entropy: &mut dyn Entropy) -> ShadeParameters {
+        self.sample_with_numerics(entropy, ShadeNumerics::Native)
+    }
+
+    /// 按显式数值协议采样，不改变随机数消费顺序 / Sample using an explicit numerical contract without changing random consumption
+    pub fn sample_with_numerics(
+        &self,
+        entropy: &mut dyn Entropy,
+        numerics: ShadeNumerics,
+    ) -> ShadeParameters {
         let index = ((unit(entropy) * self.memory_f.len() as f64) as usize)
             .min(self.memory_f.len() - 1);
-        let mut differential_weight =
-            self.memory_f[index] + 0.1 * Cauchy::new(0.0, 1.0).sample(entropy);
+        let mut differential_weight = self.memory_f[index]
+            + 0.1 * numerics.tangent(std::f64::consts::PI * (unit(entropy) - 0.5));
         if differential_weight <= 0.0 {
             differential_weight = self.memory_f[index];
         }
         let differential_weight = differential_weight.clamp(0.0, 1.0);
 
-        let cross_rate = (self.memory_cr[index] + 0.1 * Gaussian::new(0.0, 1.0).sample(entropy))
-            .clamp(0.0, 1.0);
+        let cross_rate = (self.memory_cr[index]
+            + 0.1 * (unit(entropy) + unit(entropy) + unit(entropy) - 1.5) * 2.0).clamp(0.0, 1.0);
         ShadeParameters {
             memory_index: index,
             differential_weight,
@@ -123,6 +144,46 @@ impl ShadeMemory {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::solver::heuristic::entropy::FnEntropy;
+
+    #[test]
+    fn parameter_sampling_matches_kotlin_values_and_consumes_five_draws() {
+        let samples = [0.7, 0.75, 0.1, 0.2, 0.9];
+        let mut consumed = 0;
+        let mut entropy = FnEntropy::new(|| {
+            let value = samples[consumed];
+            consumed += 1;
+            value
+        });
+        let actual = ShadeMemory::new(5).sample(&mut entropy);
+        assert_eq!(actual.memory_index, 3);
+        assert!((actual.differential_weight - 0.6).abs() < 1e-15);
+        assert_eq!(actual.cross_rate, 0.5 + 0.1 * (0.1 + 0.2 + 0.9 - 1.5) * 2.0);
+        assert_eq!(consumed, 5);
+    }
+
+    #[test]
+    fn fdlibm_tangent_matches_shared_binary64_contract_vectors() {
+        for (input, expected) in [
+            (0xc02ebe05be113456, 0x3fd6692cd48a42aa),
+            (0xc029e9f8300b6a04, 0xbfda5a3cdd51edd9),
+            (0xc019534956763f6c, 0xbfa8abe2c5ee870e),
+            (0x4022a3ea01341b64, 0xbfbae2617d4619be),
+            (0xc030100029042b02, 0xbfd7b10bf21a884f),
+            (0xc03171f3cff42048, 0x4017d22d731c64df),
+            (0x4033183d13007fea, 0x3fd002909c5eab58),
+            (0xc0238e9444814bcc, 0xbfd7a15cb5c047f0),
+            (0x0000000000000000, 0x0000000000000000),
+            (0x8000000000000000, 0x8000000000000000),
+        ] {
+            assert_eq!(ShadeNumerics::FdlibmV1.tangent(f64::from_bits(input)).to_bits(), expected);
+        }
+    }
+}
+
 /// SHADE 状态 / SHADE state
 #[derive(Debug, Clone)]
 pub struct ShadeState<V>
@@ -139,6 +200,8 @@ where
 
 /// SHADE 配置 / SHADE configuration
 pub struct ShadeConfig {
+    /// 参数采样数值协议 / Parameter-sampling numerical contract
+    pub numerics: ShadeNumerics,
     /// 初始种群规模 / Initial population size
     pub size: usize,
     /// 记忆槽数量 / Number of memory slots
@@ -155,6 +218,7 @@ impl ShadeConfig {
     /// 创建 SHADE 配置 / Create a SHADE configuration
     pub fn new(size: usize) -> Self {
         Self {
+            numerics: ShadeNumerics::Native,
             size,
             memory_size: ShadeMemory::DEFAULT_SIZE,
             p_best_rate: 0.2,
@@ -239,11 +303,32 @@ where
     where
         M: ObjectiveModel<V, V>,
     {
+        let mut entropy = std::mem::replace(
+            &mut self.entropy,
+            Box::new(crate::solver::heuristic::entropy::SeededEntropy::default()),
+        );
+        let result = crate::solver::heuristic::runner::native::run_native(self, model, iteration, entropy.as_mut());
+        self.entropy = entropy;
+        result
+    }
+}
+
+impl<V> crate::solver::heuristic::runner::native::NativeRunner<V> for ShadeRunner<V>
+where
+    V: HeuristicValue,
+{
+    type State = ShadeState<V>;
+
+    #[allow(unused_variables)]
+    fn initialize_native<M>(&mut self, model: &M, entropy: &mut dyn Entropy) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
         let Self {
-            core,
+            core: _,
+            entropy: _,
             config,
             fitness_evaluator,
-            entropy,
         } = self;
         let size = config.size;
         let memory_size = config.memory_size;
@@ -265,150 +350,174 @@ where
             }
         };
 
-        drive(
-            core,
-            model,
-            iteration,
-            state,
-            |model, iteration, state, entropy| {
-                if state.population.is_empty() {
-                    return Ok(state);
-                }
+        Ok(state)
+    }
 
-                let order = model.variable_order();
-                let dimension = order.len();
-                let mut sorted = state.population.clone();
-                sorted.sort_by(|lhs, rhs| compare_strictly(model, &lhs.fitness, &rhs.fitness));
-                let p_best_amount = ((sorted.len() as f64 * p_best_rate) as usize).max(1);
-                let p_best_pool = &sorted[..p_best_amount.min(sorted.len())];
+    #[allow(unused_variables)]
+    fn advance_native<M>(
+        &mut self,
+        model: &M,
+        iteration: &Iteration,
+        state: Self::State,
+        entropy: &mut dyn Entropy,
+    ) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
+        let Self {
+            core: _,
+            entropy: _,
+            config,
+            fitness_evaluator,
+        } = self;
+        let size = config.size;
+        let memory_size = config.memory_size;
+        let p_best_rate = config.p_best_rate;
+        let minimum_size = config.minimum_size;
+        let size_ratio = config.size_ratio.as_mut();
 
-                let mut next_population = Vec::with_capacity(state.population.len());
-                let mut next_archive = state.archive.clone();
-                let mut successful_f = Vec::new();
-                let mut successful_cr = Vec::new();
+        if state.population.is_empty() {
+            return Ok(state);
+        }
 
-                for index in 0..state.population.len() {
-                    let target = &state.population[index];
-                    let parameters = state.memory.sample(entropy);
-                    let p_best_index = ((unit(entropy) * p_best_pool.len() as f64) as usize)
-                        .min(p_best_pool.len() - 1);
-                    let p_best = &p_best_pool[p_best_index];
+        let order = model.variable_order();
+        let dimension = order.len();
+        let mut sorted = state.population.clone();
+        sorted.sort_by(|lhs, rhs| compare_strictly(model, &lhs.fitness, &rhs.fitness));
+        let p_best_amount = ((sorted.len() as f64 * p_best_rate) as usize).max(1);
+        let p_best_pool = &sorted[..p_best_amount.min(sorted.len())];
 
-                    // r1 取当前种群，r2 取「种群 + 外部档案」的并集——外部档案保留了已被淘汰的父代位置，
-                    // 让差分向量在更长的历史里取点。
-                    // r1 comes from the current population and r2 from "population + external archive".
-                    let mut first = ((unit(entropy) * state.population.len() as f64) as usize)
-                        .min(state.population.len() - 1);
-                    if first == index {
-                        first = (index + 1) % state.population.len();
-                    }
-                    let second_pool_size = state.population.len() + next_archive.len();
-                    let second = ((unit(entropy) * second_pool_size as f64) as usize)
-                        .min(second_pool_size.saturating_sub(1));
+        let mut next_population = Vec::with_capacity(state.population.len());
+        let mut next_archive = state.archive.clone();
+        let mut successful_f = Vec::new();
+        let mut successful_cr = Vec::new();
 
-                    let mut mutant = Solution::<V>::new();
-                    for dim in 0..dimension {
-                        let base = value_at(&target.solution, &order, dim)
-                            .map(|value| to_f64(&value))
-                            .unwrap_or(0.0);
-                        let toward_best = value_at(&p_best.solution, &order, dim)
-                            .map(|value| to_f64(&value))
-                            .unwrap_or(base)
-                            - base;
-                        let second_value = if second < state.population.len() {
-                            value_at(&state.population[second].solution, &order, dim)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(0.0)
-                        } else {
-                            value_at(&next_archive[second - state.population.len()], &order, dim)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(0.0)
-                        };
-                        let difference = value_at(
-                            &state.population[first].solution,
-                            &order,
-                            dim,
-                        )
+        for index in 0..state.population.len() {
+            let target = &state.population[index];
+            let parameters = state.memory.sample_with_numerics(entropy, config.numerics);
+            let p_best_index = ((unit(entropy) * p_best_pool.len() as f64) as usize)
+                .min(p_best_pool.len() - 1);
+            let p_best = &p_best_pool[p_best_index];
+
+            // r1 取当前种群，r2 取「种群 + 外部档案」的并集——外部档案保留了已被淘汰的父代位置，
+            // 让差分向量在更长的历史里取点。
+            // r1 comes from the current population and r2 from "population + external archive".
+            let mut first = ((unit(entropy) * state.population.len() as f64) as usize)
+                .min(state.population.len() - 1);
+            if first == index {
+                first = (index + 1) % state.population.len();
+            }
+            let second_pool_size = state.population.len() + next_archive.len();
+            let second = ((unit(entropy) * second_pool_size as f64) as usize)
+                .min(second_pool_size.saturating_sub(1));
+
+            let mut mutant = Solution::<V>::new();
+            for dim in 0..dimension {
+                let base = value_at(&target.solution, &order, dim)
+                    .map(|value| to_f64(&value))
+                    .unwrap_or(0.0);
+                let toward_best = value_at(&p_best.solution, &order, dim)
+                    .map(|value| to_f64(&value))
+                    .unwrap_or(base)
+                    - base;
+                let second_value = if second < state.population.len() {
+                    value_at(&state.population[second].solution, &order, dim)
                         .map(|value| to_f64(&value))
                         .unwrap_or(0.0)
-                            - second_value;
-                        let value = base
-                            + parameters.differential_weight * toward_best
-                            + parameters.differential_weight * difference;
-                        let (lower, upper) = model.bounds_at(dim);
-                        set_value_at(
-                            &mut mutant,
-                            &order,
-                            dim,
-                            clamped_value(value, lower, upper),
-                        );
-                    }
-
-                    // 二项式交叉：至少有一个维度取自变异向量。
-                    // Binomial crossover: at least one dimension must come from the mutant.
-                    let mut trial = Solution::<V>::new();
-                    let forced = ((unit(entropy) * dimension as f64) as usize)
-                        .min(dimension.saturating_sub(1));
-                    for dim in 0..dimension {
-                        let take_mutant =
-                            unit(entropy) < parameters.cross_rate || dim == forced;
-                        let value = if take_mutant {
-                            mutant.get(&order[dim]).copied().unwrap_or_else(|| {
-                                from_f64(0.0)
-                            })
-                        } else {
-                            target
-                                .solution
-                                .get(&order[dim])
-                                .copied()
-                                .unwrap_or_else(|| from_f64(0.0))
-                        };
-                        trial.insert(order[dim], value);
-                    }
-
-                    match fitness_evaluator.evaluate(model, &trial) {
-                        None => next_population.push(target.clone()),
-                        Some(candidate) => {
-                            if compare_strictly(
-                                model,
-                                &candidate.fitness,
-                                &target.fitness,
-                            ) != std::cmp::Ordering::Greater
-                            {
-                                next_population.push(candidate);
-                                next_archive.push(target.solution.clone());
-                                successful_f.push(parameters.differential_weight);
-                                successful_cr.push(parameters.cross_rate);
-                            } else {
-                                next_population.push(target.clone());
-                            }
-                        }
-                    }
-                }
-
-                // L-SHADE：种群规模随迭代线性缩减，缩减时保留最优个体。
-                // L-SHADE: the population shrinks linearly with iterations, keeping the best individuals.
-                let ratio = size_ratio.value(iteration, entropy);
-                let target_size = ((size as f64 * ratio) as usize)
-                    .clamp(minimum_size.min(size), size);
-                let survived = if next_population.len() > target_size {
-                    keep_best(model, &next_population, target_size)
                 } else {
-                    next_population
+                    value_at(&next_archive[second - state.population.len()], &order, dim)
+                        .map(|value| to_f64(&value))
+                        .unwrap_or(0.0)
                 };
+                let difference = value_at(
+                    &state.population[first].solution,
+                    &order,
+                    dim,
+                )
+                .map(|value| to_f64(&value))
+                .unwrap_or(0.0)
+                    - second_value;
+                let value = base
+                    + parameters.differential_weight * toward_best
+                    + parameters.differential_weight * difference;
+                let (lower, upper) = model.bounds_at(dim);
+                set_value_at(
+                    &mut mutant,
+                    &order,
+                    dim,
+                    clamped_value(value, lower, upper),
+                );
+            }
 
-                while next_archive.len() > target_size {
-                    next_archive.remove(0);
+            // 二项式交叉：至少有一个维度取自变异向量。
+            // Binomial crossover: at least one dimension must come from the mutant.
+            let mut trial = Solution::<V>::new();
+            let forced = ((unit(entropy) * dimension as f64) as usize)
+                .min(dimension.saturating_sub(1));
+            for dim in 0..dimension {
+                let take_mutant =
+                    unit(entropy) < parameters.cross_rate || dim == forced;
+                let value = if take_mutant {
+                    mutant.get(&order[dim]).copied().unwrap_or_else(|| {
+                        from_f64(0.0)
+                    })
+                } else {
+                    target
+                        .solution
+                        .get(&order[dim])
+                        .copied()
+                        .unwrap_or_else(|| from_f64(0.0))
+                };
+                trial.insert(order[dim], value);
+            }
+
+            match fitness_evaluator.evaluate(model, &trial) {
+                None => next_population.push(target.clone()),
+                Some(candidate) => {
+                    if compare_strictly(
+                        model,
+                        &candidate.fitness,
+                        &target.fitness,
+                    ) != std::cmp::Ordering::Greater
+                    {
+                        next_population.push(candidate);
+                        next_archive.push(target.solution.clone());
+                        successful_f.push(parameters.differential_weight);
+                        successful_cr.push(parameters.cross_rate);
+                    } else {
+                        next_population.push(target.clone());
+                    }
                 }
+            }
+        }
 
-                Ok(ShadeState {
-                    population: survived,
-                    memory: state.memory.update(&successful_f, &successful_cr),
-                    archive: next_archive,
-                })
-            },
-            |state| state.population.clone(),
-            entropy.as_mut(),
-        )
+        // L-SHADE：种群规模随迭代线性缩减，缩减时保留最优个体。
+        // L-SHADE: the population shrinks linearly with iterations, keeping the best individuals.
+        let ratio = size_ratio.value(iteration, entropy);
+        let target_size = ((size as f64 * ratio) as usize)
+            .clamp(minimum_size.min(size), size);
+        let survived = if next_population.len() > target_size {
+            keep_best(model, &next_population, target_size)
+        } else {
+            next_population
+        };
+
+        while next_archive.len() > target_size {
+            next_archive.remove(0);
+        }
+
+        Ok(ShadeState {
+            population: survived,
+            memory: state.memory.update(&successful_f, &successful_cr),
+            archive: next_archive,
+        })
+    }
+
+    fn members_native(state: &Self::State) -> Vec<Individual<V, V>> {
+        state.population.clone()
+    }
+
+    fn core_native(&mut self) -> &mut RunnerCore<V, V> {
+        &mut self.core
     }
 }

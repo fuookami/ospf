@@ -39,6 +39,7 @@ pub mod config;
 pub mod constraint_programming;
 pub mod fingerprint;
 pub mod heuristic;
+pub mod hyper_heuristic;
 pub mod iis;
 pub mod output;
 pub mod progress;

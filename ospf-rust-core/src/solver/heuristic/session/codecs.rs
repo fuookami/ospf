@@ -614,7 +614,9 @@ impl SearchCodec<ShadeState<f64>> for ShadeStateCodec {
             return Err(invalid_state("invalid SHADE memory / SHADE 记忆库非法"));
         }
         let population = self.individual.list().decode(&saved.individuals)?;
-        let solutions = self.solution_list().decode(&saved.solutions)?;
+        // 空外部档案在 NativeState 中省略，初始化检查点必须仍可恢复。
+        // NativeState omits empty external archives; initialization checkpoints must remain restorable.
+        let solutions = if saved.solutions.is_null() { Vec::new() } else { self.solution_list().decode(&saved.solutions)? };
         let archive = solutions
             .iter()
             .map(|values| {

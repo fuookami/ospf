@@ -24,7 +24,6 @@ use crate::solver::heuristic::operator::initializer::{Initializer, ModelInitiali
 use crate::solver::heuristic::operator::stopping::NeverStop;
 use crate::solver::heuristic::operator::{set_value_at, value_at};
 use crate::solver::heuristic::result::Result;
-use crate::solver::heuristic::runner::drive::drive;
 use crate::solver::heuristic::runner::runner_core::RunnerCore;
 
 /// CLPSO 粒子状态 / CLPSO particle state
@@ -139,13 +138,34 @@ where
     where
         M: ObjectiveModel<V, V>,
     {
+        let mut entropy = std::mem::replace(
+            &mut self.entropy,
+            Box::new(crate::solver::heuristic::entropy::SeededEntropy::default()),
+        );
+        let result = crate::solver::heuristic::runner::native::run_native(self, model, iteration, entropy.as_mut());
+        self.entropy = entropy;
+        result
+    }
+}
+
+impl<V> crate::solver::heuristic::runner::native::NativeRunner<V> for ClpsoRunner<V>
+where
+    V: HeuristicValue,
+{
+    type State = Vec<ClpsoParticle<V>>;
+
+    #[allow(unused_variables)]
+    fn initialize_native<M>(&mut self, model: &M, entropy: &mut dyn Entropy) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
         let Self {
-            core,
+            core: _,
+            entropy: _,
             config,
             inertia,
             initializer,
             fitness_evaluator,
-            entropy,
         } = self;
         let size = config.size;
         let learning_weight = config.learning_weight;
@@ -164,13 +184,13 @@ where
         let state: Vec<ClpsoParticle<V>> = {
             let order = model.variable_order();
             initializer
-                .initialize(model, size, entropy.as_mut())
+                .initialize(model, size, entropy)
                 .into_iter()
                 .filter_map(|solution| fitness_evaluator.evaluate(model, &solution))
                 .take(size)
                 .map(|individual| {
                     let exemplars = (0..order.len())
-                        .map(|_| random_index(size, entropy.as_mut()))
+                        .map(|_| random_index(size, entropy))
                         .collect();
                     ClpsoParticle {
                         velocity: vec![0.0; order.len()],
@@ -183,125 +203,159 @@ where
                 .collect()
         };
 
-        drive(
-            core,
-            model,
-            iteration,
-            state,
-            |model, iteration, state, entropy| {
-                if state.is_empty() {
-                    return Ok(state);
+        Ok(state)
+    }
+
+    #[allow(unused_variables)]
+    fn advance_native<M>(
+        &mut self,
+        model: &M,
+        iteration: &Iteration,
+        state: Self::State,
+        entropy: &mut dyn Entropy,
+    ) -> Result<Self::State>
+    where
+        M: ObjectiveModel<V, V>,
+    {
+        let Self {
+            core: _,
+            entropy: _,
+            config,
+            inertia,
+            initializer,
+            fitness_evaluator,
+        } = self;
+        let size = config.size;
+        let learning_weight = config.learning_weight;
+        let max_velocity = config.max_velocity;
+        let refresh_interval = config.refresh_interval;
+        let stagnation_limit = config.stagnation_limit;
+
+        let random_index = |amount: usize, entropy: &mut dyn Entropy| -> usize {
+            if amount <= 1 {
+                0
+            } else {
+                ((unit(entropy) * amount as f64) as usize).min(amount - 1)
+            }
+        };
+
+        if state.is_empty() {
+            return Ok(state);
+        }
+
+        let weight = inertia.value(iteration, entropy);
+        let order = model.variable_order();
+        // 学习对象来自「上一代」的历史最优，因此先快照，避免同代内互相污染。
+        // Exemplars come from the previous generation's personal bests, so snapshot them first.
+        let bests: Vec<Individual<V, V>> =
+            state.iter().map(|particle| particle.best.clone()).collect();
+
+        let advanced: Vec<ClpsoParticle<V>> = state
+            .iter()
+            .map(|particle| {
+                let dimension = order.len();
+                let refresh = particle.stagnation >= refresh_interval;
+                let mut velocity = vec![0.0; dimension];
+                let mut solution = particle.individual.solution.clone();
+
+                for index in 0..dimension {
+                    let exemplar_index = if refresh {
+                        random_index(state.len(), entropy)
+                    } else {
+                        particle
+                            .exemplars
+                            .get(index)
+                            .copied()
+                            .unwrap_or(0)
+                            .min(state.len() - 1)
+                    };
+                    let current = value_at(&particle.individual.solution, &order, index)
+                        .map(|value| to_f64(&value))
+                        .unwrap_or(0.0);
+                    let target = value_at(&bests[exemplar_index].solution, &order, index)
+                        .map(|value| to_f64(&value))
+                        .unwrap_or(current);
+                    let mut speed = weight
+                        * particle.velocity.get(index).copied().unwrap_or(0.0)
+                        + learning_weight
+                            * unit(entropy)
+                            * (target - current);
+                    speed = speed.clamp(-max_velocity, max_velocity);
+                    velocity[index] = speed;
+                    let (lower, upper) = model.bounds_at(index);
+                    set_value_at(
+                        &mut solution,
+                        &order,
+                        index,
+                        clamped_value(current + speed, lower, upper),
+                    );
                 }
 
-                let weight = inertia.value(iteration, entropy);
-                let order = model.variable_order();
-                // 学习对象来自「上一代」的历史最优，因此先快照，避免同代内互相污染。
-                // Exemplars come from the previous generation's personal bests, so snapshot them first.
-                let bests: Vec<Individual<V, V>> =
-                    state.iter().map(|particle| particle.best.clone()).collect();
-
-                let advanced: Vec<ClpsoParticle<V>> = state
-                    .iter()
-                    .map(|particle| {
-                        let dimension = order.len();
-                        let refresh = particle.stagnation >= refresh_interval;
-                        let mut velocity = vec![0.0; dimension];
-                        let mut solution = particle.individual.solution.clone();
-
-                        for index in 0..dimension {
-                            let exemplar_index = if refresh {
-                                random_index(state.len(), entropy)
-                            } else {
-                                particle
-                                    .exemplars
-                                    .get(index)
-                                    .copied()
-                                    .unwrap_or(0)
-                                    .min(state.len() - 1)
-                            };
-                            let current = value_at(&particle.individual.solution, &order, index)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(0.0);
-                            let target = value_at(&bests[exemplar_index].solution, &order, index)
-                                .map(|value| to_f64(&value))
-                                .unwrap_or(current);
-                            let mut speed = weight
-                                * particle.velocity.get(index).copied().unwrap_or(0.0)
-                                + learning_weight
-                                    * unit(entropy)
-                                    * (target - current);
-                            speed = speed.clamp(-max_velocity, max_velocity);
-                            velocity[index] = speed;
-                            let (lower, upper) = model.bounds_at(index);
-                            set_value_at(
-                                &mut solution,
-                                &order,
-                                index,
-                                clamped_value(current + speed, lower, upper),
-                            );
-                        }
-
-                        let candidate = match fitness_evaluator.evaluate(model, &solution) {
-                            None => {
-                                return ClpsoParticle {
-                                    individual: particle.individual.clone(),
-                                    velocity,
-                                    best: particle.best.clone(),
-                                    exemplars: particle.exemplars.clone(),
-                                    stagnation: particle.stagnation + 1,
-                                };
-                            }
-                            Some(candidate) => candidate,
+                let candidate = match fitness_evaluator.evaluate(model, &solution) {
+                    None => {
+                        return ClpsoParticle {
+                            individual: particle.individual.clone(),
+                            velocity,
+                            best: particle.best.clone(),
+                            exemplars: particle.exemplars.clone(),
+                            stagnation: particle.stagnation + 1,
                         };
+                    }
+                    Some(candidate) => candidate,
+                };
 
-                        let improved = compare_strictly(
-                            model,
-                            &candidate.fitness,
-                            &particle.best.fitness,
-                        ) == std::cmp::Ordering::Less;
+                let improved = compare_strictly(
+                    model,
+                    &candidate.fitness,
+                    &particle.best.fitness,
+                ) == std::cmp::Ordering::Less;
 
-                        if improved {
-                            ClpsoParticle {
-                                best: candidate.clone(),
-                                individual: candidate,
-                                velocity,
-                                exemplars: particle.exemplars.clone(),
-                                stagnation: 0,
-                            }
-                        } else if particle.stagnation + 1 > stagnation_limit {
-                            // 长期停滞：把 pbest 重置到当前位置，迫使粒子换一个学习方向。
-                            // Prolonged stagnation: reset pbest to the current position.
-                            ClpsoParticle {
-                                exemplars: (0..dimension)
-                                    .map(|_| random_index(state.len(), entropy))
-                                    .collect(),
-                                best: candidate.clone(),
-                                individual: candidate,
-                                velocity,
-                                stagnation: 0,
-                            }
+                if improved {
+                    ClpsoParticle {
+                        best: candidate.clone(),
+                        individual: candidate,
+                        velocity,
+                        exemplars: particle.exemplars.clone(),
+                        stagnation: 0,
+                    }
+                } else if particle.stagnation + 1 > stagnation_limit {
+                    // 长期停滞：把 pbest 重置到当前位置，迫使粒子换一个学习方向。
+                    // Prolonged stagnation: reset pbest to the current position.
+                    ClpsoParticle {
+                        exemplars: (0..dimension)
+                            .map(|_| random_index(state.len(), entropy))
+                            .collect(),
+                        best: candidate.clone(),
+                        individual: candidate,
+                        velocity,
+                        stagnation: 0,
+                    }
+                } else {
+                    ClpsoParticle {
+                        exemplars: if refresh {
+                            (0..dimension)
+                                .map(|_| random_index(state.len(), entropy))
+                                .collect()
                         } else {
-                            ClpsoParticle {
-                                exemplars: if refresh {
-                                    (0..dimension)
-                                        .map(|_| random_index(state.len(), entropy))
-                                        .collect()
-                                } else {
-                                    particle.exemplars.clone()
-                                },
-                                best: particle.best.clone(),
-                                individual: candidate,
-                                velocity,
-                                stagnation: particle.stagnation + 1,
-                            }
-                        }
-                    })
-                    .collect();
+                            particle.exemplars.clone()
+                        },
+                        best: particle.best.clone(),
+                        individual: candidate,
+                        velocity,
+                        stagnation: particle.stagnation + 1,
+                    }
+                }
+            })
+            .collect();
 
-                Ok(advanced)
-            },
-            |state| state.iter().map(|particle| particle.best.clone()).collect(),
-            entropy.as_mut(),
-        )
+        Ok(advanced)
+    }
+
+    fn members_native(state: &Self::State) -> Vec<Individual<V, V>> {
+        state.iter().map(|particle| particle.best.clone()).collect()
+    }
+
+    fn core_native(&mut self) -> &mut RunnerCore<V, V> {
+        &mut self.core
     }
 }
