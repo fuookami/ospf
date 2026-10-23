@@ -1457,7 +1457,7 @@ impl<'a> LoweringContext<'a> {
                 actual: slot_count,
             });
         }
-        let work = slot_count.checked_mul(tasks.len()).unwrap_or(usize::MAX);
+        let work = slot_count.saturating_mul(tasks.len());
         if work > self.options.max_cumulative_work {
             return Err(MipLoweringError::BudgetExceeded {
                 resource: "cumulative_work".to_owned(),

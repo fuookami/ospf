@@ -277,29 +277,6 @@ where
         })
     }
 
-    /// 丢弃指定位置的待展开结构而不物化。
-    ///
-    /// 仅用于结构已经由求解器原生写入的场景：这些结构不能再次物化，否则会与原生行重复。
-    ///
-    /// **可见性**：本方法刻意只对 crate 内可见。外部调用方一旦在没有原生写入的情况下丢弃结构，
-    /// 就会得到一个"成功的空模型"——既没有原生行也没有 fallback 行。外部入口只能是
-    /// `MechanismModel::lower_deferred_functions`，它同时完成原生写入与 fallback 物化。
-    ///
-    /// Drop the pending structures at the given positions without materializing them.
-    ///
-    /// Only for structures a solver already wrote natively: materializing them again would
-    /// duplicate the native rows.
-    ///
-    /// **Visibility**: this method is deliberately crate-visible only. A caller that dropped
-    /// structures without a native write would end up with a "successful empty model" that has
-    /// neither native nor fallback rows. The only external entry point is
-    /// `MechanismModel::lower_deferred_functions`, which performs the native writes and the
-    /// fallback materialization together.
-    pub(crate) fn drop_deferred_functions_at(&mut self, indices: &[usize]) -> Result<()> {
-        self.resolve_deferred_functions(&[], indices)?;
-        Ok(())
-    }
-
     /// 一次遍历中物化一部分待展开结构并丢弃另一部分。
     ///
     /// 约束先生成后一次性追加：任一物化失败时不写任何一行、不移除任何结构。索引按当前
@@ -420,12 +397,12 @@ where
         let result_index = self.token_index.get(&result_id).copied();
         let helper_indices = self.helper_indices(helper_ids);
 
-        let mut summary = FunctionUsageSummary::default();
         // 结果列被固定（声明范围退化为单点）时原生写入必须回退。
         // A result column fixed to a single point forces a fallback for native writes.
-        summary.result_is_fixed = self
-            .find_token(result_id)
-            .is_some_and(|token| range_is_singleton(token));
+        let mut summary = FunctionUsageSummary {
+            result_is_fixed: self.find_token(result_id).is_some_and(|token| range_is_singleton(token)),
+            ..Default::default()
+        };
         for constraint in &self.constraints {
             let from_symbol_id = constraint.from.as_ref().map(|symbol| symbol.id().id);
             if from_symbol_id == Some(source_symbol_id) {

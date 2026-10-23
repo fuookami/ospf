@@ -10,7 +10,7 @@ use crate::model::callback::Solution;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::model::HeuristicValue;
 use crate::solver::heuristic::result::Result;
-use crate::solver::heuristic::session::{SearchBudget, SearchCodec, SearchProblem, SearchRandom, SearchSlice, SearchStepResult, SearchTermination};
+use crate::solver::heuristic::session::{ArchiveCodec, SearchBudget, SearchProblem, SearchRandom, SearchSlice, SearchStepResult, SearchTermination};
 use crate::solver::heuristic::session::archive::ObjectiveComponents;
 use crate::solver::hyper_heuristic::config::*;
 use crate::solver::hyper_heuristic::components::{RewardContext, RuntimeComponents, SearchProgress, SliceAllocation};
@@ -229,7 +229,7 @@ pub struct HyperHeuristicRun<O: ObjectiveComponents, V: HeuristicValue> {
     transitions: Vec<SelectionTransition>,
     closed: bool,
     components: RuntimeComponents<O, V>,
-    archive_codec: Option<Box<dyn SearchCodec<Vec<Individual<O, V>>>>>,
+    archive_codec: Option<ArchiveCodec<O, V>>,
     completions: Option<Receiver<String>>,
     pending: BTreeMap<String, Dispatch<O, V>>,
     ready_completions: BTreeSet<String>,
@@ -486,8 +486,8 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         self.schedule.event(ScheduleEvent { kind: "begin".into(), ..Default::default() })?;
         self.active_start.get_or_insert_with(Instant::now);
         let result = boundary(|| self.advance_inner());
-        if let Err(error) = &result {
-            if self.diagnostics.is_empty() { self.diagnostics.push(error.to_string()); }
+        if let Err(error) = &result && self.diagnostics.is_empty() {
+            self.diagnostics.push(error.to_string());
         }
         // 失败和终止仍需恰好一次归并所有已派发片段 / Failure and termination still merge every dispatched slice exactly once
         let drained = if result.is_err() || self.termination().is_some() { self.drain_pending() } else { Ok(()) };
@@ -496,13 +496,13 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
         self.finish_schedule()?;
         result?;
         drained?;
-        if self.config.persistence.every_decisions > 0 && self.decisions % self.config.persistence.every_decisions == 0 {
-            if let Some(destination) = self.config.persistence.checkpoint_path.clone() {
-                let path = Path::new(&destination);
-                let key = path.file_name().and_then(|name| name.to_str()).ok_or_else(|| invalid("invalid checkpoint destination"))?;
-                let parent = path.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
-                FileSearchStore::new(parent)?.save_checkpoint(key, &self.checkpoint()?)?;
-            }
+        if self.config.persistence.every_decisions > 0 && self.decisions.is_multiple_of(self.config.persistence.every_decisions)
+            && let Some(destination) = self.config.persistence.checkpoint_path.clone()
+        {
+            let path = Path::new(&destination);
+            let key = path.file_name().and_then(|name| name.to_str()).ok_or_else(|| invalid("invalid checkpoint destination"))?;
+            let parent = path.parent().filter(|path| !path.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
+            FileSearchStore::new(parent)?.save_checkpoint(key, &self.checkpoint()?)?;
         }
         Ok(self.termination().is_none() || !self.pending.is_empty())
     }
@@ -669,8 +669,8 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
             failed: report.as_ref().map_or(true, |report| report.termination == SearchTermination::Failed || !report.diagnostics.is_empty()), ..Default::default() };
         let checked = self.schedule.event(event);
         let result = boundary(|| self.merge(dispatch, report, &[]));
-        if let Err(error) = &result {
-            if self.diagnostics.is_empty() { self.diagnostics.push(error.to_string()); }
+        if let Err(error) = &result && self.diagnostics.is_empty() {
+            self.diagnostics.push(error.to_string());
         }
         checked.and(result)
     }
@@ -678,10 +678,10 @@ impl<O: ObjectiveComponents + 'static, V: HeuristicValue> HyperHeuristicRun<O, V
     fn drain_pending(&mut self) -> Result<()> {
         self.observe_stop();
         let mut error = None;
-        if !self.pending.is_empty() {
-            if let Err(failure) = self.schedule.event(ScheduleEvent { kind: "drain".into(), stopped: self.observed_stopped, ..Default::default() }) {
-                self.schedule.diverged = true; error = Some(failure);
-            }
+        if !self.pending.is_empty()
+            && let Err(failure) = self.schedule.event(ScheduleEvent { kind: "drain".into(), stopped: self.observed_stopped, ..Default::default() })
+        {
+            self.schedule.diverged = true; error = Some(failure);
         }
         while !self.pending.is_empty() {
             if let Err(failure) = self.receive_pending() { self.schedule.diverged = true; error = Some(failure); }

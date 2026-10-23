@@ -9,10 +9,12 @@ mod flow;
 mod id;
 mod network;
 mod solver_value_adapter;
+mod topology;
 
 pub use capacity::{CapacityBounds, Flow, NodeBalance};
 pub use cost::NetworkCost;
 pub use flow::{FlowIndex, FlowValue};
 pub use id::{NetworkArcId, NetworkNodeId};
-pub use network::{NetworkArc, NetworkGraph, NetworkGraphBuilder, NetworkNode};
-pub use solver_value_adapter::NetworkSchedulingSolverValueAdapter;
+pub use network::{NetworkArc, NetworkGraph, NetworkGraphAccess, NetworkGraphBuilder, NetworkGraphView, NetworkNode};
+pub use solver_value_adapter::{NetworkSchedulingSolverValueAdapter, validate_linear_units};
+pub use topology::{NetworkTopology, ShortestPathResult};

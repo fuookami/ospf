@@ -866,8 +866,8 @@ mod tests {
             let count = mask.count_ones() as usize;
             for result in 0..=1 {
                 let mut values = vec![0.0; inputs.len() + 1];
-                for index in 0..inputs.len() {
-                    values[index] = ((mask >> index) & 1) as f64;
+                for (index, value) in values.iter_mut().enumerate().take(inputs.len()) {
+                    *value = ((mask >> index) & 1) as f64;
                 }
                 values[inputs.len()] = result as f64;
                 let feasible = rows.iter().all(|row| constraints_hold(row, &values));
@@ -908,8 +908,8 @@ mod tests {
                 let mut feasible_results = 0;
                 for branch_mask in 0..(1 << helper_count) {
                     let mut values = vec![0.0; inputs.len() + helper_count];
-                    for index in 0..inputs.len() {
-                        values[index] = ((mask >> index) & 1) as f64;
+                    for (index, value) in values.iter_mut().enumerate().take(inputs.len()) {
+                        *value = ((mask >> index) & 1) as f64;
                     }
                     for index in 0..helper_count {
                         values[inputs.len() + index] = ((branch_mask >> index) & 1) as f64;

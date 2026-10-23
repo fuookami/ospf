@@ -26,7 +26,7 @@ Explicit non-goals:
 | `src/framework/demo1` | Framework routing/bandwidth context example. |
 | `src/framework/demo2` | Adaptive Benders / MILP fallback behavior contract example. |
 | `src/framework/demo3` | CSP1D-facing demo scaffold. |
-| `src/framework/demo4` | Gantt-scheduling-facing scaffold and domain layout experiment. |
+| `src/framework/demo4` | Lossless flight recovery, managed Gantt master, Network path pricing and actual result extraction. |
 | `src/framework/demo5` | Solomon parser/adapter and VRPTW Branch-and-Price solver wiring. |
 
 ## Public API
@@ -42,7 +42,7 @@ The crate is primarily executable. The stable surface is its command names and d
 | `framework:demo1` | Framework routing/bandwidth context demo. | Gurobi feature |
 | `framework:demo2` | Adaptive Benders and MILP fallback demo. | Gurobi feature |
 | `framework:demo3` | CSP1D scaffold entry. | Gurobi feature |
-| `framework:demo4` | Gantt scaffold entry. | Gurobi feature |
+| `framework:demo4` | Flight-recovery domain showcase or actual Gantt column-generation application. | `demo4-offline` or `demo4-gurobi-cg` |
 | `framework:demo5` | VRPTW Branch-and-Price demo. | `demo5-gurobi-bp` or `demo5-scip-bp` |
 
 ## Commands
@@ -65,7 +65,7 @@ cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
-cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+cargo +nightly-2026-08-01 run -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- framework:demo4
 cargo run -p ospf-rust-example --features demo5-gurobi-bp -- framework:demo5
 cargo run -p ospf-rust-example --features demo5-scip-bp -- framework:demo5
 ```
@@ -80,9 +80,26 @@ cargo check -p ospf-rust-example --features demo5-scip-bp
 
 When backend feature is not enabled, running backend demos returns the hint `rerun with --features backend-gurobi`.
 
-`framework:demo4` currently stays as a scaffold command entry. Gantt-scheduling parity is intentionally postponed and not marked as completed functionality.
+`framework:demo4` runs the recovery domain showcase under `demo4-offline` and additionally executes
+the actual Gantt application under `demo4-gurobi-cg`: automatic seeds, RMP, complete current-model
+duals, Network path pricing, column insertion, final MILP and production validation. It is not a
+private simplified CG loop and does not derive global integer optimality from finite-master reports.
+The [paired Demo4 documentation](src/framework/demo4/README.md) describes actual records, links/
+passengers, fleet, restrictions, flow controls, aircraft/time locks and snapshot boundaries.
+Offline tests require no commercial solver; native gates must actually execute:
 
-`framework:demo5` uses an inline Solomon fixture and exercises parser, adapter, route generation, restricted master, and Branch-and-Price wiring. The integration targets cover target-level fixtures/parser checks; the library gates below are the commands that execute the direct-MIP cross-check, five-customer full-route master oracle, 100-customer smoke, and strict-proof fixture:
+```powershell
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-offline -- --list
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-offline
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- --list
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- --include-ignored
+```
+
+`framework:demo5` uses an inline Solomon fixture and exercises parser, adapter, route generation,
+restricted master and Branch-and-Price wiring. The corresponding integration targets also execute
+native solves, route validation and the small full-route oracle beyond fixture/parser checks.
+Library gates separately cover the 25-customer direct-MIP cross-check, 100-customer smoke, strict-proof
+fixture and SCIP legal terminal states. Both levels must run; neither replaces the other:
 
 ```powershell
 cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_25_branch_and_price_matches_direct_mip_objective -- --include-ignored

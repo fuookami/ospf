@@ -33,7 +33,7 @@ pub use protocol::{
     SearchStepResult, SearchTermination,
 };
 pub use runner_session::{
-    HookedSkeleton, RunnerSession, SessionCodecs, SessionHooks, broadcast_observers,
+    ArchiveCodec, HookedSkeleton, RunnerSession, SessionCodecs, SessionHooks, SessionImporter, broadcast_observers,
     compare_objective, solution_of, values_of,
 };
 

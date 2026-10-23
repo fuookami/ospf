@@ -21,6 +21,8 @@ use crate::solver::heuristic::session::budget::SearchSlice;
 use crate::solver::heuristic::session::protocol::{Result, SearchProblem};
 use crate::solver::heuristic::session::runner_session::SessionHooks;
 
+type EvaluationMeter<'a, O, V> = (&'a SearchSlice, &'a RefCell<Vec<Individual<O, V>>>);
+
 /// 单目标问题适配器：实现骨架所需的 `ObjectiveModel<V, V>` / Single-objective adapter implementing the skeleton's `ObjectiveModel<V, V>`
 ///
 /// 骨架固定要求 `ObjectiveModel<V, V>`，因此单目标与多目标各有一个适配器；两者共享同一份变量能力代码（宏展开），
@@ -33,7 +35,7 @@ where
     V: HeuristicValue,
 {
     problem: &'p P,
-    meter: Option<(&'p SearchSlice, &'p RefCell<Vec<Individual<f64, V>>>)>,
+    meter: Option<EvaluationMeter<'p, f64, V>>,
     errors: Option<&'p RefCell<Vec<String>>>,
     order: Vec<VariableId>,
     marker: std::marker::PhantomData<fn() -> V>,
@@ -201,7 +203,7 @@ where
     V: HeuristicValue,
 {
     problem: &'p P,
-    meter: Option<(&'p SearchSlice, &'p RefCell<Vec<Individual<Vec<f64>, V>>>)>,
+    meter: Option<EvaluationMeter<'p, Vec<f64>, V>>,
     errors: Option<&'p RefCell<Vec<String>>>,
     order: Vec<VariableId>,
     marker: std::marker::PhantomData<fn() -> V>,
@@ -640,13 +642,13 @@ fn fill_by_reference<V>(
         }
         let mut target_reference = 0;
         let mut fewest = usize::MAX;
-        for index in 0..niche_count.len() {
-            if niche_count[index] < fewest
+        for (index, &count) in niche_count.iter().enumerate() {
+            if count < fewest
                 && available
                     .iter()
                     .any(|candidate| nearest_reference(&normalise(candidate)) == index)
             {
-                fewest = niche_count[index];
+                fewest = count;
                 target_reference = index;
             }
         }

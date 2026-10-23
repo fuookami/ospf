@@ -63,6 +63,7 @@ where
     V: HeuristicValue,
 {
     /// 创建配置 / Create a configuration
+    #[expect(clippy::too_many_arguments, reason = "保留既有公开算子组合构造接口 / Preserve the existing public operator-composition constructor")]
     pub fn new(
         size: usize,
         stopping: Box<dyn StoppingCriterion>,

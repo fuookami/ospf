@@ -50,5 +50,7 @@ pub use flight_task_bunch::*;
 pub use flight_type::*;
 /// 维修任务模型重导出 / Maintenance task model re-exports
 pub use maintenance::*;
+/// 恢复分配记录 / Recovery assignment records.
+pub use recovery::*;
 /// 中转任务模型重导出 / Transfer task model re-exports
 pub use transfer::*;

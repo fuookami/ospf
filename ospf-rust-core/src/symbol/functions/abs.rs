@@ -676,8 +676,8 @@ where
     fn usage_binding(&self) -> Option<StructureUsageBinding> {
         Some(StructureUsageBinding::new(
             self.source_symbol_id,
-            self.result.clone(),
-            vec![self.side.clone()],
+            self.result,
+            vec![self.side],
         ))
     }
 
@@ -719,7 +719,7 @@ where
             fingerprint_float(self.big_m.positive_branch),
             fingerprint_float(self.big_m.negative_branch),
             domain,
-            format!("{input_constant}({})", monomials.join(",")),
+            format_args!("{input_constant}({})", monomials.join(",")),
         ))
     }
 
@@ -1522,13 +1522,13 @@ mod tests {
         };
         let domain = InputDomainProof::new(-3.0, 4.0).unwrap();
 
-        let baseline = structure("abs_fp", result.clone(), side.clone(), big_m, Some(domain))
+        let baseline = structure("abs_fp", result, side, big_m, Some(domain))
             .fingerprint()
             .expect("abs should provide a fingerprint");
 
         // 相同内容必须给出相同指纹（跨实例稳定）。
         // Identical content must give an identical fingerprint across instances.
-        let identical = structure("abs_fp", result.clone(), side.clone(), big_m, Some(domain))
+        let identical = structure("abs_fp", result, side, big_m, Some(domain))
             .fingerprint()
             .unwrap();
         assert_eq!(baseline, identical);
@@ -1537,8 +1537,8 @@ mod tests {
         // Any semantic field change must change the fingerprint.
         let different_name = structure(
             "abs_fp_other",
-            result.clone(),
-            side.clone(),
+            result,
+            side,
             big_m,
             Some(domain),
         )
@@ -1548,7 +1548,7 @@ mod tests {
 
         let different_columns = structure(
             "abs_fp",
-            result.clone(),
+            result,
             VariableId::standalone(7_202),
             big_m,
             Some(domain),
@@ -1559,8 +1559,8 @@ mod tests {
 
         let different_big_m = structure(
             "abs_fp",
-            result.clone(),
-            side.clone(),
+            result,
+            side,
             AbsBranchBigM {
                 positive_branch: 6.0,
                 negative_branch: 9.0,
@@ -1575,8 +1575,8 @@ mod tests {
         // Tightening or dropping the input-domain proof changes the fingerprint too.
         let tightened = structure(
             "abs_fp",
-            result.clone(),
-            side.clone(),
+            result,
+            side,
             big_m,
             Some(InputDomainProof::new(-1.0, 2.0).unwrap()),
         )

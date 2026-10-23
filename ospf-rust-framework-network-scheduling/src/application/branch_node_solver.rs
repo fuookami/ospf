@@ -13,7 +13,7 @@ use ospf_rust_core::solver::{
 };
 use ospf_rust_quantities::unit::UnitConversionValue;
 
-use crate::domain::route_compilation::{RouteCompilationContext, RouteCompilationExtension};
+use crate::domain::route_compilation::{RouteCompilationContext, RouteCompilationExtensionFactory};
 use crate::domain::route_generation::{
     DefaultLabelDominancePolicy, DefaultPricingColumnSelector, EspprcPricer, InitialRouteGenerator,
     PricingRequest, RouteGraphBuilder,
@@ -57,7 +57,9 @@ pub struct BranchNodeSolverConfig<
     /// 负列选择策略 / Negative-column selector.
     pub column_selector: S,
     /// 额外路线编译扩展 / Extra route-compilation extensions.
-    pub extensions: Vec<Arc<dyn RouteCompilationExtension<V>>>,
+    pub extension_factories: Vec<Arc<dyn RouteCompilationExtensionFactory<V>>>,
+    /// 无模型注册态的共享声明行 / Shared declared rows without model-registration state.
+    pub pricing_rows: Arc<crate::domain::vrp::RoutePricingRows<V>>,
 }
 
 /// 可注入 LP 求解端口 / Injectable LP-solving port.
@@ -316,6 +318,7 @@ where
                     generated_columns,
                 ));
             }
+            compilation.aggregation.validate_pricing_model(model)?;
             let request = LinearProgrammingRequest {
                 node_id: node.id,
                 phase,
@@ -336,8 +339,7 @@ where
                         ))
                     })?);
                     if phase == crate::domain::vrp::PricingPhase::PhaseOne
-                        && lp.objective.unwrap_or(f64::INFINITY)
-                            <= self.instance.tolerances.feasibility
+                        && compilation.is_phase_one_converged(model, self.instance.tolerances.feasibility)?
                     {
                         return Ok(PhaseResult::complete(
                             lp,
@@ -354,7 +356,8 @@ where
                         self.config.arc_cost_calculator.clone(),
                         self.config.route_cost_policy.clone(),
                     )
-                    .with_arc_feasibility_policy(self.config.arc_feasibility_policy.clone());
+                    .with_arc_feasibility_policy(self.config.arc_feasibility_policy.clone())
+                    .with_pricing_rows(compilation.aggregation.pricing_rows.catalog().clone());
                     let pricer = EspprcPricer::with_policies(
                         graph_builder,
                         self.config.dominance_policy.clone(),
@@ -385,8 +388,12 @@ where
                             max_depth: None,
                         };
                         let pricing = pricer.price_request(&request)?;
+                        // 穷尽搜索与无改进不同；输出截取不能把已发现改进变成证明。
+                        // Exhaustion is not no-improvement; output truncation must not turn a known improvement into proof.
+                        let omitted_improvement = pricing.routes.is_empty()
+                            && pricing.min_reduced_cost < -self.instance.tolerances.pricing;
+                        pricing_complete &= pricing.exact_pricing_complete && !omitted_improvement;
                         new_routes.extend(pricing.routes);
-                        pricing_complete &= pricing.exact_pricing_complete;
                         if pricing.interrupted {
                             let status = if context
                                 .deadline
@@ -483,8 +490,8 @@ where
         let mut model = MetaModel::<f64>::new(&format!("node_{}", node.id));
         let mut compilation = RouteCompilationContext::with_extensions(
             self.instance.clone(),
-            self.config.extensions.clone(),
-        );
+            self.config.extension_factories.iter().map(|factory| factory.create()).collect::<Result<_>>()?,
+        ).with_pricing_rows(self.config.pricing_rows.clone())?;
         compilation.register(&mut model)?;
 
         let inherited_columns = inherited_columns

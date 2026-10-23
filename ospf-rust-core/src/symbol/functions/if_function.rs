@@ -692,8 +692,8 @@ where
         // externally-referenced and omittable analysis.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
-            vec![self.indicator.clone()],
+            self.result,
+            vec![self.indicator],
         ))
     }
 

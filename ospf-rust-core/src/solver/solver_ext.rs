@@ -473,7 +473,7 @@ fn ensure_async_cancellation_handle(
     let cancellation_handle = options
         .cancellation_handle
         .clone()
-        .unwrap_or_else(SolveHandle::new);
+        .unwrap_or_default();
     options.cancellation_handle = Some(cancellation_handle.clone());
     (options, cancellation_handle)
 }

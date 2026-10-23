@@ -89,7 +89,7 @@ where
                 let spiral_length = (a * 2.0 - 1.0) * unit(entropy);
 
                 let mut child = Vec::with_capacity(current.len());
-                for dimension in 0..current.len() {
+                for (dimension, _) in current.iter().enumerate() {
                     let position = to_f64(&current[dimension]);
                     let target = to_f64(&reference[dimension]);
                     let value = if spiral {
@@ -166,7 +166,7 @@ where
                 let jump = 2.0 * (1.0 - unit(entropy));
 
                 let mut child = Vec::with_capacity(current.len());
-                for dimension in 0..current.len() {
+                for (dimension, _) in current.iter().enumerate() {
                     let position = to_f64(&current[dimension]);
                     let best_position = to_f64(&best[dimension]);
                     let value = if energy.abs() >= 1.0 {
@@ -262,7 +262,7 @@ where
                 let third = unit(entropy);
 
                 let mut child = Vec::with_capacity(current.len());
-                for dimension in 0..current.len() {
+                for (dimension, _) in current.iter().enumerate() {
                     let (lower, upper) = model.bounds_at(dimension);
                     let width = width_of(lower, upper);
                     let origin = origin_of(lower);

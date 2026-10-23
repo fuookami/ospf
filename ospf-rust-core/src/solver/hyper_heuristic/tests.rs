@@ -420,7 +420,7 @@ impl SearchProblem<f64, f64> for ScheduledProblem {
         self.inner.initial_solutions(amount)
     }
     fn objective(&self, solution: &Solution<f64>) -> Option<f64> {
-        if self.slow { if let Some(entered) = &self.entered { let _ = entered.send(()); } }
+        if self.slow && let Some(entered) = &self.entered { let _ = entered.send(()); }
         if self.slow { std::thread::sleep(std::time::Duration::from_millis(3)); }
         self.inner.objective(solution)
     }

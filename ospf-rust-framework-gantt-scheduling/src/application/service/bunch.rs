@@ -311,7 +311,7 @@ where
                 &self.feasibility_policy,
             )?
             .into_iter()
-            .filter_map(|mut entry| {
+            .filter_map(|entry| {
                 let group = BranchGroup {
                     executor_id: entry.bunch.executor_id.clone(),
                     slot_index: Some(entry.slot_index),
@@ -319,16 +319,12 @@ where
                 if request.fixed_groups.contains(&group) {
                     return None;
                 }
-                if let Some(price) = request
-                    .executor_slot_shadow_prices
-                    .get(&(entry.bunch.executor_id.clone(), entry.slot_index))
-                {
-                    entry.bunch.cost -= *price;
-                }
                 Some(entry.bunch)
             })
             .collect::<Vec<_>>();
-        generated.sort_by(|lhs, rhs| lhs.cost.total_cmp(&rhs.cost));
+        let reduced_cost = |bunch: &BunchEntry<E::Id>| self.cost_policy.reduced_cost(bunch, &request.shadow_prices)
+            - bunch.slot_index.and_then(|slot| request.executor_slot_shadow_prices.get(&(bunch.executor_id.clone(), slot))).copied().unwrap_or(0.0);
+        generated.sort_by(|lhs, rhs| reduced_cost(lhs).total_cmp(&reduced_cost(rhs)));
         Ok(generated)
     }
 }
@@ -525,6 +521,7 @@ mod tests {
             cost_policy,
         );
         let bunch = BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0],
@@ -745,7 +742,7 @@ mod tests {
     }
 
     #[test]
-    fn test_isolated_branch_search_solution_respects_fixed_state() -> GanttResult<()> {
+    fn test_isolated_branch_search_rejects_nonexistent_fixed_column() -> GanttResult<()> {
         let context = BasicBunchCompilationContext::new(1, vec!["exec_1".to_string()], false);
         let mut algorithm = create_bunch_branch_and_price(
             context,
@@ -769,10 +766,9 @@ mod tests {
                 cancellation_handle: None,
             },
             || MetaModel::<f64>::new("test_service_fixed_state_solution"),
-        )?;
+        );
 
-        assert_eq!(result.incumbent_objective, Some(0.0));
-        assert_eq!(result.incumbent.unwrap().selected_bunches, vec![3]);
+        assert!(result.is_err());
         assert!(algorithm.model_state.is_fixed(3));
         assert!(algorithm.model_state.is_hidden(2));
         Ok(())
@@ -787,6 +783,7 @@ mod tests {
     #[derive(Debug, Clone, Default)]
     struct FinalMilpFlowSolver {
         state: Arc<Mutex<FinalMilpFlowState>>,
+        fail_final_milp: bool,
     }
 
     impl FinalMilpFlowSolver {
@@ -804,11 +801,14 @@ mod tests {
                 .milp_variable_counts
                 .push(variable_count);
 
-            if variable_count <= 1 {
-                FeasibleSolution::new(-10.0, vec![1.0; variable_count])
-            } else {
-                FeasibleSolution::new(1.0, vec![1.0; variable_count])
-            }
+            Self::feasible_solution(model)
+        }
+
+        fn feasible_solution(model: &LinearTriadModel) -> FeasibleSolution {
+            let mut values = vec![0.0; model.num_variables()];
+            if let Some(value) = values.last_mut() { *value = 1.0; }
+            let objective = model.c.iter().zip(&values).map(|(coefficient, value)| coefficient * value).sum();
+            FeasibleSolution::new(objective, values)
         }
 
         fn solve_lp_model(&self, model: &LinearTriadModel) -> LPResult {
@@ -819,9 +819,9 @@ mod tests {
                 .lp_variable_counts
                 .push(variable_count);
             LPResult::new(
-                FeasibleSolution::new(5.0, vec![0.0; variable_count]),
+                Self::feasible_solution(model),
                 LinearDualSolution::new(
-                    vec![0.0; model.basic.constraint_names.len().max(1)],
+                    vec![0.0; model.num_constraints()],
                     Vec::new(),
                 ),
             )
@@ -831,17 +831,21 @@ mod tests {
             &self,
             model: &LinearTriadModel,
         ) -> CoreResult<SolveReport<f64>> {
+            if self.fail_final_milp && model.num_variables() > 1 {
+                return Err(ospf_rust_core::error::ModelError::ConstraintConflict("final MILP fixture failure".into()).into());
+            }
             let solution = self.solve_milp_model(model);
             let mut report = solution.to_solve_report(self.name())?;
-            Self::certify(&mut report)?;
+            if model.c.iter().all(|coefficient| *coefficient >= solution.obj) {
+                Self::certify(&mut report)?;
+            }
             Ok(report)
         }
 
         fn solve_lp_report_model(&self, model: &LinearTriadModel) -> CoreResult<SolveReport<f64>> {
             let result = self.solve_lp_model(model);
-            let mut report = result.to_solve_report(self.name())?;
-            Self::certify(&mut report)?;
-            Ok(report)
+            // 流程夹具不提供模型绑定证书，不能声称 LP 最优。 / This flow fixture supplies no model-bound certificate and cannot claim LP optimality.
+            result.to_solve_report(self.name())
         }
     }
 
@@ -925,7 +929,7 @@ mod tests {
     }
 
     #[derive(Debug, Clone)]
-    struct SingleIterationBunchPolicy;
+    struct SingleIterationBunchPolicy(f64);
 
     impl BunchCGPolicy for SingleIterationBunchPolicy {
         fn build_shadow_price_map(&self) -> HashMap<usize, f64> {
@@ -949,10 +953,11 @@ mod tests {
             executor_ids
                 .first()
                 .map(|executor_id| BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: executor_id.clone(),
                     task_indices: vec![0],
-                    cost: 1.0,
+                    cost: self.0,
                     iteration,
                     slot_index: None,
                 })
@@ -962,8 +967,12 @@ mod tests {
     }
 
     #[test]
-    fn test_fresh_model_tree_search_runs_final_milp_end_to_end() -> GanttResult<()> {
-        let context = BasicBunchCompilationContext::new(1, vec!["exec_1".to_string()], false);
+    fn test_heuristic_tree_search_runs_final_milp_without_certifying_children() -> GanttResult<()> {
+        let mut context = BasicBunchCompilationContext::new(1, vec!["exec_1".to_string()], false);
+        context.compilation.configure_master(crate::domain::bunch_compilation::BunchMasterConfiguration {
+            cancellation_costs: vec![Some(10.0)],
+            executor_selection: crate::domain::bunch_compilation::BunchExecutorSelection::AtMostOne,
+        })?;
         let solver = FinalMilpFlowSolver::default();
         let solver_state = solver.state.clone();
         let configuration = ColumnGenerationPolicy {
@@ -974,7 +983,7 @@ mod tests {
         let mut algorithm = create_bunch_branch_and_price(
             context,
             solver,
-            SingleIterationBunchPolicy,
+            SingleIterationBunchPolicy(1.0),
             vec!["exec_1".to_string()],
             configuration,
         );
@@ -993,7 +1002,9 @@ mod tests {
         )?;
 
         let trace = solver_state.lock().unwrap().clone();
-        assert_eq!(result.processed_nodes, 3);
+        assert_eq!(result.processed_nodes, 1);
+        assert!(!result.converged);
+        assert_eq!(result.certified_lower_bound, None);
         assert_eq!(result.incumbent_objective, Some(1.0));
         assert_eq!(result.incumbent.as_ref().unwrap().selected_bunches, vec![0],);
         assert!(result.incumbent.as_ref().unwrap().canceled_tasks.is_empty());
@@ -1004,6 +1015,68 @@ mod tests {
         assert_eq!(algorithm.context.column_count(), 0);
         assert!(algorithm.context.compilation.base.y_indices.is_empty());
         assert!(algorithm.context.compilation.bunch_x_map.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn zero_initial_objective_still_prices_and_accepts_negative_cost_bunch() -> GanttResult<()> {
+        let mut context = BasicBunchCompilationContext::new(1, vec!["exec_1"], false);
+        context.compilation.configure_master(crate::domain::bunch_compilation::BunchMasterConfiguration {
+            cancellation_costs: vec![Some(0.0)],
+            executor_selection: crate::domain::bunch_compilation::BunchExecutorSelection::AtMostOne,
+        })?;
+        let solver = FinalMilpFlowSolver::default();
+        let state = solver.state.clone();
+        let mut algorithm = create_bunch_branch_and_price(context, solver, SingleIterationBunchPolicy(-2.0), vec!["exec_1"], ColumnGenerationPolicy {
+            max_iterations: 1, ..Default::default()
+        });
+        let solution = algorithm.run(&mut MetaModel::new("zero-is-not-convergence"))?;
+        assert_eq!(solution.selected_bunches, vec![0]);
+        assert!(solution.canceled_tasks.is_empty());
+        assert_eq!(algorithm.best_obj, -2.0);
+        assert_eq!(algorithm.iteration.ip_obj_history, vec![0.0, -2.0]);
+        assert_eq!(algorithm.iteration.upper_bound, Some(-2.0));
+        assert_eq!(algorithm.iteration.lower_bound, None);
+        assert_eq!(state.lock().unwrap().lp_variable_counts, vec![1, 2]);
+        Ok(())
+    }
+
+    #[test]
+    fn final_milp_failure_is_not_hidden_by_an_earlier_incumbent() -> GanttResult<()> {
+        let mut context = BasicBunchCompilationContext::new(1, vec!["exec_1"], false);
+        context.compilation.configure_master(crate::domain::bunch_compilation::BunchMasterConfiguration {
+            cancellation_costs: vec![Some(10.0)],
+            executor_selection: crate::domain::bunch_compilation::BunchExecutorSelection::AtMostOne,
+        })?;
+        let mut algorithm = create_bunch_branch_and_price(context, FinalMilpFlowSolver { fail_final_milp: true, ..Default::default() },
+            SingleIterationBunchPolicy(1.0), vec!["exec_1"], ColumnGenerationPolicy { max_iterations: 1, ..Default::default() });
+        assert!(algorithm.run(&mut MetaModel::new("final-failure")).is_err());
+        assert_eq!(algorithm.iteration.ip_obj_history, vec![10.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn retained_incumbent_is_revalidated_extended_and_not_paired_with_an_old_certificate() -> GanttResult<()> {
+        let mut context = BasicBunchCompilationContext::new(1, vec!["exec_1"], false);
+        context.compilation.configure_master(crate::domain::bunch_compilation::BunchMasterConfiguration {
+            cancellation_costs: vec![Some(0.0)],
+            executor_selection: crate::domain::bunch_compilation::BunchExecutorSelection::AtMostOne,
+        })?;
+        let mut algorithm = create_bunch_branch_and_price(context, FinalMilpFlowSolver::default(),
+            SingleIterationBunchPolicy(1.0), vec!["exec_1"], ColumnGenerationPolicy { max_iterations: 1, ..Default::default() });
+        let mut model = MetaModel::new("retained-incumbent-current-model");
+        let solution = algorithm.run(&mut model)?;
+        assert!(solution.selected_bunches.is_empty());
+        assert_eq!(solution.canceled_tasks, vec![0]);
+        assert_eq!(algorithm.best_obj, 0.0);
+        let report = algorithm.incumbent_report().unwrap();
+        assert!(!report.is_optimal());
+        assert!(report.proof.is_none());
+        assert_eq!(report.solution.as_ref().unwrap().values, vec![1.0, 0.0]);
+        assert_eq!(algorithm.lifecycle.solution(), Some([1.0, 0.0].as_slice()));
+        let extracted = algorithm.context.analyze_solution_checked(&model, &report.solution.as_ref().unwrap().values)?;
+        assert_eq!(extracted.selected_bunches, solution.selected_bunches);
+        assert_eq!(extracted.canceled_tasks, solution.canceled_tasks);
         Ok(())
     }
 }

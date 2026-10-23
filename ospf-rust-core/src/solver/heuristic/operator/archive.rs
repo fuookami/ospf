@@ -82,7 +82,7 @@ where
         match (previous_best, self.entries.first()) {
             (None, Some(_)) => true,
             (Some(previous), Some(current)) => {
-                compare_individuals(model, &current, &previous) == std::cmp::Ordering::Less
+                compare_individuals(model, current, &previous) == std::cmp::Ordering::Less
             }
             _ => false,
         }
@@ -146,7 +146,7 @@ where
             let better = match &self.entry {
                 None => true,
                 Some(current) => {
-                    compare_individuals(model, &candidate, &current)
+                    compare_individuals(model, &candidate, current)
                         == std::cmp::Ordering::Less
                 }
             };

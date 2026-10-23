@@ -10,6 +10,10 @@ pub struct RuleContext {
     pub restrictions: Vec<super::model::Restriction>,
 }
 
+impl Default for RuleContext {
+    fn default() -> Self { Self::new() }
+}
+
 impl RuleContext {
     /// 创建空的规则上下文 / Create an empty rule context
     pub fn new() -> Self {

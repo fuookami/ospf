@@ -196,7 +196,7 @@ impl<O: Clone, V: HeuristicValue> AcceptancePolicy<O, V> for AutoAcceptance<O> {
         self.history.push_back(if accepted { candidate.fitness.clone() } else { current.clone() });
         while self.history.len() > self.capacity { self.history.pop_front(); }
         self.decisions += 1;
-        if self.decisions % self.capacity as u64 == 0 {
+        if self.decisions.is_multiple_of(self.capacity as u64) {
             self.span = if self.improvements == 0 { (self.span * 2).min(self.capacity) }
                 else if self.improvements * 4 >= self.capacity { (self.span / 2).max(2) } else { self.span };
             self.improvements = 0;

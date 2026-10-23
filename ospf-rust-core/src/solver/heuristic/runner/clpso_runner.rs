@@ -258,7 +258,7 @@ where
                 let mut velocity = vec![0.0; dimension];
                 let mut solution = particle.individual.solution.clone();
 
-                for index in 0..dimension {
+                for (index, velocity_component) in velocity.iter_mut().enumerate() {
                     let exemplar_index = if refresh {
                         random_index(state.len(), entropy)
                     } else {
@@ -281,7 +281,7 @@ where
                             * unit(entropy)
                             * (target - current);
                     speed = speed.clamp(-max_velocity, max_velocity);
-                    velocity[index] = speed;
+                    *velocity_component = speed;
                     let (lower, upper) = model.bounds_at(index);
                     set_value_at(
                         &mut solution,

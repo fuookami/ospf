@@ -228,7 +228,7 @@ where
                 let mut velocity = vec![0.0; order.len()];
                 let mut solution = particle.individual.solution.clone();
 
-                for index in 0..order.len() {
+                for (index, velocity_component) in velocity.iter_mut().enumerate() {
                     let current = value_at(&particle.individual.solution, &order, index)
                         .map(|value| to_f64(&value))
                         .unwrap_or(0.0);
@@ -244,7 +244,7 @@ where
                         + personal * unit(entropy) * (personal_target - current)
                         + social * unit(entropy) * (global_target - current);
                     speed = speed.clamp(-velocity_limit, velocity_limit);
-                    velocity[index] = speed;
+                    *velocity_component = speed;
 
                     let (lower, upper) = model.bounds_at(index);
                     set_value_at(

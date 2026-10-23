@@ -3,8 +3,6 @@
 pub mod bunch_compilation;
 /// 编组生成领域模块 / Bunch generation domain module
 pub mod bunch_generation;
-/// 编组选择领域模块 / Bunch selection domain module
-pub mod bunch_selection;
 /// 货运领域模块 / Cargo domain module
 pub mod cargo;
 /// 机组领域模块 / Crew domain module

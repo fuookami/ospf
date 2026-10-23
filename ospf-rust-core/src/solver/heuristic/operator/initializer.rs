@@ -133,7 +133,7 @@ where
             .iter()
             .map(|solution| {
                 let mut result = solution.clone();
-                for index in 0..order.len() {
+                for (index, id) in order.iter().enumerate() {
                     let (lower, upper) = model.bounds_at(index);
                     let (Some(lower), Some(upper)) = (lower, upper) else {
                         continue;
@@ -141,9 +141,9 @@ where
                     if !(lower.is_finite() && upper.is_finite()) {
                         continue;
                     }
-                    if let Some(value) = solution.get(&order[index]) {
+                    if let Some(value) = solution.get(id) {
                         let mirror = lower + upper - to_f64(value);
-                        result.insert(order[index], from_f64(mirror));
+                        result.insert(*id, from_f64(mirror));
                     }
                 }
                 result

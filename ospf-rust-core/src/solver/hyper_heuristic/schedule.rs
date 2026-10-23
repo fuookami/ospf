@@ -133,8 +133,8 @@ impl ScheduleControl {
             if source.configuration != configuration || source.problem != problem { return Err(invalid("incompatible schedule identity")); }
         }
         let history = self.history.get_or_insert_with(|| ScheduleLog { version: 1, configuration, problem, events: Vec::new(), checksum: String::new() });
-        if let Some(source) = source {
-            if !source.events.starts_with(&history.events) { return Err(invalid("schedule checkpoint prefix mismatch")); }
+        if let Some(source) = source && !source.events.starts_with(&history.events) {
+            return Err(invalid("schedule checkpoint prefix mismatch"));
         }
         self.source = source.cloned(); self.bound = true;
         Ok(())

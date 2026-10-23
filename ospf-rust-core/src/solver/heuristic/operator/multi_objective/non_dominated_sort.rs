@@ -94,8 +94,7 @@ impl CrowdingDistance {
         }
 
         let mut distance = vec![0.0; size];
-        let dimension = objectives.first().map(|row| row.len()).unwrap_or(0);
-        for index in 0..dimension {
+        for (index, _) in objectives[0].iter().enumerate() {
             let mut order: Vec<usize> = (0..size).collect();
             order.sort_by(|lhs, rhs| {
                 objectives[*lhs][index]

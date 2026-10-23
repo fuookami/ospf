@@ -370,18 +370,10 @@ impl FixedIntegerLpSensitivityCache {
 }
 
 /// 固定整数 LP 局部有效性分析器 / Fixed-integer LP local-effectiveness analyzer.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct FixedIntegerLpSensitivityAnalyzer {
     /// 分析配置 / Analysis configuration.
     config: FixedIntegerLpSensitivityConfig,
-}
-
-impl Default for FixedIntegerLpSensitivityAnalyzer {
-    fn default() -> Self {
-        Self {
-            config: FixedIntegerLpSensitivityConfig::default(),
-        }
-    }
 }
 
 impl FixedIntegerLpSensitivityAnalyzer {

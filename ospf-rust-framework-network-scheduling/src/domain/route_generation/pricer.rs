@@ -1,23 +1,23 @@
 //! ESPPRC 精确定价器 / ESPPRC exact pricer.
 
-use std::collections::VecDeque;
-
-use ospf_rust_core::solver::value::{SolveValue, SolveValueConversionPolicy};
+use std::cell::Cell;
 use ospf_rust_quantities::Quantity;
 use ospf_rust_quantities::unit::UnitConversionValue;
-
+use ospf_rust_core::solver::value::{SolveValue, SolveValueConversionPolicy};
+use crate::domain::path::{PathProblem, PathSearchBudget, PathSearchCompletion, PathSearchContext};
+use crate::domain::route_generation::graph::{PricingGraph, RouteGraphBuilder};
 use crate::domain::route_generation::model::{
     EspprcLabel, ForbiddenCustomers, LabelStatistics, PricingRequest, PricingResult,
     TruncationReason, VehiclePricingDiagnostic, VisitedCustomers,
 };
+use crate::domain::route_generation::path_search::{self, PricingLabel, PricingPathPolicy};
 use crate::domain::route_generation::policy::{
     DefaultLabelDominancePolicy, DefaultPricingColumnSelector, LabelDominancePolicy,
     PricingColumnSelector,
 };
-use crate::domain::vrp::{Route, RouteStop, RouteValidator};
+use crate::domain::vrp::{Route, RoutePricingArc, RouteStop, RouteValidator};
 use crate::error::{NetworkSchedulingError, Result};
-
-use super::graph::{PricingGraph, RouteGraphBuilder};
+use crate::infrastructure::NetworkSchedulingSolverValueAdapter;
 
 /// ESPPRC 标签定价器 / ESPPRC label-based pricing service.
 pub struct EspprcPricer<
@@ -97,6 +97,17 @@ where
             ));
         }
         validate_reduced_cost_snapshot(graph, request)?;
+        self.graph_builder.pricing_rows.validate_dual_keys(&request.duals.extension)?;
+        let adapter = NetworkSchedulingSolverValueAdapter::<V>::default();
+        for arc in &graph.arcs {
+            let coefficients: std::collections::BTreeMap<_, _> = self.graph_builder.pricing_rows.arc_coefficients(&RoutePricingArc {
+                instance: &request.instance, vehicle_type: &request.vehicle_type_id, arc: &arc.arc_id,
+                from: &graph.nodes[arc.from].node_id, to: &graph.nodes[arc.to].node_id,
+            })?.into_iter().map(|(id, value)| Ok((id, adapter.to_solver(&value)?))).collect::<Result<_>>()?;
+            if coefficients != arc.row_coefficients {
+                return Err(NetworkSchedulingError::pricing("扩展行提供器与图快照不一致 / extension-row provider disagrees with graph snapshot"));
+            }
+        }
         if graph.nodes.is_empty()
             || graph.start_index() >= graph.nodes.len()
             || graph.end_index() >= graph.nodes.len()
@@ -112,216 +123,101 @@ where
         let start_node = graph.nodes.get(start_index).ok_or_else(|| {
             NetworkSchedulingError::structure("起始节点不存在 / start node does not exist")
         })?;
-        let mut labels = Vec::new();
-        let mut labels_at_node = vec![Vec::<usize>::new(); graph.nodes.len()];
-        let mut dominated = Vec::new();
-        let mut queue = VecDeque::new();
-        let mut statistics = LabelStatistics::default();
-        let mut negative_label_indices = Vec::new();
-        let mut min_reduced_cost = f64::INFINITY;
-        let mut interrupted = request.interrupted();
-        let mut truncated = false;
-        let mut truncation_reason = None;
-
-        let root = EspprcLabel {
-            reduced_cost: 0.0,
-            time: start_node.ready_time,
-            load: 0.0,
-            current_node: start_index,
-            visited: VisitedCustomers::empty(customer_count),
-            forbidden: ForbiddenCustomers::empty(customer_count),
-            predecessor: None,
-            predecessor_arc: None,
-        };
-        labels.push(root);
-        dominated.push(false);
-        labels_at_node[start_index].push(0);
-        queue.push_back(0);
-        statistics.labels_created = 1;
-
-        let max_depth: usize = request.max_depth.unwrap_or(customer_count);
+        let max_depth = request.max_depth.unwrap_or(customer_count);
         if max_depth > customer_count {
             return Err(NetworkSchedulingError::validation(
                 "定价最大深度不能超过客户数 / pricing max depth cannot exceed customer count",
             ));
         }
-
-        while let Some(label_index) = queue.pop_front() {
-            if request.interrupted() {
-                interrupted = true;
-                break;
-            }
-            if dominated.get(label_index).copied().unwrap_or(true) {
-                continue;
-            }
-            let label = labels.get(label_index).cloned().ok_or_else(|| {
-                NetworkSchedulingError::contract(
-                    "前驱标签索引无效 / predecessor label index is invalid",
-                )
-            })?;
-            let outgoing = graph.outgoing.get(label.current_node).ok_or_else(|| {
-                NetworkSchedulingError::structure(
-                    "定价图出弧索引无效 / pricing graph outgoing index is invalid",
-                )
-            })?;
-
-            for &arc_index in outgoing {
-                if request.interrupted() {
-                    interrupted = true;
-                    break;
-                }
-                let arc = graph.arcs.get(arc_index).ok_or_else(|| {
-                    NetworkSchedulingError::structure(
-                        "定价图弧索引无效 / pricing graph arc index is invalid",
-                    )
-                })?;
-                if arc.from != label.current_node {
-                    return Err(NetworkSchedulingError::contract(
-                        "出弧索引与弧起点不一致 / outgoing index disagrees with arc origin",
-                    ));
-                }
-                let to_node = graph.nodes.get(arc.to).ok_or_else(|| {
-                    NetworkSchedulingError::structure(
-                        "定价图终点不存在 / pricing graph destination does not exist",
-                    )
-                })?;
-
-                // 空路线不是 VRPTW 列，不能让 start->end 标签支配客户路线。
-                // An empty route is not a VRPTW column and must not dominate customer routes.
-                if arc.to == end_index && label.visited.count() == 0 {
-                    continue;
-                }
-
-                if let Some(customer_index) = to_node.customer_index {
-                    if label.visited.contains(customer_index)
-                        || label.forbidden.contains(customer_index)
-                    {
-                        continue;
-                    }
-                    if label.visited.count() >= max_depth {
-                        truncated = true;
-                        truncation_reason.get_or_insert(TruncationReason::MaxDepth);
-                        continue;
-                    }
-                }
-
-                let travel_value: f64 = duration_value(request, arc.travel_time)?;
-                let arrival_time: f64 = label.time + travel_value;
-                let service_start: f64 = arrival_time.max(to_node.ready_time);
-                if service_start > to_node.due_time + request.instance.tolerances.feasibility {
-                    continue;
-                }
-                let new_load: f64 = label.load + to_node.demand;
-                if new_load > graph.vehicle_capacity + request.instance.tolerances.feasibility {
-                    continue;
-                }
-                let new_visited = to_node
-                    .customer_index
-                    .map_or_else(|| label.visited.clone(), |index| label.visited.add(index));
-                let new_time = service_start + to_node.service_time;
-                let (new_forbidden, unreachable_markings) = update_forbidden_customers(
-                    &label.forbidden,
-                    graph,
-                    arc.to,
-                    &new_visited,
-                    new_time,
-                    new_load,
-                    request.instance.tolerances.feasibility,
-                    request,
-                )?;
-                statistics.unreachable_markings += unreachable_markings;
-                let new_label = EspprcLabel {
-                    reduced_cost: label.reduced_cost + arc.reduced_cost,
-                    time: new_time,
-                    load: new_load,
-                    current_node: arc.to,
-                    visited: new_visited,
-                    forbidden: new_forbidden,
-                    predecessor: Some(label_index),
-                    predecessor_arc: Some(arc_index),
-                };
-
-                statistics.extensions += 1;
-                statistics.dominance_checks += labels_at_node[arc.to].len();
-                if labels_at_node[arc.to].iter().any(|candidate_index| {
-                    !dominated.get(*candidate_index).copied().unwrap_or(true)
-                        && labels.get(*candidate_index).is_some_and(|candidate| {
-                            self.dominance_policy.dominates(candidate, &new_label)
-                        })
-                }) {
-                    statistics.dominated_labels += 1;
-                    continue;
-                }
-                let dominated_indices = labels_at_node[arc.to]
-                    .iter()
-                    .copied()
-                    .filter(|candidate_index| {
-                        !dominated.get(*candidate_index).copied().unwrap_or(true)
-                            && labels.get(*candidate_index).is_some_and(|candidate| {
-                                self.dominance_policy.dominates(&new_label, candidate)
-                            })
-                    })
-                    .collect::<Vec<_>>();
-                for candidate_index in dominated_indices {
-                    if let Some(value) = dominated.get_mut(candidate_index) {
-                        *value = true;
-                    }
-                    statistics.dominated_labels += 1;
-                }
-                labels_at_node[arc.to].retain(|candidate_index| !dominated[*candidate_index]);
-
-                if request
-                    .max_labels
-                    .is_some_and(|limit| labels.len() >= limit)
-                {
-                    truncated = true;
-                    truncation_reason.get_or_insert(TruncationReason::MaxLabels);
-                    break;
-                }
-                let new_label_index = labels.len();
-                labels.push(new_label);
-                dominated.push(false);
-                labels_at_node[arc.to].push(new_label_index);
-                queue.push_back(new_label_index);
-                statistics.labels_created += 1;
-
-                let reduced_cost = labels[new_label_index].reduced_cost;
-                if arc.to == end_index && labels[new_label_index].visited.count() > 0 {
-                    min_reduced_cost = min_reduced_cost.min(reduced_cost);
-                    if reduced_cost < -request.pricing_tolerance {
-                        negative_label_indices.push(new_label_index);
-                    }
+        let depth_limited = Cell::new(false);
+        let unreachable = Cell::new(0);
+        let minimum = Cell::new(f64::INFINITY);
+        let root = EspprcLabel {
+            reduced_cost: 0.0, time: start_node.ready_time, load: 0.0, current_node: start_index,
+            visited: VisitedCustomers::empty(customer_count), forbidden: ForbiddenCustomers::empty(customer_count),
+            predecessor: None, predecessor_arc: None,
+        };
+        let extend = |index: usize, label: &EspprcLabel, arc_index: usize, _: usize| -> Result<Option<EspprcLabel>> {
+            let arc = &graph.arcs[arc_index];
+            let node = &graph.nodes[arc.to];
+            if arc.to == end_index && label.visited.count() == 0 { return Ok(None); }
+            if let Some(customer) = node.customer_index {
+                if label.visited.contains(customer) || label.forbidden.contains(customer) { return Ok(None); }
+                if label.visited.count() >= max_depth {
+                    depth_limited.set(true);
+                    return Ok(None);
                 }
             }
-            if interrupted
-                || truncated && matches!(truncation_reason, Some(TruncationReason::MaxLabels))
-            {
-                break;
+            let arrival = label.time + duration_value(request, arc.travel_time)?;
+            let service_start = arrival.max(node.ready_time);
+            let load = label.load + node.demand;
+            if service_start > node.due_time + request.instance.tolerances.feasibility
+                || load > graph.vehicle_capacity + request.instance.tolerances.feasibility
+            { return Ok(None); }
+            let visited = node.customer_index.map_or_else(|| label.visited.clone(), |index| label.visited.add(index));
+            let (forbidden, markings) = update_forbidden_customers(&label.forbidden, graph,
+                arc.to, &visited, load, request.instance.tolerances.feasibility);
+            unreachable.set(unreachable.get() + markings);
+            Ok(Some(EspprcLabel {
+                reduced_cost: label.reduced_cost + arc.reduced_cost,
+                time: service_start + node.service_time, load, current_node: arc.to, visited, forbidden,
+                predecessor: Some(index), predecessor_arc: Some(arc_index),
+            }))
+        };
+        let finish = |labels: &[EspprcLabel]| -> Result<Option<(EspprcLabel, Route<V>)>> {
+            let route = self.backtrack_route(graph, labels, labels.len() - 1, request)?;
+            let cost = match request.duals.phase {
+                crate::domain::vrp::PricingPhase::PhaseOne => 0.0,
+                crate::domain::vrp::PricingPhase::PhaseTwo => route.cost.value
+                    .to_f64_with_policy(SolveValueConversionPolicy::AllowRounding)
+                    .map_err(|error| NetworkSchedulingError::Conversion { message: error.to_string() })?,
+            };
+            let coefficients = self.graph_builder.pricing_rows.route_coefficients(&route, &request.instance)?;
+            let row_price = coefficients.iter().map(|(id, value)| Ok(adapter.to_solver(value)? * request.duals.extension[id]))
+                .collect::<Result<Vec<_>>>()?.into_iter().sum::<f64>();
+            let reduced_cost = cost - request.duals.fleet_dual(&request.vehicle_type_id)
+                - route.customer_ids().iter().map(|id| request.duals.customer_dual(id)).sum::<f64>() - row_price;
+            if !cost.is_finite() || !reduced_cost.is_finite() {
+                return Err(NetworkSchedulingError::pricing("完整路径费用必须有限 / complete-path costs must be finite"));
             }
-        }
-
-        let mut routes = Vec::with_capacity(negative_label_indices.len());
-        for label_index in negative_label_indices {
-            routes.push(self.backtrack_route(graph, &labels, label_index, request)?);
-        }
-        routes.sort_by_key(Route::signature);
-        let selected_routes = self
-            .column_selector
-            .select(&routes, request.max_columns_per_pricing);
-        if selected_routes.len() < routes.len() {
-            truncated = true;
-            truncation_reason.get_or_insert(TruncationReason::MaxColumns);
-        }
-        if !min_reduced_cost.is_finite() {
-            min_reduced_cost = 0.0;
-        }
-
-        let exact_pricing_complete = !(interrupted
-            || truncated
-                && matches!(
-                    truncation_reason,
-                    Some(TruncationReason::MaxLabels | TruncationReason::MaxDepth)
-                ));
+            minimum.set(minimum.get().min(reduced_cost));
+            Ok((reduced_cost < -request.pricing_tolerance).then(|| {
+                let mut label = labels[labels.len() - 1].clone();
+                label.reduced_cost = reduced_cost;
+                (label, route)
+            }))
+        };
+        let dominates = |left: &EspprcLabel, right: &EspprcLabel| self.dominance_policy.dominates(left, right);
+        let compare = |left: &EspprcLabel, a: &Route<V>, right: &EspprcLabel, b: &Route<V>|
+            left.reduced_cost.total_cmp(&right.reduced_cost).then_with(|| a.signature().cmp(&b.signature()));
+        let use_dominance = self.graph_builder.route_cost_policy.additive_label_cost_is_exact()
+            && self.dominance_policy.is_certified() && self.graph_builder.pricing_rows.additive_decomposition_is_exact();
+        let graph_view = path_search::graph(graph.nodes.len(), graph.arcs.iter().map(|arc| (arc.arc_id.clone(), arc.from, arc.to)))?;
+        let policy = PricingPathPolicy { root, extend: &extend, finish: &finish,
+            dominates: use_dominance.then_some(&dominates), compare: &compare };
+        let mut problem = PathProblem::new(&graph_view, policy);
+        problem.starts = vec![path_search::node_id(start_index)];
+        problem.terminals = [path_search::node_id(end_index)].into();
+        problem.options.maximum_steps = Some(customer_count + 1);
+        let interrupt = || request.interrupted();
+        let search = PathSearchContext.search(&problem, &PathSearchBudget {
+            maximum_labels: request.max_labels, interrupted: Some(&interrupt), ..Default::default()
+        })?;
+        let interrupted = search.completion == PathSearchCompletion::Interrupted;
+        let exact_pricing_complete = search.complete() && !depth_limited.get();
+        let statistics = LabelStatistics {
+            labels_created: search.diagnostics.generated_labels, extensions: search.diagnostics.extensions,
+            dominance_checks: search.diagnostics.dominance_checks, dominated_labels: search.diagnostics.dominated_labels,
+            unreachable_markings: unreachable.get(),
+        };
+        let routes: Vec<_> = search.paths.into_iter().filter_map(|candidate| candidate.state.route).collect();
+        let selected_routes = self.column_selector.select(&routes, request.max_columns_per_pricing);
+        let truncation_reason = if search.completion == PathSearchCompletion::BudgetLimit { Some(TruncationReason::MaxLabels) }
+            else if depth_limited.get() { Some(TruncationReason::MaxDepth) }
+            else if selected_routes.len() < routes.len() { Some(TruncationReason::MaxColumns) }
+            else { None };
+        let truncated = truncation_reason.is_some();
+        let min_reduced_cost = if minimum.get().is_finite() { minimum.get() } else { 0.0 };
         let diagnostic = VehiclePricingDiagnostic {
             vehicle_type_id: request.vehicle_type_id.clone(),
             min_reduced_cost,
@@ -390,7 +286,7 @@ where
             })?;
         let mut load = 0.0;
         let mut total_distance = 0.0;
-        let mut total_cost = 0.0;
+        let mut arc_costs = Vec::new();
         let mut stops = Vec::with_capacity(label_indices.len());
         for (position, label_index) in label_indices.iter().copied().enumerate() {
             let label = labels.get(label_index).ok_or_else(|| {
@@ -430,7 +326,11 @@ where
                     NetworkSchedulingError::structure("路线弧不存在 / route arc does not exist")
                 })?;
                 total_distance += arc.distance;
-                total_cost += arc.route_cost;
+                arc_costs.push(Quantity::new(
+                    V::from_f64_with_policy(arc.arc_cost, SolveValueConversionPolicy::AllowRounding)
+                        .map_err(|error| NetworkSchedulingError::Conversion { message: error.to_string() })?,
+                    request.instance.units.cost_unit.clone(),
+                ));
             }
             let time_value = |value: f64| {
                 V::from_f64_with_policy(value, SolveValueConversionPolicy::AllowRounding).map_err(
@@ -453,6 +353,13 @@ where
                 accumulated_load,
             });
         }
+        let vehicle = request.instance.vehicle_type(&request.vehicle_type_id).ok_or_else(||
+            NetworkSchedulingError::structure("车辆类型不存在 / missing vehicle type"))?;
+        let policy_cost = self.graph_builder.route_cost_policy.cost(vehicle, &arc_costs, &request.instance)?;
+        crate::infrastructure::validate_linear_units([&policy_cost.unit, &request.instance.units.cost_unit])?;
+        let complete_cost = policy_cost.to_unit(&request.instance.units.cost_unit)
+            .map_err(|error| NetworkSchedulingError::Conversion { message: error.to_string() })?;
+        crate::infrastructure::NetworkSchedulingSolverValueAdapter::<V>::default().to_solver(&complete_cost.value)?;
         let route = Route::with_arc_ids(
             request.vehicle_type_id.clone(),
             stops,
@@ -467,13 +374,7 @@ where
                     })?,
                 request.instance.units.distance_unit.clone(),
             ),
-            Quantity::new(
-                V::from_f64_with_policy(total_cost, SolveValueConversionPolicy::AllowRounding)
-                    .map_err(|error| NetworkSchedulingError::Conversion {
-                        message: error.to_string(),
-                    })?,
-                request.instance.units.cost_unit.clone(),
-            ),
+            complete_cost,
         )?;
         if route
             .stops
@@ -529,7 +430,16 @@ where
             crate::domain::vrp::PricingPhase::PhaseOne => 0.0,
             crate::domain::vrp::PricingPhase::PhaseTwo => arc.route_cost,
         };
-        let expected = phase_cost - customer_dual - fleet_dual;
+        if arc.row_coefficients.len() != request.duals.extension.len() {
+            return Err(NetworkSchedulingError::pricing("图扩展行与对偶域不一致 / graph extension rows disagree with dual domain"));
+        }
+        let mut row_price = 0.0;
+        for (id, value) in &arc.row_coefficients {
+            let price = request.duals.extension.get(id).ok_or_else(|| NetworkSchedulingError::pricing(
+                "图扩展行缺少对偶 / graph extension row lacks a dual"))?;
+            row_price += value * price;
+        }
+        let expected = phase_cost - customer_dual - fleet_dual - row_price;
         if !arc.reduced_cost.is_finite() || arc.reduced_cost != expected {
             return Err(NetworkSchedulingError::pricing(format!(
                 "定价图弧 {} 的 reduced cost 快照无效 / reduced-cost snapshot for pricing arc {} is invalid",
@@ -574,19 +484,14 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn update_forbidden_customers<V>(
+fn update_forbidden_customers(
     current_forbidden: &ForbiddenCustomers,
     graph: &PricingGraph,
     current_node: usize,
     visited: &VisitedCustomers,
-    departure_time: f64,
     load: f64,
     tolerance: f64,
-    request: &PricingRequest<V>,
-) -> Result<(ForbiddenCustomers, usize)>
-where
-    V: SolveValue + UnitConversionValue,
-{
+) -> (ForbiddenCustomers, usize) {
     let mut forbidden = current_forbidden.clone();
     let mut markings = 0;
     if let Some(outgoing) = graph.outgoing.get(current_node) {
@@ -603,15 +508,19 @@ where
             if visited.contains(index) || forbidden.contains(index) {
                 continue;
             }
-            let arrival = departure_time + duration_value(request, arc.travel_time)?;
-            let service_start = arrival.max(candidate.ready_time);
-            if service_start > candidate.due_time + tolerance
-                || load + candidate.demand > graph.vehicle_capacity + tolerance
-            {
+            // 直达失败不代表经其他客户后仍失败；这里只保留单调容量排除。 / Direct travel failure does not rule out an indirect path; retain only monotone capacity exclusion.
+            if load + candidate.demand > graph.vehicle_capacity + tolerance {
                 forbidden = forbidden.add(index);
                 markings += 1;
             }
         }
     }
-    Ok((forbidden, markings))
+    (forbidden, markings)
+}
+
+impl PricingLabel for EspprcLabel {
+    fn set_predecessor(&mut self, predecessor: Option<usize>, arc: Option<usize>) {
+        self.predecessor = predecessor;
+        self.predecessor_arc = arc;
+    }
 }

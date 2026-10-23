@@ -243,6 +243,9 @@ pub trait RouteCostPolicy<V>: Send + Sync
 where
     V: SolveValue + UnitConversionValue,
 {
+    /// 认证固定费用加逐弧费用的标签分解；默认禁用相关支配。 / Certify fixed-plus-arc label decomposition; related dominance is disabled by default.
+    fn additive_label_cost_is_exact(&self) -> bool { false }
+
     /// 汇总固定成本与弧成本 / Aggregate fixed cost and arc costs.
     fn cost(
         &self,
@@ -260,6 +263,8 @@ impl<V> RouteCostPolicy<V> for FixedPlusArcCostPolicy
 where
     V: SolveValue + UnitConversionValue,
 {
+    fn additive_label_cost_is_exact(&self) -> bool { true }
+
     fn cost(
         &self,
         vehicle_type: &VehicleType<V>,

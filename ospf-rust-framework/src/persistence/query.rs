@@ -1277,7 +1277,7 @@ fn expression_value_key(value: &ExpressionValue) -> String {
         ExpressionValue::Null => canonical_node("null", &[]),
         ExpressionValue::Boolean(value) => canonical_node("boolean", &[value.to_string()]),
         ExpressionValue::Number(value) => canonical_node("number", &[value.to_string()]),
-        ExpressionValue::String(value) => canonical_node("string", &[value.clone()]),
+        ExpressionValue::String(value) => canonical_node("string", std::slice::from_ref(value)),
     }
 }
 
@@ -1300,7 +1300,7 @@ fn string_shape_key() -> String {
 
 fn description_key(description: Option<&String>) -> String {
     description
-        .map(|value| canonical_node("description", &[value.clone()]))
+        .map(|value| canonical_node("description", std::slice::from_ref(value)))
         .unwrap_or_else(|| canonical_node("description", &[]))
 }
 
@@ -1320,7 +1320,7 @@ fn snapshot_boolean_expression(
     expression: &BooleanExpression<ExpressionValue>,
 ) -> BooleanExpression<ExpressionValue> {
     match expression {
-        BooleanExpression::Constant(value) => BooleanExpression::Constant(value.clone()),
+        BooleanExpression::Constant(value) => BooleanExpression::Constant(*value),
         BooleanExpression::Comparison {
             operator,
             left,

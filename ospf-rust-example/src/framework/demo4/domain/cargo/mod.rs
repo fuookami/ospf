@@ -10,6 +10,10 @@ pub struct Aggregation {
     pub cargo_count: usize,
 }
 
+impl Default for Aggregation {
+    fn default() -> Self { Self::new() }
+}
+
 impl Aggregation {
     /// 创建新的货物聚合 / Create new cargo aggregation
     pub fn new() -> Self {

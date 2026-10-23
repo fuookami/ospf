@@ -13,7 +13,6 @@ use crate::variable::VariableId;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::iteration::Iteration;
 use crate::solver::heuristic::model::{HeuristicValue, from_f64, to_f64};
-use crate::solver::heuristic::operator::compare_strictly;
 use crate::solver::heuristic::result::HeuristicError;
 use crate::solver::heuristic::runner::iteration_observer::IterationObserver;
 use crate::solver::heuristic::session::archive::{ObjectiveComponents, SessionArchive};
@@ -23,6 +22,16 @@ use crate::solver::heuristic::session::protocol::{
     Result, SearchProblem, SearchSession, SearchSessionSnapshot, SearchStepResult,
     SearchTermination,
 };
+
+type Initializer<P, S> = Box<dyn FnMut(&P, &SearchSlice) -> Result<S>>;
+type Advancement<P, S> = Box<dyn FnMut(&mut P, &Iteration, &S, &SearchSlice) -> Result<S>>;
+type StateMembers<S, O, V> = Box<dyn Fn(&S) -> Vec<Individual<O, V>>>;
+
+/// 完整个体档案的编解码器，不改变实际编码格式。 / Codec for complete individual archives, without changing the wire format.
+pub type ArchiveCodec<O, V> = Box<dyn SearchCodec<Vec<Individual<O, V>>>>;
+
+/// 将已评估个体导入原生状态的回调，不执行隐式评估。 / Import evaluated individuals into native state without implicit evaluations.
+pub type SessionImporter<S, O, V> = Box<dyn Fn(&S, &[Individual<O, V>]) -> Result<S>>;
 
 /// 骨架钩子：会话只需要这四个能力 / Skeleton hooks: the four capabilities a session needs
 ///
@@ -67,9 +76,9 @@ where
     V: HeuristicValue,
     S: Clone,
 {
-    initializer: Box<dyn FnMut(&P, &SearchSlice) -> Result<S>>,
-    advance: Box<dyn FnMut(&mut P, &Iteration, &S, &SearchSlice) -> Result<S>>,
-    members: Box<dyn Fn(&S) -> Vec<Individual<O, V>>>,
+    initializer: Initializer<P, S>,
+    advance: Advancement<P, S>,
+    members: StateMembers<S, O, V>,
 }
 
 impl<P, O, V, S> HookedSkeleton<P, O, V, S>
@@ -132,7 +141,7 @@ where
     /// 原生状态编解码 / Native state codec
     pub state: Option<Box<dyn SearchCodec<S>>>,
     /// 归档解编解码 / Archived-solution codec
-    pub archive: Option<Box<dyn SearchCodec<Vec<Individual<O, V>>>>>,
+    pub archive: Option<ArchiveCodec<O, V>>,
 }
 
 impl<S, O, V> SessionCodecs<S, O, V>
@@ -143,7 +152,7 @@ where
     /// 创建编解码集合 / Create a codec bundle
     pub fn new(
         state: Option<Box<dyn SearchCodec<S>>>,
-        archive: Option<Box<dyn SearchCodec<Vec<Individual<O, V>>>>>,
+        archive: Option<ArchiveCodec<O, V>>,
     ) -> Self {
         Self { state, archive }
     }
@@ -168,7 +177,7 @@ where
     hooks: Box<dyn SessionHooks<P, O, V, S>>,
     problem: P,
     codecs: SessionCodecs<S, O, V>,
-    importer: Option<Box<dyn Fn(&S, &[Individual<O, V>]) -> Result<S>>>,
+    importer: Option<SessionImporter<S, O, V>>,
     observers: Vec<Box<dyn IterationObserver<O, V>>>,
     iteration: Iteration,
     state: Option<S>,
@@ -599,17 +608,4 @@ where
     V: HeuristicValue,
 {
     compare(problem, lhs, rhs)
-}
-
-/// 让 `compare_strictly` 在会话中被复用 / Reuse `compare_strictly` inside sessions
-pub(crate) fn compare_with_model<M, V>(
-    model: &M,
-    lhs: &V,
-    rhs: &V,
-) -> std::cmp::Ordering
-where
-    M: crate::solver::heuristic::model::ObjectiveModel<V, V>,
-    V: HeuristicValue,
-{
-    compare_strictly(model, lhs, rhs)
 }

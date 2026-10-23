@@ -232,7 +232,7 @@ impl SelectionPolicy for TabularSelectionPolicy {
                 index
             }
             "stagnation" => {
-                if context.stagnation > 0 && context.stagnation % self.stagnation_limit == 0 {
+                if context.stagnation > 0 && context.stagnation.is_multiple_of(self.stagnation_limit) {
                     self.snapshot.cursor = self.snapshot.cursor.wrapping_add(1);
                 }
                 let start = (self.snapshot.cursor % self.actions.len() as u64) as usize;

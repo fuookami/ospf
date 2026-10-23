@@ -942,7 +942,7 @@ where
         // and not helpers of this structure.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             Vec::new(),
         ))
     }
@@ -1666,7 +1666,7 @@ where
         // and not helpers of this structure.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             Vec::new(),
         ))
     }
@@ -1900,34 +1900,34 @@ where
         // classified the input as a direct binary variable.
         let indicator_registered = symbol_to_index
             .contains_key(&(self.indicator_var.id().unique_id() as usize));
-        if !indicator_registered {
-            if let Some(input_index) = direct_monomial_index::<V>(&self.polynomial) {
-                // 直接二值输入：`result + input = 1` 即可，无需非零指示与符号辅助变量。
-                // Direct binary input: `result + input = 1` suffices, with no nonzero
-                // indicator or sign helper variables.
-                constraints.push(LinearConstraint::from_symbol(
-                    LinearInequality::new(
-                        Linear::new(
-                            vec![
-                                LinearMonomial::new(
-                                    convert_f64_to_v::<V>(1.0, "not result coefficient")?,
-                                    result_index,
-                                ),
-                                LinearMonomial::new(
-                                    convert_f64_to_v::<V>(1.0, "not input coefficient")?,
-                                    input_index,
-                                ),
-                            ],
-                            convert_f64_to_v::<V>(0.0, "not constant")?,
-                        ),
-                        ConstraintRelation::Equal,
-                        convert_f64_to_v::<V>(1.0, "not rhs")?,
+        if !indicator_registered
+            && let Some(input_index) = direct_monomial_index::<V>(&self.polynomial)
+        {
+            // 直接二值输入：`result + input = 1` 即可，无需非零指示与符号辅助变量。
+            // Direct binary input: `result + input = 1` suffices, with no nonzero
+            // indicator or sign helper variables.
+            constraints.push(LinearConstraint::from_symbol(
+                LinearInequality::new(
+                    Linear::new(
+                        vec![
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "not result coefficient")?,
+                                result_index,
+                            ),
+                            LinearMonomial::new(
+                                convert_f64_to_v::<V>(1.0, "not input coefficient")?,
+                                input_index,
+                            ),
+                        ],
+                        convert_f64_to_v::<V>(0.0, "not constant")?,
                     ),
-                    &format!("{}_binary_result", self.id.name),
-                    source,
-                ));
-                return Ok(constraints);
-            }
+                    ConstraintRelation::Equal,
+                    convert_f64_to_v::<V>(1.0, "not rhs")?,
+                ),
+                &format!("{}_binary_result", self.id.name),
+                source,
+            ));
+            return Ok(constraints);
         }
 
         let indicator_index = symbol_to_index
@@ -2088,9 +2088,7 @@ where
         // 不把「原生路径只能覆盖一部分模型」的半成品能力暴露出去。
         // Only a direct binary input (compact hull) exposes a deferred structure; general numeric
         // polynomials keep eager expansion so a native path can never cover just part of a model.
-        if direct_binary_input_index(&self.polynomial, tokens).is_none() {
-            return None;
-        }
+        direct_binary_input_index(&self.polynomial, tokens)?;
         Some(Arc::new(NotStructure::new(
             self.id.name.clone(),
             Arc::new(self.clone()),
@@ -2222,7 +2220,7 @@ where
         // and not a helper of this structure.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             Vec::new(),
         ))
     }

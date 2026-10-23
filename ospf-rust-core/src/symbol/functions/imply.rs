@@ -928,7 +928,7 @@ where
         // structure and take part in the externally-referenced and omittable analysis.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             self.helpers.clone(),
         ))
     }
@@ -1251,6 +1251,7 @@ where
     }
 
     /// 使用明确的线性条件部分创建安全蕴含函数 / Create a safe implication from explicit linear condition parts.
+    #[expect(clippy::too_many_arguments, reason = "保留既有公开蕴含构造接口 / Preserve the existing public implication constructor")]
     pub fn from_parts(
         id: u64,
         name: &str,

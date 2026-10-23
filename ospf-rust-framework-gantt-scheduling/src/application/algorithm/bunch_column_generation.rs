@@ -16,10 +16,12 @@
 //! - Column removal
 //! - Convergence detection
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::solver::{SolveReport, require_optimal_lp_certificate};
+use ospf_rust_core::solver::{SolveReport, TerminationReason, linear_model_fingerprint};
+use ospf_rust_framework::model::{ColumnGenerationBatch, ColumnGenerationScope, VerifiedPricingDuals};
 use ospf_rust_framework::solver::column_generation_solver::{
     ColumnGenerationSolver, FeasibleSolution, LPResult, LinearDualSolution,
 };
@@ -32,9 +34,10 @@ use crate::application::algorithm::policy::ColumnGenerationPolicy;
 use crate::application::iteration::Iteration;
 use crate::domain::bunch_compilation::context::IterativeBunchCompilationContext;
 use crate::domain::bunch_compilation::model::{BunchEntry, BunchSolution};
+use crate::domain::bunch_compilation::validation::validate_bunch_incumbent;
 use crate::domain::common::{
-    ConstraintIndexMap, ExecutorId, ExecutorIdTrait, GanttDynamicModelLifecycle,
-    GanttModelStateFacade,
+    ConstraintIndexKey, ConstraintIndexMap, ExecutorId, ExecutorIdTrait, GanttDynamicModelLifecycle,
+    GanttModelStateFacade, PricingEvidence,
 };
 
 /// 束级列生成策略 / Bunch column generation policy
@@ -150,6 +153,8 @@ pub struct BunchPricingRequest<I = ExecutorId>
 where
     I: ExecutorIdTrait,
 {
+    /// 本轮模型绑定定价作用域 / Current model-bound pricing scope.
+    pub scope: ColumnGenerationScope,
     /// 当前迭代 / Current iteration
     pub iteration: usize,
     /// 可定价执行器 / Executors available for pricing
@@ -158,6 +163,10 @@ where
     pub shadow_prices: HashMap<usize, f64>,
     /// 执行器-时隙影子价格 / Executor-slot shadow prices
     pub executor_slot_shadow_prices: HashMap<(I, usize), f64>,
+    /// 原模型全部行的有符号对偶，包括扩展行和显式零。 / Signed duals of every original model row, including extensions and explicit zeros.
+    pub row_duals: BTreeMap<String, f64>,
+    /// 当前实际 LP 证书；启发式请求为空。 / Current actual LP certificate; absent for heuristic requests.
+    pub verified_duals: Option<VerifiedPricingDuals>,
     /// 已固定 group / Fixed groups
     pub fixed_groups: HashSet<BranchGroup<I>>,
     /// 已保留 group / Kept groups
@@ -200,6 +209,14 @@ where
             &request.executor_ids,
             &request.shadow_prices,
         ))
+    }
+
+    /// 返回真实完成度；旧生成器只产生启发式结果 / Return actual completion; legacy generators produce heuristic results only.
+    fn generate_bunch_batch(
+        &self,
+        request: &BunchPricingRequest<I>,
+    ) -> GanttResult<ColumnGenerationBatch<BunchEntry<I>>> {
+        self.generate_bunches_with_request(request).map(ColumnGenerationBatch::heuristic)
     }
 }
 
@@ -257,6 +274,8 @@ where
     last_pricing_complete: bool,
     /// 当前节点可继承的认证下界 / Certified bound available for the current node
     last_certified_bound: Option<f64>,
+    pricing_certificate: Option<PricingEvidence>,
+    pricing_revision: u64,
 
     /// 列索引计数器 / Column index counter
     bunch_index_counter: usize,
@@ -300,6 +319,8 @@ where
     last_pricing_complete: bool,
     /// 当前节点可继承的认证下界 / Certified bound available for the current node
     last_certified_bound: Option<f64>,
+    pricing_certificate: Option<PricingEvidence>,
+    pricing_revision: u64,
     /// 列索引计数器 / Column index counter
     bunch_index_counter: usize,
 }
@@ -373,7 +394,25 @@ where
             last_milp_report: None,
             last_pricing_complete: false,
             last_certified_bound: None,
+            pricing_certificate: None,
+            pricing_revision: 0,
             bunch_index_counter: 0,
+        }
+    }
+
+    /// 当前保留 incumbent 对应的报告，不代表完整定价域最优。 / Report paired with the retained incumbent, not optimality over the complete pricing domain.
+    pub fn incumbent_report(&self) -> Option<&SolveReport<f64>> {
+        self.last_milp_report.as_ref()
+    }
+
+    /// 复用同一循环并保留初始正常无 incumbent 终态；最优性最多覆盖当前有限主问题。 / Reuse the same loop while preserving initial normal no-incumbent outcomes; optimality covers at most the current finite master.
+    pub fn run_report(&mut self, model: &mut MetaModel<f64>) -> GanttResult<SolveReport<f64>> {
+        match self.run(model) {
+            Ok(_) => self.last_milp_report.clone().ok_or_else(|| pricing_error("missing final bunch report")),
+            Err(error) => match &self.last_milp_report {
+                Some(report) if !report.has_incumbent() => Ok(report.clone()),
+                _ => Err(error),
+            },
         }
     }
 
@@ -392,10 +431,14 @@ where
     /// 4. Main loop (global CG + local CG + final MILP)
     pub fn run(&mut self, model: &mut MetaModel<f64>) -> GanttResult<BunchSolution> {
         self.last_milp_report = None;
-        self.last_pricing_complete = true;
-        self.last_certified_bound = None;
+        self.clear_pricing_bound();
+        self.pricing_certificate = None;
         // 1. 注册 + 添加初始列
         self.context.register(model)?;
+        self.bunch_index_counter = self.bunch_index_counter.max(self.context.next_column_index()?);
+        self.iteration.reset_for_objective(model.objective().category);
+        self.best_solution = None;
+        self.best_obj = if model.objective().category.is_minimum() { f64::INFINITY } else { f64::NEG_INFINITY };
 
         // 2. 求解初始 MILP
         let ip_result = self.solve_milp(model)?;
@@ -403,21 +446,12 @@ where
         let mut current_ip_solution = ip_result.solution.clone();
         let initial_obj = ip_result.obj;
 
-        if initial_obj == 0.0 {
-            let solution = self
-                .context
-                .analyze_solution_with_lifecycle(&ip_result.solution, &self.lifecycle);
-            self.best_solution = Some(solution.clone());
-            self.best_obj = initial_obj;
-            return Ok(solution);
-        }
-
         self.iteration.record_ip(initial_obj);
-        self.iteration.set_upper_bound(initial_obj);
+        self.iteration.record_incumbent_bound(initial_obj);
 
         let mut solution = self
             .context
-            .analyze_solution_with_lifecycle(&ip_result.solution, &self.lifecycle);
+            .analyze_solution_with_lifecycle_checked(model, &ip_result.solution, &self.lifecycle)?;
         self.best_solution = Some(solution.clone());
         self.best_obj = initial_obj;
 
@@ -437,9 +471,10 @@ where
             && self.iteration.iteration < self.configuration.max_iterations
             && self.iteration.elapsed() < self.configuration.time_limit
         {
+            let mut added_in_round = false;
             // ---- 全局列生成 ----
-            self.shadow_prices = match self.solve_rmp_lp(model) {
-                Ok(lp_result) => {
+            self.shadow_prices = match self.solve_rmp_lp(model)? {
+                Some(lp_result) => {
                     self.executor_slot_shadow_prices =
                         self.extract_executor_slot_shadow_prices(&lp_result);
                     if self.iteration.record_lp(lp_result.result.obj) {
@@ -448,7 +483,7 @@ where
                     }
                     self.extract_shadow_prices(&lp_result)
                 }
-                Err(_) => break,
+                None => break,
             };
 
             // 隐藏执行器
@@ -456,13 +491,14 @@ where
 
             // 全局列生成（1 次）
             self.iteration.next_iteration();
-            let new_bunches = self.generate_bunches(&self.executor_ids)?;
+            let executor_ids = self.executor_ids.clone();
+            let new_bunches = self.generate_bunches(&executor_ids, model)?;
 
             if !new_bunches.is_empty() {
-                self.add_columns(self.iteration.iteration, new_bunches, model)?;
+                added_in_round = !self.add_columns(self.iteration.iteration, new_bunches, model)?.is_empty();
 
                 // 重新求解 RMP
-                if let Ok(lp_result) = self.solve_rmp_lp(model) {
+                if let Some(lp_result) = self.solve_rmp_lp(model)? {
                     if self.iteration.record_lp(lp_result.result.obj) {
                         self.kept_bunches
                             .extend(self.context.extract_kept(&lp_result.result.solution));
@@ -486,24 +522,28 @@ where
 
             // ---- 局部列生成 ----
             loop {
-                self.shadow_prices = match self.solve_rmp_lp(model) {
-                    Ok(lp_result) => {
+                if self.iteration.iteration >= self.configuration.max_iterations
+                    || self.iteration.elapsed() >= self.configuration.time_limit
+                { break; }
+                self.shadow_prices = match self.solve_rmp_lp(model)? {
+                    Some(lp_result) => {
                         self.executor_slot_shadow_prices =
                             self.extract_executor_slot_shadow_prices(&lp_result);
                         self.iteration.record_lp(lp_result.result.obj);
                         self.extract_shadow_prices(&lp_result)
                     }
-                    Err(_) => break,
+                    None => break,
                 };
 
                 self.iteration.next_iteration();
-                let local_bunches = self.generate_bunches(&free_executor_list)?;
+                let local_bunches = self.generate_bunches(&free_executor_list, model)?;
 
                 if local_bunches.is_empty() {
                     break;
                 }
 
-                self.add_columns(self.iteration.iteration, local_bunches, model)?;
+                if self.add_columns(self.iteration.iteration, local_bunches, model)?.is_empty() { break; }
+                added_in_round = true;
 
                 // 局部固定
                 let new_fixed = self.locally_fix(
@@ -529,23 +569,41 @@ where
             }
 
             // ---- 最终 MILP ----
-            if let Ok(ip_result) = self.solve_milp(model) {
-                self.after_milp_solve(model, &ip_result.solution);
-                current_ip_solution = ip_result.solution.clone();
-                if self.iteration.record_ip(ip_result.obj) {
-                    solution = self
-                        .context
-                        .analyze_solution_with_lifecycle(&current_ip_solution, &self.lifecycle);
-                    self.best_solution = Some(solution.clone());
-                    self.best_obj = ip_result.obj;
-                    self.fixed_bunches = self.context.extract_fixed(&current_ip_solution);
-                    self.kept_bunches = self.context.extract_kept(&current_ip_solution);
-
-                    if ip_result.obj == 0.0 {
-                        break;
+            let previous_report = self.last_milp_report.clone();
+            let mut ip_result = self.solve_milp(model)?;
+            {
+                if !self.iteration.record_ip(ip_result.obj) {
+                    let current = model.try_to_linear_triad_model().map_err(|error| pricing_error(&error.to_string()))?;
+                    let retained = previous_report.as_ref().and_then(|report| FeasibleSolution::try_from_report(report).ok())
+                        .filter(|old| old.solution.len() <= current.num_variables())
+                        .and_then(|old| {
+                            let mut values = old.solution;
+                            values.resize(current.num_variables(), 0.0);
+                            (validate_bunch_incumbent(&current, &values, Some(self.best_obj)).is_ok()
+                                && self.context.analyze_solution_with_lifecycle_checked(model, &values, &self.lifecycle).is_ok())
+                                .then(|| FeasibleSolution::new(self.best_obj, values))
+                        });
+                    if let Some(retained) = retained {
+                        // 旧证书只绑定旧模型；重验原始解后重新生成无证明报告。 / Old certificates bind only the old model; rebuild an uncertified report after revalidating the primal.
+                        self.last_milp_report = Some(retained.to_solve_report(self.solver.name()).map_err(|error| pricing_error(&error.to_string()))?);
+                        ip_result = retained;
+                    } else {
+                        self.iteration.best_ip_obj = ip_result.obj;
+                        if model.objective().category.is_minimum() { self.iteration.upper_bound = None; }
+                        else { self.iteration.lower_bound = None; }
                     }
                 }
+                self.after_milp_solve(model, &ip_result.solution);
+                current_ip_solution = ip_result.solution.clone();
+                self.iteration.record_incumbent_bound(ip_result.obj);
+                solution = self.context.analyze_solution_with_lifecycle_checked(model, &current_ip_solution, &self.lifecycle)?;
+                self.best_solution = Some(solution.clone());
+                self.best_obj = ip_result.obj;
+                self.fixed_bunches = self.context.extract_fixed(&current_ip_solution);
+                self.kept_bunches = self.context.extract_kept(&current_ip_solution);
             }
+
+            if !added_in_round { break; }
 
             // 刷新 + 步长减半
             self.flush(model)?;
@@ -622,9 +680,7 @@ where
             report
         } else {
             let mut feasible = FeasibleSolution::new(self.best_obj, Vec::new());
-            if self.iteration.lower_bound.is_finite() {
-                feasible.possible_best_obj = Some(self.iteration.lower_bound);
-            }
+            feasible.possible_best_obj = self.iteration.lower_bound;
             feasible.to_solve_report(self.solver.name())?
         };
         BranchNodeSolveOutput::from_report(
@@ -640,6 +696,13 @@ where
     }
 
     // ---- 内部方法 / Internal methods ----
+
+    fn clear_pricing_bound(&mut self) {
+        self.last_pricing_complete = false;
+        self.last_certified_bound = None;
+        self.iteration.lower_bound = None;
+        self.iteration.best_dual_obj = None;
+    }
 
     /// 创建 application 状态快照 / Create application-state snapshot
     fn snapshot(&self) -> BunchBranchAndPriceSnapshot<C::ExecutorId> {
@@ -658,6 +721,8 @@ where
             last_milp_report: self.last_milp_report.clone(),
             last_pricing_complete: self.last_pricing_complete,
             last_certified_bound: self.last_certified_bound,
+            pricing_certificate: self.pricing_certificate.clone(),
+            pricing_revision: self.pricing_revision,
             bunch_index_counter: self.bunch_index_counter,
         }
     }
@@ -689,6 +754,8 @@ where
         self.last_milp_report = snapshot.last_milp_report;
         self.last_pricing_complete = snapshot.last_pricing_complete;
         self.last_certified_bound = snapshot.last_certified_bound;
+        self.pricing_certificate = snapshot.pricing_certificate;
+        self.pricing_revision = snapshot.pricing_revision;
         self.bunch_index_counter = snapshot.bunch_index_counter;
     }
 
@@ -736,6 +803,16 @@ where
 
     /// 求解 MILP / Solve MILP
     fn solve_milp(&mut self, model: &mut MetaModel<f64>) -> GanttResult<FeasibleSolution> {
+        let report = self.solve_milp_report(model)?;
+        self.last_milp_report = Some(report.clone());
+        let solution = FeasibleSolution::try_from_report(&report).map_err(|e| GanttError::Calculation {
+            message: format!("MILP report has no usable incumbent: {:?}", e),
+        })?;
+        Ok(solution)
+    }
+
+    /// 保留正常无 incumbent 终态；任何 incumbent 必须通过当前模型的生产校验。 / Preserve normal no-incumbent terminal states; every incumbent must pass production validation against the current model.
+    pub fn solve_milp_report(&mut self, model: &mut MetaModel<f64>) -> GanttResult<SolveReport<f64>> {
         self.lifecycle.apply_solution_to_model(model);
         let options = FrameworkSolveOptions::new();
         let report = solve_report_with_options_sync(&self.solver, model, options).map_err(|e| {
@@ -743,18 +820,25 @@ where
                 message: format!("MILP solve failed: {:?}", e),
             }
         })?;
-        let solution =
-            FeasibleSolution::try_from_report(&report).map_err(|e| GanttError::Calculation {
-                message: format!("MILP report has no usable incumbent: {:?}", e),
-            })?;
-        self.last_milp_report = Some(report);
-        Ok(solution)
+        report.validate().map_err(|error| pricing_error(&error.to_string()))?;
+        if matches!(report.termination_reason, TerminationReason::BackendFailure | TerminationReason::NumericalFailure) {
+            return Err(pricing_error("任务束 MILP 技术失败 / bunch MILP technical failure"));
+        }
+        if report.has_incumbent() {
+            let solution = FeasibleSolution::try_from_report(&report).map_err(|error| pricing_error(&error.to_string()))?;
+            let current = model.try_to_linear_triad_model().map_err(|error| pricing_error(&error.to_string()))?;
+            validate_bunch_incumbent(&current, &solution.solution, Some(solution.obj))?;
+            self.context.analyze_solution_with_lifecycle_checked(model, &solution.solution, &self.lifecycle)?;
+        }
+        Ok(report)
     }
 
     /// 求解 RMP LP / Solve RMP LP
-    fn solve_rmp_lp(&mut self, model: &mut MetaModel<f64>) -> GanttResult<LPResult> {
+    fn solve_rmp_lp(&mut self, model: &mut MetaModel<f64>) -> GanttResult<Option<LPResult>> {
+        self.clear_pricing_bound();
+        self.pricing_certificate = None;
         let options = FrameworkSolveOptions::new();
-        let triad_model =
+        let mut triad_model =
             model
                 .try_to_linear_triad_model()
                 .map_err(|e| GanttError::Calculation {
@@ -776,37 +860,45 @@ where
             .context
             .build_constraint_index_map(&self.constraint_name_to_index);
 
+        triad_model.linear_relax();
         let report = solve_lp_report_with_options_sync(&self.solver, &triad_model, options)
             .map_err(|e| GanttError::Calculation {
                 message: format!("LP solve failed: {:?}", e),
             })?;
+        report.validate().map_err(|error| pricing_error(&error.to_string()))?;
+        if matches!(report.termination_reason, TerminationReason::BackendFailure | TerminationReason::NumericalFailure) {
+            return Err(pricing_error("任务束 LP 技术失败 / bunch LP technical failure"));
+        }
+        let certificate = if report.is_optimal() {
+            let mut evidence = PricingEvidence::new(model, &report)?;
+            evidence.context_revision = self.context.pricing_revision();
+            Some(evidence)
+        } else { None };
+        if !report.has_incumbent()
+            || matches!(report.termination_reason, TerminationReason::Cancelled | TerminationReason::Interrupted)
+        {
+            return Ok(None);
+        }
         let result = {
             let feasible = FeasibleSolution::try_from_report(&report).map_err(|e| {
                 GanttError::Calculation {
                     message: format!("LP report has no usable incumbent: {:?}", e),
                 }
             })?;
-            let dual = report
-                .solution
-                .as_ref()
-                .and_then(|solution| solution.dual_solution.clone())
-                .unwrap_or_default();
+            validate_bunch_incumbent(&triad_model, &feasible.solution, Some(feasible.obj))?;
+            let Some(dual) = report.solution.as_ref().and_then(|solution| solution.dual_solution.clone()) else {
+                return Ok(None);
+            };
+            if dual.len() != triad_model.num_constraints() || dual.iter().any(|value| !value.is_finite()) {
+                return Err(GanttError::Calculation { message: "LP 对偶维度或数值无效 / invalid LP dual dimension or values".into() });
+            }
             LPResult::new(feasible, LinearDualSolution::new(dual, Vec::new()))
                 .with_report(report.clone())
         };
-        let report =
-            result
-                .to_solve_report(self.solver.name())
-                .map_err(|e| GanttError::Calculation {
-                    message: format!("LP report conversion failed: {:?}", e),
-                })?;
-        if require_optimal_lp_certificate(&report).is_err() {
-            self.last_pricing_complete = false;
-        } else if let Some(bound) = report.statistics.best_bound_value {
-            self.last_certified_bound = Some(bound);
-        }
+        self.pricing_certificate = certificate;
+        self.pricing_revision += 1;
         model.set_solution(&result.result.solution);
-        Ok(result)
+        Ok(Some(result))
     }
 
     /// 提取影子价格 / Extract shadow prices
@@ -825,19 +917,23 @@ where
         new_bunches: Vec<BunchEntry<C::ExecutorId>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
-        // 更新束索引
-        let offset = self.bunch_index_counter;
+        self.clear_pricing_bound();
+        self.pricing_certificate = None;
+        // 候选携带业务 ID；模型索引由当前 context 的完整历史分配。 / Candidates carry business IDs; model indices are allocated from the context's complete history.
+        let offset = self.bunch_index_counter.max(self.context.next_column_index()?);
+        offset.checked_add(new_bunches.len()).ok_or_else(|| GanttError::Calculation {
+            message: "任务束索引耗尽 / bunch index exhausted".into(),
+        })?;
         let mut updated_bunches = Vec::with_capacity(new_bunches.len());
-        for mut bunch in new_bunches {
-            bunch.index += offset;
+        for (position, mut bunch) in new_bunches.into_iter().enumerate() {
+            bunch.index = offset + position;
             bunch.iteration = iteration;
             updated_bunches.push(bunch);
         }
-        self.bunch_index_counter += updated_bunches.len();
-
         let added = self
             .context
             .add_columns(iteration, updated_bunches, model)?;
+        self.bunch_index_counter = added.iter().copied().max().map_or(offset, |index| index + 1);
         self.refresh_branch_groups();
         Ok(added)
     }
@@ -958,9 +1054,10 @@ where
             return Ok(maximum_reduced_cost);
         }
 
+        self.clear_pricing_bound();
+        self.pricing_certificate = None;
+        self.context.remove_columns(&removing, model)?;
         self.lifecycle.remove_columns(removing.iter().copied());
-        self.context.hide_bunches_in_model(&removing, model)?;
-        self.context.remove_columns(&removing);
         self.sync_model_state_from_lifecycle();
 
         if self.context.column_count() > self.configuration.max_column_amount {
@@ -972,6 +1069,8 @@ where
 
     /// 刷新状态 / Flush state
     fn flush(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        self.clear_pricing_bound();
+        self.pricing_certificate = None;
         self.fixed_bunches.clear();
         self.kept_bunches.clear();
         self.hidden_executors.clear();
@@ -980,7 +1079,7 @@ where
         self.lifecycle.flush();
         model.flush(false);
         self.context.flush();
-        self.context.apply_lifecycle(&mut self.lifecycle);
+        self.context.apply_lifecycle(&mut self.lifecycle, model)?;
         self.context.restore_non_removed_ranges_in_model(model)?;
         self.context
             .hide_bunches_in_model(&self.lifecycle.state().removed_columns(), model)?;
@@ -995,26 +1094,102 @@ where
 
     /// 构造并执行定价请求 / Build and execute pricing request
     fn generate_bunches(
-        &self,
+        &mut self,
         executor_ids: &[C::ExecutorId],
+        model: &MetaModel<f64>,
     ) -> GanttResult<Vec<BunchEntry<C::ExecutorId>>> {
-        let kept_groups = self
+        self.clear_pricing_bound();
+        if executor_ids.iter().collect::<HashSet<_>>().len()
+            != executor_ids.iter().map(ToString::to_string).collect::<HashSet<_>>().len()
+        {
+            return Err(pricing_error("不同执行器的显示身份冲突 / distinct executors have colliding display identities"));
+        }
+        let kept_groups: HashSet<_> = self
             .kept_bunches
             .iter()
             .filter_map(|bunch_index| self.context.get_bunch_entry(*bunch_index))
             .map(|bunch| BranchGroup::from(&bunch))
             .collect();
-        self.policy
-            .generate_bunches_with_request(&BunchPricingRequest {
+        let certificate = self.pricing_certificate.as_ref();
+        let mut current = model.try_to_linear_triad_model().map_err(|error| GanttError::Calculation { message: error.to_string() })?;
+        current.linear_relax();
+        let mut shadow_prices = self.shadow_prices.clone();
+        let mut slot_prices = self.executor_slot_shadow_prices.clone();
+        let mut row_duals = BTreeMap::new();
+        let mut mapping_complete = false;
+        if let Some(certificate) = certificate {
+            certificate.validate_for(model)?;
+            if certificate.context_revision != self.context.pricing_revision() {
+                return Err(pricing_error("束注册状态已改变 / bunch registration state changed"));
+            }
+            row_duals = certificate.row_duals.clone();
+            let names: HashMap<_, _> = model.constraints().iter().enumerate().map(|(index, row)| (row.name.clone(), index)).collect();
+            let normalized = LinearDualSolution::new(model.constraints().iter().map(|row| row_duals.get(&row.name).copied()
+                .ok_or_else(|| pricing_error("原模型行对偶缺失 / missing original-model row dual")))
+                .collect::<GanttResult<Vec<_>>>()?, Vec::new());
+            let index_map = self.context.build_constraint_index_map(&names);
+            shadow_prices = self.context.extract_shadow_price_with_index_map(&normalized, &index_map, &names);
+            for task in 0..self.context.task_count_for_shadow_price() {
+                if let Some(price) = index_map.dual_value(&ConstraintIndexKey::task_compilation(task), &normalized.constraints) {
+                    shadow_prices.insert(task, price);
+                }
+            }
+            mapping_complete = (0..self.context.task_count_for_shadow_price()).all(|task| shadow_prices.contains_key(&task));
+            slot_prices = self.context.extract_executor_slot_shadow_prices(&normalized, &index_map);
+        }
+        if shadow_prices.values().chain(slot_prices.values()).any(|price| !price.is_finite()) {
+            return Err(pricing_error("束定价价格非有限 / non-finite bunch-pricing price"));
+        }
+        let declared_domain = self.context.pricing_domain();
+        let full_domain = declared_domain.as_ref().is_some_and(|domain| {
+            domain.iter().map(|(executor, _)| executor).collect::<HashSet<_>>() == executor_ids.iter().collect()
+                && domain.iter().all(|(executor, slot)| slot.is_none_or(|slot| slot_prices.contains_key(&(executor.clone(), slot))))
+        });
+        let fingerprint = linear_model_fingerprint(&current).map_err(|error| GanttError::Calculation { message: error.to_string() })?;
+        let mut branch: Vec<_> = self.branch_groups.fixed_groups().iter().map(|group| format!("fixed:{group:?}")).collect();
+        branch.extend(kept_groups.iter().map(|group| format!("kept:{group:?}")));
+        branch.extend(self.hidden_executors.iter().map(|id| format!("hidden:{id}")));
+        branch.sort();
+        let scope = ColumnGenerationScope {
+            request: format!("bunch-pricing-{}", NEXT_PRICING_REQUEST.fetch_add(1, Ordering::Relaxed)),
+            groups: executor_ids.iter().map(ToString::to_string).collect(),
+            model: format!("{}:{fingerprint:?}", model.model_identity()),
+            dual: format!("{}:{}", model.model_identity(), self.pricing_revision),
+            branch: format!("root:{branch:?}"),
+            global: certificate.is_some_and(|certificate| certificate.context_revision.is_some()) && mapping_complete && full_domain
+                && executor_ids == self.executor_ids && self.hidden_executors.is_empty()
+                && self.branch_groups.fixed_groups().is_empty() && kept_groups.is_empty(),
+            executor_slots: if let Some(domain) = &declared_domain {
+                domain.iter().filter_map(|(executor, slot)| slot.filter(|_| executor_ids.contains(executor))
+                    .map(|slot| format!("{executor}:{slot}"))).collect()
+            } else {
+                slot_prices.keys().filter(|(id, _)| executor_ids.contains(id))
+                    .map(|(id, slot)| format!("{id}:{slot}")).collect()
+            },
+        };
+        let batch = self.policy.generate_bunch_batch(&BunchPricingRequest {
+                scope: scope.clone(),
                 iteration: self.iteration.iteration,
                 executor_ids: executor_ids.to_vec(),
-                shadow_prices: self.shadow_prices.clone(),
-                executor_slot_shadow_prices: self.executor_slot_shadow_prices.clone(),
+                shadow_prices,
+                executor_slot_shadow_prices: slot_prices,
+                row_duals,
+                verified_duals: certificate.map(|evidence| evidence.certificate.clone()),
                 fixed_groups: self.branch_groups.fixed_groups().clone(),
                 kept_groups,
                 hidden_executors: self.hidden_executors.clone(),
                 min_column_amount_per_executor: self.configuration.min_column_amount_per_executor,
-            })
+            })?;
+        validate_pricing_batch(&batch, &scope, self.context.task_count_for_shadow_price(), declared_domain.as_ref())?;
+        self.last_pricing_complete = certificate.is_some() && batch.certifies_no_improving_columns(&scope);
+        if let Some(bound) = certificate.filter(|_| self.last_pricing_complete)
+            .map(|certificate| certificate.lower_bound(model)).transpose()?.flatten()
+        {
+            self.last_certified_bound = Some(bound);
+            self.iteration.lower_bound = Some(self.iteration.lower_bound.map_or(bound, |old| old.max(bound)));
+            self.iteration.best_dual_obj = self.iteration.lower_bound;
+        }
+        Ok(batch.columns)
     }
 
     /// 根据当前固定列重建分支 group 状态 / Rebuild branch groups from current fixed columns
@@ -1031,6 +1206,48 @@ where
             }
         }
     }
+}
+
+static NEXT_PRICING_REQUEST: AtomicU64 = AtomicU64::new(1);
+
+#[cfg(test)]
+mod pricing_tests;
+
+fn pricing_error(message: &str) -> GanttError {
+    GanttError::Calculation { message: message.into() }
+}
+
+fn validate_pricing_batch<I: ExecutorIdTrait>(
+    batch: &ColumnGenerationBatch<BunchEntry<I>>,
+    scope: &ColumnGenerationScope,
+    tasks: usize,
+    domain: Option<&HashSet<(I, Option<usize>)>>,
+) -> GanttResult<()> {
+    if batch.scope.as_ref().is_some_and(|actual| actual != scope) {
+        return Err(pricing_error("束批次作用域不匹配 / bunch-batch scope mismatch"));
+    }
+    for bunch in &batch.columns {
+        if !bunch.cost.is_finite() || bunch.task_indices.iter().any(|task| *task >= tasks)
+            || !scope.groups.contains(&bunch.executor_id.to_string())
+            || domain.is_some_and(|domain| !domain.contains(&(bunch.executor_id.clone(), bunch.slot_index)))
+            || bunch.slot_index.is_some_and(|slot| !scope.executor_slots.contains(&format!("{}:{slot}", bunch.executor_id)))
+        {
+            return Err(pricing_error("束候选超出定价域或成本非法 / bunch candidate exceeds pricing domain or has invalid cost"));
+        }
+    }
+    let mut requests = HashSet::new();
+    for child in &batch.children {
+        let child_scope = child.scope.as_ref().ok_or_else(|| pricing_error("束子批次缺少作用域 / bunch child-batch lacks scope"))?;
+        if !requests.insert(&child_scope.request)
+            || !(child_scope.request == scope.request || child_scope.request.starts_with(&format!("{}:", scope.request)))
+            || child_scope.model != scope.model || child_scope.dual != scope.dual || child_scope.branch != scope.branch
+            || !child_scope.groups.is_subset(&scope.groups) || !child_scope.executor_slots.is_subset(&scope.executor_slots)
+        {
+            return Err(pricing_error("束子批次作用域不匹配 / bunch child-batch scope mismatch"));
+        }
+        validate_pricing_batch(child, child_scope, tasks, domain)?;
+    }
+    Ok(())
 }
 
 #[cfg(feature = "async")]
@@ -1096,6 +1313,7 @@ mod tests {
     fn branch_group_tracker_keeps_executor_until_all_slots_are_fixed() {
         let mut tracker = BranchGroupTracker::<ExecutorId>::default();
         let first = BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0],
@@ -1104,6 +1322,7 @@ mod tests {
             slot_index: Some(0),
         };
         let second = BunchEntry {
+            id: "bunch-1".into(),
             index: 1,
             executor_id: "exec_1".into(),
             task_indices: vec![1],
@@ -1533,6 +1752,7 @@ mod tests {
                 executor_ids
                     .first()
                     .map(|executor_id| BunchEntry {
+                        id: "bunch-0".into(),
                         index: 0,
                         executor_id: executor_id.clone(),
                         task_indices: vec![0],
@@ -1652,11 +1872,10 @@ mod tests {
         let right = algorithm
             .solve_branch_node_with_fresh_model(&right_node, || {
                 MetaModel::<f64>::new("test_lifecycle_right_node")
-            })
-            .expect("right branch node should solve");
+            });
 
         assert!(!left.is_infeasible());
-        assert!(!right.is_infeasible());
+        assert!(right.is_err());
         assert_eq!(algorithm.lifecycle.solution(), snapshot.solution.as_deref());
         assert_eq!(
             algorithm.lifecycle.warm_start_columns(),

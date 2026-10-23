@@ -91,6 +91,21 @@ are fixed. `SlotBunchPricingRequest` carries slot entry state and branch restric
 slot-pricing policies, while `CapacityColumnSelectionConstraint` registers and extracts
 exactly-one capacity-column selections.
 
+## Bunch Master Lifecycle
+
+`BunchEntry::id: BunchId` distinguishes complete business candidates even with identical
+task coverage. `IterativeBunchCompilation::configure_master` optionally enables standard
+coverage, cancellation, executor-selection rows and an owned cost objective. Registration,
+additions and model-aware retirement are transactional and model-bound; real mutations
+refresh owned rows/objectives without replacing unrelated extensions. Retirement and
+`apply_lifecycle` now require `&mut MetaModel` and return `GanttResult<()>`.
+Production extraction validates the complete current backend matrix, integer values and
+actual cancellation variables. The bunch algorithm follows the model's objective direction;
+zero initial cost does not stop pricing, and final MILP failures propagate. Retaining an
+earlier incumbent requires revalidation against the extended model and drops its old proof.
+See [bunch compilation](src/domain/bunch_compilation/README.md) for the API migration and
+the boundary between managed dynamic rows and existing static pipeline snapshots.
+
 ## Generic Numeric Boundaries
 
 Domain APIs use generic solver-value abstractions through `SolverValueAdapter`. `F64SolverValueAdapter` marks the current `f64` solver boundary. Solver conversion remains concentrated in context registration, application solver calls, and result extraction rather than scattered through domain logic.
@@ -130,6 +145,47 @@ The tested slot branch-and-price application flow is:
 
 For multi-node tree search, prefer `solve_branch_node_with_fresh_model`, which restores application state, the dynamic lifecycle, and the compilation context while discarding the node-local `MetaModel` after solve.
 
+## Scoped Pricing Evidence
+
+Task and bunch pricing consume `ospf_rust_framework::model::ColumnGenerationBatch`.
+Search completion, no-improvement evidence, current RMP optimality, and integer
+optimality remain separate contracts. Legacy generators always return heuristic
+batches, even when their output is empty.
+
+- `domain::task_generation::{TaskCGPolicy, TaskPricingRequest, TaskPricingColumn,
+  TaskPricingDomain}` exposes scoped task-executor pricing. The current task
+  compilation is unslotted: executor slot zero denotes the existing task-executor
+  pair, and nonzero slots are rejected rather than silently discarded.
+- `TaskColumnGenerationAlgorithm::solve_rmp_lp_report` actually relaxes the model
+  and retains normal infeasible, limited-without-incumbent and cancelled reports.
+  `accept_pricing_report` accepts an original report; `accept_pricing_lp` also
+  checks that legacy primal, objective and dual projections have not been changed.
+  Neither API reconstructs provenance from raw external duals.
+- Task and bunch requests rederive signed prices from independently validated
+  current LP certificates. Equality duals are folded as `le - ge`, greater-equal
+  rows are sign-normalized once, and `row_duals` retains every original extension
+  row and explicit zero. Unmapped hidden compiler rows are rejected. A forged
+  optimal report is an error, not a heuristic downgrade.
+- Contexts declare `pricing_domain` and `pricing_revision`; task contexts can
+  override `task_pricing_rows` for downstream pipeline names. A custom context
+  must include every pricing-relevant business change in its revision. Defaults
+  deliberately opt out of global certification. The revision is only an additional
+  lifecycle guard, never a replacement for actual model-bound LP verification.
+- Only a matching exhaustive no-improvement batch and a reliable current LP
+  certificate can produce `certified_lower_bound`. Restricted domains, fixing,
+  retained columns, missing child-domain combinations, budgets and interruptions
+  cannot certify the complete domain. Request identities are fresh on every call.
+  Such a bound certifies the full pricing-domain LP, not global integer optimality.
+- `add_priced_columns` uses the existing context registration lifecycle. Task
+  indices and all finite costs are checked for the whole batch before registration.
+  Context/model changes invalidate task pricing evidence; public price-cache
+  mutation cannot replace the certificate's actual prices.
+
+These APIs do not add a second task modeling kernel or a private solver loop.
+`TaskPricingColumn<V>` retains its domain value type; the existing task compilation
+and pricing-policy boundary remains `f64`. Exact numeric feature support elsewhere
+in the crate does not expand runtime unit serialization guarantees.
+
 ## Outputs
 
 `BunchSolution` and related bunch scheduling outputs contain selected bunches, task assignments, canceled tasks, executor assignments, and total cost. `CapacitySchedulingSolution` contains capacity columns and production actions per time slot. Iteration and branch-search outputs record LP/IP objectives, node status, branch decisions, incumbent state, and trace hooks.
@@ -155,6 +211,13 @@ cargo check -p ospf-rust-framework-gantt-scheduling --features serde
 ```
 
 ## Current Boundaries
+
+`BunchBranchAndPriceAlgorithm::run_report` reuses the same loop, preserving structured initial
+infeasible, no-incumbent time-limit, cancellation and interruption outcomes. Backend/numerical
+failures and invalid incumbents remain errors. Reports cover at most the current finite master,
+not automatically the complete pricing domain. Demo4 connects its recovery application through
+the iterative context and an immutable business directory; see the
+[recovery application guide](../ospf-rust-example/src/framework/demo4/README.md).
 
 1. Ordinary MILP, RMP LP, and final MILP share the context and iterative compilation entry points for registration, column addition, shadow-price extraction, and solution extraction. Solver conversion remains in the application layer.
 2. Multi-step task graphs are exposed as a domain extension model. Existing single-step task compilation remains unchanged.

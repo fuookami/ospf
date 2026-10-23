@@ -45,9 +45,9 @@ pub fn symmetric_eigen(matrix: &[Vec<f64>]) -> Option<SymmetricEigen> {
     let max_sweeps = 100;
     for _ in 0..max_sweeps {
         let mut off_diagonal = 0.0;
-        for i in 0..dimension {
-            for j in (i + 1)..dimension {
-                off_diagonal += a[i][j] * a[i][j];
+        for (i, row) in a.iter().enumerate() {
+            for value in row.iter().skip(i + 1) {
+                off_diagonal += value * value;
             }
         }
         if off_diagonal.sqrt() <= 1.0e-12 {
@@ -68,23 +68,24 @@ pub fn symmetric_eigen(matrix: &[Vec<f64>]) -> Option<SymmetricEigen> {
                 let c = 1.0 / (1.0 + t * t).sqrt();
                 let s = t * c;
 
-                for k in 0..dimension {
-                    let akp = a[k][p];
-                    let akq = a[k][q];
-                    a[k][p] = c * akp - s * akq;
-                    a[k][q] = s * akp + c * akq;
+                for row in &mut a {
+                    let akp = row[p];
+                    let akq = row[q];
+                    row[p] = c * akp - s * akq;
+                    row[q] = s * akp + c * akq;
                 }
-                for k in 0..dimension {
-                    let apk = a[p][k];
-                    let aqk = a[q][k];
-                    a[p][k] = c * apk - s * aqk;
-                    a[q][k] = s * apk + c * aqk;
+                let (before_q, from_q) = a.split_at_mut(q);
+                for (left, right) in before_q[p].iter_mut().zip(&mut from_q[0]) {
+                    let apk = *left;
+                    let aqk = *right;
+                    *left = c * apk - s * aqk;
+                    *right = s * apk + c * aqk;
                 }
-                for k in 0..dimension {
-                    let vkp = v[k][p];
-                    let vkq = v[k][q];
-                    v[k][p] = c * vkp - s * vkq;
-                    v[k][q] = s * vkp + c * vkq;
+                for row in &mut v {
+                    let vkp = row[p];
+                    let vkq = row[q];
+                    row[p] = c * vkp - s * vkq;
+                    row[q] = s * vkp + c * vkq;
                 }
             }
         }

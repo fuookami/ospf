@@ -9,7 +9,7 @@ use ospf_rust_core::variable::{ContinuousVariableItem, VariableId};
 fn assert_function_symbol<T: FunctionSymbol<f64>>() {}
 
 #[test]
-fn Product_has_a_dedicated_contract_test_file() {
+fn product_has_a_dedicated_contract_test_file() {
     assert_function_symbol::<ProductFunction<f64>>();
 }
 
@@ -42,7 +42,7 @@ fn product_is_expression_only_and_registers_no_rows_or_helpers() {
     let ty = Token::from_generic(y, 1);
     ty.set_result(3.0);
     tokens.add_token(ty);
-    assert_eq!(product.calculate_value(&tokens, false), Some((-1.0) * 2.0));
+    assert_eq!(product.calculate_value(&tokens, false), Some(-2.0));
     let polynomial = product.to_quadratic_polynomial();
     assert!(polynomial
         .monomials()

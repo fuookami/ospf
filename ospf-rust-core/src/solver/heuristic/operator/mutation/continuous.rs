@@ -28,14 +28,14 @@ where
     F: FnMut(usize, f64, Option<f64>, Option<f64>, &mut dyn Entropy) -> f64,
 {
     let mut values = read_values(model, solution);
-    for index in 0..values.len() {
+    for (index, value) in values.iter_mut().enumerate() {
         if !should_fire(entropy, mutation_rate) {
             continue;
         }
-        let current = to_f64(&values[index]);
+        let current = to_f64(value);
         let (lower, upper) = model.bounds_at(index);
         let mutated = step(index, current, lower, upper, entropy);
-        values[index] = clamped_value(mutated, lower, upper);
+        *value = clamped_value(mutated, lower, upper);
     }
     write_values(model, values)
 }

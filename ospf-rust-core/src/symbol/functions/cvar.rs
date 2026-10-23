@@ -21,6 +21,8 @@ use crate::symbol::{
 use crate::token::{IntoValue, Token, TokenList};
 use crate::variable::{ContinuousVariableItem, VariableId, VariableRange, new_group_id};
 
+type TemporaryHelperIndexes<V> = (HashMap<usize, usize>, Vec<Token<V>>);
+
 #[derive(Debug, Clone)]
 enum CvarKind<V>
 where
@@ -45,7 +47,6 @@ where
     id: IntermediateSymbolId,
     losses: Vec<Linear<V>>,
     probabilities: Vec<V>,
-    alpha: V,
     denominator: V,
     weights: Vec<V>,
     kind: CvarKind<V>,
@@ -180,7 +181,6 @@ where
             id: IntermediateSymbolId::new(id, name),
             losses,
             probabilities,
-            alpha,
             denominator,
             weights,
             kind: CvarKind::Exact {
@@ -230,7 +230,6 @@ where
             id: IntermediateSymbolId::new(id, name),
             losses,
             probabilities,
-            alpha,
             denominator,
             weights,
             kind: CvarKind::Epigraph {
@@ -583,7 +582,7 @@ where
         positive_parts: &[Vec<MaxFunction<V>>],
         auxiliary: &[Token<V>],
         registered: &[Token<V>],
-    ) -> Result<(HashMap<usize, usize>, Vec<Token<V>>)> {
+    ) -> Result<TemporaryHelperIndexes<V>> {
         let mut next_index = registered
             .iter()
             .filter_map(|token| (token.solver_index != usize::MAX).then_some(token.solver_index))
@@ -1258,8 +1257,8 @@ mod tests {
 
     #[test]
     fn evaluates_non_uniform_weighted_cvar_and_alpha_zero() {
-        let (mut model, losses, x_index, y_index) = model_with_losses();
-        let mut tokens = model.tokens().to_vec();
+        let (model, losses, x_index, y_index) = model_with_losses();
+        let tokens = model.tokens().to_vec();
         tokens[x_index].set_result(10.0);
         tokens[y_index].set_result(0.0);
         let mut table = VecTokenList::new();

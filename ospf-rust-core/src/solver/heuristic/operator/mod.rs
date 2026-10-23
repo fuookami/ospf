@@ -118,15 +118,11 @@ pub fn clamp_to(value: f64, lower: Option<f64>, upper: Option<f64>) -> f64 {
         return lower.or(upper).unwrap_or(0.0);
     }
     let mut result = value;
-    if let Some(lower) = lower {
-        if result < lower {
-            result = lower;
-        }
+    if let Some(lower) = lower && result < lower {
+        result = lower;
     }
-    if let Some(upper) = upper {
-        if result > upper {
-            result = upper;
-        }
+    if let Some(upper) = upper && result > upper {
+        result = upper;
     }
     result
 }

@@ -2401,15 +2401,13 @@ where
             constraints.extend(self.right_bridge.mechanism_constraints(symbol_to_index)?);
         }
         let mut mapped_inner = self.inner.with_polynomials(mapped_left, mapped_right);
-        if self.explicit_big_m.is_none() {
-            if let Some(big_m) =
-                infer_quadratic_difference_abs_bound_from_tokens(&self.left, &self.right, tokens)
-            {
-                mapped_inner = mapped_inner.with_big_m_value(convert_f64_to_v(
-                    big_m.max(MIN_BIG_M),
-                    "quadratic slack inferred big-M",
-                )?);
-            }
+        if self.explicit_big_m.is_none()
+            && let Some(big_m) = infer_quadratic_difference_abs_bound_from_tokens(&self.left, &self.right, tokens)
+        {
+            mapped_inner = mapped_inner.with_big_m_value(convert_f64_to_v(
+                big_m.max(MIN_BIG_M),
+                "quadratic slack inferred big-M",
+            )?);
         }
         constraints.extend(mapped_inner.mechanism_constraints(symbol_to_index)?);
         Ok(constraints)
@@ -3943,6 +3941,7 @@ where
     /// 实际取值范围；校验在构造阶段完成。
     /// `condition_bounds` and `then_bounds` must cover the actual ranges of the condition
     /// and then expressions; validation happens during construction.
+    #[expect(clippy::too_many_arguments, reason = "保留既有公开二次条件值构造接口 / Preserve the existing public quadratic conditional-value constructor")]
     pub fn new(
         id: u64,
         name: &str,

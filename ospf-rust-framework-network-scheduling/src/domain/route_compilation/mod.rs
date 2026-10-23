@@ -7,7 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use ospf_rust_core::model::{
-    ConstraintGroup, ConstraintRelation, LinearObjectiveInput, MetaModel, ObjectiveCategory,
+    ConstraintGroup, ConstraintRelation, Linear, LinearMonomial, LinearObjectiveInput, MetaModel,
+    ObjectiveCategory, SubObjective,
 };
 use ospf_rust_core::solver::value::{SolveValue, SolveValueConversionPolicy};
 use ospf_rust_core::variable::{Continuous, VariableRange};
@@ -19,6 +20,10 @@ use crate::domain::vrp::{
     VrptwSolution, default_arc_id,
 };
 use crate::error::{NetworkSchedulingError, Result};
+
+mod pricing_rows;
+
+pub use pricing_rows::RoutePricingRowCompilation;
 
 const COMPILATION_GROUP_ID: u64 = 0x4e53_5250_4347_0001;
 
@@ -158,12 +163,16 @@ pub struct RouteCompilationAggregation<V: SolveValue + UnitConversionValue> {
     pub artificial_coverage: ArtificialCoverage,
     /// 当前阶段 / Current phase.
     pub phase: PricingPhase,
+    /// 主问题与定价共用的声明行组件 / Declared-row component shared by master and pricing.
+    pub pricing_rows: RoutePricingRowCompilation<V>,
     route_indices: BTreeMap<String, RouteVariableIndex>,
     model_to_route: BTreeMap<usize, String>,
+    retired_route_indices: BTreeSet<usize>,
     constraint_group: Option<Arc<ConstraintGroup>>,
     registered: bool,
     registered_model: Option<u64>,
     next_route_variable_id: usize,
+    objective_name: Option<String>,
 }
 
 impl<V> RouteCompilationAggregation<V>
@@ -177,13 +186,25 @@ where
             column_pool: RouteColumnPool::new(),
             artificial_coverage: ArtificialCoverage::default(),
             phase: PricingPhase::PhaseOne,
+            pricing_rows: RoutePricingRowCompilation::empty(),
             route_indices: BTreeMap::new(),
             model_to_route: BTreeMap::new(),
+            retired_route_indices: BTreeSet::new(),
             constraint_group: None,
             registered: false,
             registered_model: None,
             next_route_variable_id: 0,
+            objective_name: None,
         }
+    }
+
+    /// 注入不可变声明行；仅允许在首次注册前调用。 / Inject immutable rows only before the first registration.
+    pub fn with_pricing_rows(mut self, rows: Arc<crate::domain::vrp::RoutePricingRows<V>>) -> Result<Self> {
+        if self.registered {
+            return Err(NetworkSchedulingError::contract("注册后不能替换定价域 / cannot replace pricing domain after registration"));
+        }
+        self.pricing_rows = RoutePricingRowCompilation::new(rows)?;
+        Ok(self)
     }
 
     /// 注册人工变量、覆盖约束、车队约束和 Phase I 目标 / Register artificial variables, coverage, fleet, and Phase-I objective.
@@ -211,6 +232,7 @@ where
                     .map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
                 self.artificial_coverage.variable_indices.push(index);
             }
+            self.pricing_rows.register_variables(model)?;
             self.registered = true;
             self.refresh_constraints(model)?;
             self.refresh_objective(model)?;
@@ -243,6 +265,12 @@ where
             return Ok(Vec::new());
         }
         for route in &candidates {
+            let customers = route.customer_ids();
+            if customers.is_empty() || customers.iter().collect::<BTreeSet<_>>().len() != customers.len()
+                || customers.iter().any(|id| !self.instance.customer_by_id.contains_key(id))
+            {
+                return Err(NetworkSchedulingError::validation("主问题路线须包含已知且不重复的客户 / master routes require known, non-repeated customers"));
+            }
             if self.instance.vehicle_type(&route.vehicle_type_id).is_none() {
                 return Err(NetworkSchedulingError::validation(format!(
                     "路线车辆类型不存在：{} / route vehicle type does not exist: {}",
@@ -254,13 +282,16 @@ where
         let aggregation_before = self.clone();
         let result = model.transaction(|model| {
             let first_variable_id = self.next_route_variable_id;
+            self.pricing_rows.prepare(&candidates, &self.instance)?;
             let mut registrations = Vec::with_capacity(candidates.len());
             for (offset, route) in candidates.iter().enumerate() {
                 let variable_id = first_variable_id + offset;
                 let variable_index = model
                     .register_auto_variable_with_range::<Continuous>(
                         &format!("route_column_{variable_id}"),
-                        VariableRange::bounded(0.0, 1.0),
+                        // 精确覆盖已蕴含上界一；显式上界会引入定价未包含的列对偶。
+                        // Exact coverage implies an upper bound of one; explicit bounds introduce unpriced column duals.
+                        VariableRange::with_lower(0.0),
                     )
                     .map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
                 let column_index = self.column_pool.len() + offset;
@@ -304,12 +335,15 @@ where
         let result = model.transaction(|model| {
             for route in &routes {
                 if let Some(index) = self.route_indices.remove(&route.signature()) {
+                    model.remove_objective_terms(&[index.model_index].into_iter().collect());
                     model
                         .set_variable_range_by_index(index.model_index, VariableRange::fixed(0.0))
                         .map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
                     self.model_to_route.remove(&index.model_index);
+                    self.retired_route_indices.insert(index.model_index);
                 }
             }
+            self.pricing_rows.remove(&routes);
             self.column_pool.remove_columns(routes);
             for (column_index, route) in self.column_pool.routes().iter().enumerate() {
                 if let Some(index) = self.route_indices.get_mut(&route.signature()) {
@@ -335,9 +369,9 @@ where
         }
         let aggregation_before = self.clone();
         let result = model.transaction(|model| {
-            for index in &self.artificial_coverage.variable_indices {
+            for index in self.artificial_coverage.variable_indices.iter().copied().chain(self.pricing_rows.artificial_indices()) {
                 model
-                    .set_variable_range_by_index(*index, VariableRange::fixed(0.0))
+                    .set_variable_range_by_index(index, VariableRange::fixed(0.0))
                     .map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
             }
             self.artificial_coverage.is_phase_two = true;
@@ -355,7 +389,9 @@ where
     /// 判断 Phase I 是否已经达到可行覆盖 / Check whether Phase I has achieved feasible coverage.
     pub fn is_phase_one_converged(&self, model: &MetaModel<f64>, tolerance: f64) -> Result<bool> {
         self.ensure_registered_on(model)?;
-        Ok(self.artificial_coverage.is_converged(model, tolerance))
+        Ok(self.artificial_coverage.is_converged(model, tolerance)
+            && self.pricing_rows.artificial_indices().all(|index| model.tokens().get(index)
+                .and_then(|token| token.get_result()).is_some_and(|value| value.abs() <= tolerance)))
     }
 
     /// 从模型解中提取路线变量值 / Extract route-variable values from a model solution.
@@ -411,7 +447,10 @@ where
         model: &MetaModel<f64>,
         dual_solution: &[f64],
     ) -> Result<PricingDuals> {
-        self.ensure_registered_on(model)?;
+        self.validate_pricing_model(model)?;
+        if dual_solution.len() != model.constraints().len() || dual_solution.iter().any(|value| !value.is_finite()) {
+            return Err(NetworkSchedulingError::contract("对偶长度错误或含非有限值 / invalid dual length or non-finite dual"));
+        }
         let mut shadow_prices = VrpShadowPriceMap::new();
         for customer in &self.instance.customers {
             let name = coverage_constraint_name(&customer.id);
@@ -423,6 +462,7 @@ where
             let value = constraint_dual(model, dual_solution, &name)?;
             shadow_prices.set_fleet_dual(vehicle_type.id.clone(), value);
         }
+        self.pricing_rows.extract_duals(model, dual_solution, &mut shadow_prices)?;
         Ok(shadow_prices.snapshot(self.phase))
     }
 
@@ -434,6 +474,65 @@ where
     /// 返回当前路线 / Return current active routes.
     pub fn routes(&self) -> &[Route<V>] {
         self.column_pool.routes()
+    }
+
+    /// 拒绝无系数映射的外部行和受管目标篡改；此校验不认证裸对偶来源。
+    /// Reject unmapped external rows and managed-objective tampering; this does not certify raw dual provenance.
+    pub fn validate_pricing_model(&self, model: &MetaModel<f64>) -> Result<()> {
+        self.ensure_registered_on(model)?;
+        self.pricing_rows.validate_coefficients(self.routes(), &self.instance)?;
+        let mut expected = MetaModel::<f64>::new("route_pricing_validation");
+        for index in 0..model.tokens().len() {
+            expected.register_auto_variable::<Continuous>(&format!("validation_{index}"))
+                .map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
+        }
+        self.refresh_constraints(&mut expected)?;
+        if model.constraints().len() != expected.constraints().len()
+            || model.constraints().iter().zip(expected.constraints()).any(|(actual, expected)| {
+                actual.name != expected.name || actual.inequality.relation != expected.inequality.relation
+                    || actual.inequality.rhs != expected.inequality.rhs
+                    || actual.inequality.polynomial.constant_term() != expected.inequality.polynomial.constant_term()
+                    || actual.inequality.polynomial.monomials().iter().map(|term| (term.var_index(), *term.coefficient())).collect::<Vec<_>>()
+                        != expected.inequality.polynomial.monomials().iter().map(|term| (term.var_index(), *term.coefficient())).collect::<Vec<_>>()
+                    || actual.lazy != expected.lazy || actual.group.as_ref().map(|group| group.id) != expected.group.as_ref().map(|group| group.id)
+            })
+        {
+            return Err(NetworkSchedulingError::contract("受管行被修改或存在未映射外部行 / modified managed rows or unmapped external rows"));
+        }
+        let compiled = model.try_to_linear_triad_model().map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
+        let expanded = model.constraints().iter().map(|row| if row.inequality.relation == ConstraintRelation::Equal { 2 } else { 1 }).sum::<usize>();
+        if compiled.objective_category != ObjectiveCategory::Minimum || compiled.A.rows.len() != expanded
+            || compiled.c.iter().any(|value| !value.is_finite())
+            || model.objective_snapshot().sub_objectives.iter().any(|objective| !objective.weight.is_finite()
+                || !objective.polynomial.constant_term().is_finite()
+                || objective.polynomial.monomials().iter().any(|term| !term.coefficient().is_finite()))
+        {
+            return Err(NetworkSchedulingError::contract("定价模型含未映射编译行或非法目标 / unmapped compiled rows or invalid pricing objective"));
+        }
+        for route in self.routes() {
+            let index = self.route_indices.get(&route.signature()).ok_or_else(|| NetworkSchedulingError::contract(
+                "缺少受管路线索引 / missing managed route index"))?.model_index;
+            let cost = if self.phase == PricingPhase::PhaseOne { 0.0 } else { route_cost_f64(route, &self.instance.units.cost_unit)? };
+            if !cost.is_finite() || compiled.c.get(index) != Some(&cost)
+                || compiled.lb[index] != 0.0 || compiled.ub[index] != f64::INFINITY
+            {
+                return Err(NetworkSchedulingError::contract("受管路线目标被修改 / managed route objective was modified"));
+            }
+        }
+        for index in &self.retired_route_indices {
+            if compiled.lb.get(*index) != Some(&0.0) || compiled.ub.get(*index) != Some(&0.0) || compiled.c.get(*index) != Some(&0.0) {
+                return Err(NetworkSchedulingError::contract("退休路线列被重新启用或赋费 / retired route column was reactivated or assigned cost"));
+            }
+        }
+        for index in self.artificial_coverage.variable_indices.iter().copied().chain(self.pricing_rows.artificial_indices()) {
+            let cost = if self.phase == PricingPhase::PhaseOne { 1.0 } else { 0.0 };
+            if compiled.c.get(index) != Some(&cost)
+                || (self.phase == PricingPhase::PhaseTwo && (compiled.lb[index] != 0.0 || compiled.ub[index] != 0.0))
+            {
+                return Err(NetworkSchedulingError::contract("人工覆盖目标被修改 / artificial coverage objective was modified"));
+            }
+        }
+        Ok(())
     }
 
     fn canonicalize_route(&self, mut route: Route<V>) -> Result<Route<V>> {
@@ -538,10 +637,11 @@ where
                 )
                 .map_err(|error| NetworkSchedulingError::model(error.to_string()))?;
         }
+        self.pricing_rows.register_rows(model, group, &self.route_indices)?;
         Ok(())
     }
 
-    fn refresh_objective(&self, model: &mut MetaModel<f64>) -> Result<()> {
+    fn refresh_objective(&mut self, model: &mut MetaModel<f64>) -> Result<()> {
         let input = match self.phase {
             PricingPhase::PhaseOne => {
                 LinearObjectiveInput::minimize("phase_one_artificial_coverage").terms(
@@ -549,6 +649,7 @@ where
                         .variable_indices
                         .iter()
                         .copied()
+                        .chain(self.pricing_rows.artificial_indices())
                         .map(|index| (index, 1.0)),
                 )
             }
@@ -573,7 +674,20 @@ where
                         .collect::<Result<Vec<_>>>()?,
                 ),
         };
-        model.set_linear_objective_input(input.category(ObjectiveCategory::Minimum));
+        let replacement = SubObjective::new_with_weight(
+            input.category,
+            Linear::new(input.terms.into_iter()
+                .map(|(index, coefficient)| LinearMonomial::new(coefficient, index))
+                .collect(), 0.0),
+            &input.name,
+            input.weight,
+        );
+        model.set_objective_category(ObjectiveCategory::Minimum);
+        model.replace_sub_objective(
+            self.objective_name.as_deref().unwrap_or(&input.name),
+            replacement,
+        );
+        self.objective_name = Some(input.name);
         Ok(())
     }
 
@@ -714,12 +828,29 @@ where
     }
 }
 
+/// 为每个模型创建独立扩展，不共享可变注册态。 / Create a distinct extension per model without sharing mutable registration state.
+pub trait RouteCompilationExtensionFactory<V>: Send + Sync
+where
+    V: SolveValue + UnitConversionValue,
+{
+    /// 创建尚未注册的扩展 / Create an unregistered extension.
+    fn create(&self) -> Result<Box<dyn RouteCompilationExtension<V>>>;
+}
+
+impl<V, F> RouteCompilationExtensionFactory<V> for F
+where
+    V: SolveValue + UnitConversionValue,
+    F: Fn() -> Result<Box<dyn RouteCompilationExtension<V>>> + Send + Sync,
+{
+    fn create(&self) -> Result<Box<dyn RouteCompilationExtension<V>>> { self() }
+}
+
 /// 路线编译上下文 / Route-compilation context.
 pub struct RouteCompilationContext<V: SolveValue + UnitConversionValue> {
     /// 路线编译聚合 / Route-compilation aggregation.
     pub aggregation: RouteCompilationAggregation<V>,
     /// 注入的扩展 / Injected extensions.
-    pub extensions: Vec<Arc<dyn RouteCompilationExtension<V>>>,
+    pub extensions: Vec<Box<dyn RouteCompilationExtension<V>>>,
     /// 是否已经注册扩展 / Whether extensions have already been registered.
     extensions_registered: bool,
 }
@@ -740,13 +871,19 @@ where
     /// 创建带扩展的上下文 / Create a context with extensions.
     pub fn with_extensions(
         instance: Arc<VrptwInstance<V>>,
-        extensions: Vec<Arc<dyn RouteCompilationExtension<V>>>,
+        extensions: Vec<Box<dyn RouteCompilationExtension<V>>>,
     ) -> Self {
         Self {
             aggregation: RouteCompilationAggregation::new(instance),
             extensions,
             extensions_registered: false,
         }
+    }
+
+    /// 注入主问题和定价共用声明域。 / Inject the declaration domain shared by master and pricing.
+    pub fn with_pricing_rows(mut self, rows: Arc<crate::domain::vrp::RoutePricingRows<V>>) -> Result<Self> {
+        self.aggregation = self.aggregation.with_pricing_rows(rows)?;
+        Ok(self)
     }
 
     /// 注册基础模型和扩展 / Register the base model and extensions.
@@ -819,6 +956,10 @@ where
         model: &MetaModel<f64>,
         dual_solution: &[f64],
     ) -> Result<PricingDuals> {
+        self.aggregation.validate_pricing_model(model)?;
+        if dual_solution.len() != model.constraints().len() || dual_solution.iter().any(|value| !value.is_finite()) {
+            return Err(NetworkSchedulingError::contract("对偶长度错误或含非有限值 / invalid dual length or non-finite dual"));
+        }
         let mut prices = VrpShadowPriceMap::new();
         for customer in &self.aggregation.instance.customers {
             prices.set_customer_dual(
@@ -840,10 +981,16 @@ where
                 )?,
             );
         }
+        self.aggregation.pricing_rows.extract_duals(model, dual_solution, &mut prices)?;
+        let managed = prices.snapshot(self.aggregation.phase);
         for extension in &self.extensions {
             extension.refresh_shadow_price(model, dual_solution, &mut prices)?;
         }
-        Ok(prices.snapshot(self.aggregation.phase))
+        let refreshed = prices.snapshot(self.aggregation.phase);
+        if refreshed.customer != managed.customer || refreshed.fleet != managed.fleet || refreshed.extension != managed.extension {
+            return Err(NetworkSchedulingError::contract("扩展篡改受管定价对偶 / extension modified managed pricing duals"));
+        }
+        Ok(refreshed)
     }
 
     /// 切换 Phase II / Switch to Phase II.

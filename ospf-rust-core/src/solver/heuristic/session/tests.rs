@@ -1051,12 +1051,11 @@ mod multi_objective_adapter {
         }
     }
 
-    fn session() -> RunnerSession<
-        BiObjective,
-        Vec<f64>,
-        f64,
-        Vec<Individual<Vec<f64>, f64>>,
-    > {
+    type Front = Vec<Individual<Vec<f64>, f64>>;
+    type FrontSession = RunnerSession<BiObjective, Vec<f64>, f64, Front>;
+    type FrontCodecs = SessionCodecs<Front, Vec<f64>, f64>;
+
+    fn session() -> FrontSession {
         let order = BiObjective::new().variable_order();
         let hooks = NsgaSessionHooks::new(
             12,
@@ -1066,7 +1065,7 @@ mod multi_objective_adapter {
             Box::new(SeededEntropy::new(41)),
             None,
         );
-        let codecs: SessionCodecs<Vec<Individual<Vec<f64>, f64>>, Vec<f64>, f64> =
+        let codecs: FrontCodecs =
             SessionCodecs::new(
                 Some(Box::new(MultiObjectiveArchiveCodec::new(order.clone()))),
                 Some(Box::new(MultiObjectiveArchiveCodec::new(order))),
@@ -1137,7 +1136,7 @@ mod multi_objective_adapter {
             Box::new(SeededEntropy::new(41)),
             None,
         );
-        let codecs: SessionCodecs<Vec<Individual<Vec<f64>, f64>>, Vec<f64>, f64> =
+        let codecs: FrontCodecs =
             SessionCodecs::new(
                 Some(Box::new(MultiObjectiveArchiveCodec::new(order.clone()))),
                 Some(Box::new(MultiObjectiveArchiveCodec::new(order))),

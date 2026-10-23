@@ -190,6 +190,18 @@ impl IterativeTaskCompilation {
         new_pairs: Vec<(usize, usize, Cost<f64>)>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<AddedTaskColumn>> {
+        // 整批预检，避免后续坏列使前列已注册。 / Validate the whole batch before any earlier column can be registered.
+        for (task, executor, cost) in &new_pairs {
+            if *task >= self.n_tasks || *executor >= self.n_executors
+                || (cost.cost_sum.is_none() && !cost.items.is_empty())
+                || cost.cost_sum.is_some_and(|value| !value.is_finite())
+                || cost.items.iter().any(|item| item.cost_quantity.is_some_and(|value| !value.is_finite()))
+            {
+                return Err(GanttError::Calculation {
+                    message: "任务列索引或成本非法 / invalid task-column indices or costs".into(),
+                });
+            }
+        }
         let mut added_columns = Vec::new();
 
         for (task_idx, executor_idx, cost) in new_pairs {

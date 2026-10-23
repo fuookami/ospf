@@ -437,11 +437,14 @@ where
                 .map(|mut bunch| {
                     bunch.iteration = request.iteration;
                     bunch.slot_index = Some(request.slot_index);
+                    bunch.id = format!("{};slot={}", bunch.id, request.slot_index).into();
                     bunch
                 })
                 .collect();
 
-            generated.sort_by(|a, b| a.cost.total_cmp(&b.cost));
+            let reduced_cost = |bunch: &BunchEntry<E::Id>| bunch.cost - bunch.task_indices.iter()
+                .filter_map(|task| request.shadow_prices.get(task)).sum::<f64>();
+            generated.sort_by(|a, b| reduced_cost(a).total_cmp(&reduced_cost(b)));
             result.extend(generated.into_iter().map(|bunch| SlotBasedBunchEntry {
                 bunch,
                 slot_index: request.slot_index,
@@ -901,6 +904,14 @@ mod tests {
         assert!(!bunches.is_empty());
         assert!(bunches.iter().all(|entry| entry.slot_index == 0));
         assert!(bunches.iter().all(|entry| entry.bunch.iteration == 2));
+        assert!(bunches.iter().all(|entry| entry.bunch.cost == 0.0));
+        let next_prices = HashMap::from([(0, 9.0)]);
+        let next_request = SlotBunchPricingRequest::new(3, 0, &slot, &constraints, &next_prices);
+        let next = generator.generate_with_pricing_request(&next_request, &candidates).unwrap();
+        assert_eq!(bunches[0].bunch.id, next[0].bunch.id);
+        let other_slot_request = SlotBunchPricingRequest::new(3, 1, &slot, &constraints, &next_prices);
+        let other_slot = generator.generate_with_pricing_request(&other_slot_request, &candidates).unwrap();
+        assert_ne!(bunches[0].bunch.id, other_slot[0].bunch.id);
     }
 
     #[test]

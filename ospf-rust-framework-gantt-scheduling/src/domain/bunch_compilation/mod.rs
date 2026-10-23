@@ -8,15 +8,18 @@
 
 pub mod context;
 pub mod iterative;
+pub mod master;
 pub mod model;
 pub mod service;
 pub mod slot_based;
+pub mod validation;
 
 pub use context::{
     BasicBunchCompilationContext, BunchShadowPricePipeline, IterativeBunchCompilationContext,
     TaskShadowPriceKey,
 };
 pub use iterative::IterativeBunchCompilation;
+pub use master::{BunchExecutorSelection, BunchMasterConfiguration};
 pub use model::{
     BunchAggregation, BunchCompilation, BunchEntry, BunchSolution, BunchSolutionSummary,
 };

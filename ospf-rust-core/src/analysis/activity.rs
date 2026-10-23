@@ -537,18 +537,10 @@ pub trait ConstraintActivityAdapter {
 }
 
 /// 约束活动性分析器 / Constraint-activity analyzer.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct ConstraintActivityAnalyzer {
     /// 活动性配置 / Activity configuration.
     config: ActivityConfig,
-}
-
-impl Default for ConstraintActivityAnalyzer {
-    fn default() -> Self {
-        Self {
-            config: ActivityConfig::default(),
-        }
-    }
 }
 
 impl ConstraintActivityAnalyzer {
@@ -840,7 +832,7 @@ fn cp_constraint_activity(
             // Only global constraints with an unambiguous scalar boundary distance receive a margin.
             // The rest (table constraints, Circuit, Automaton, Reservoir, interval constraints, …)
             // keep `SatisfiedWithoutSlackMetric` per plan 2.2 and never receive fabricated slack.
-            return match cp_global_margin(&constraint.constraint, values)? {
+            match cp_global_margin(&constraint.constraint, values)? {
                 Some(margin) => {
                     let scale = 1.0_f64;
                     Ok(ConstraintActivity {
@@ -878,7 +870,7 @@ fn cp_constraint_activity(
                         margin: None,
                     },
                 }),
-            };
+            }
         }
     }
 }

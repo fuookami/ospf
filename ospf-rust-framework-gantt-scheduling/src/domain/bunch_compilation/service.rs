@@ -61,14 +61,11 @@ pub mod limits {
                 terms.push((compilation.y_indices[ti], 1.0));
 
                 // x[bunch] 项：遍历所有迭代的所有束
-                for (iter_idx, x_indices) in compilation.x_indices.iter().enumerate() {
-                    let bunches = compilation.aggregation.bunches_for_iteration(iter_idx);
-                    for (local_idx, bunch) in bunches.iter().enumerate() {
-                        if bunch.task_indices.contains(&ti)
-                            && let Some(&x_idx) = x_indices.get(local_idx)
-                        {
-                            terms.push((x_idx, 1.0));
-                        }
+                for bunch in compilation.aggregation.bunches() {
+                    if bunch.task_indices.contains(&ti)
+                        && let Some(x_idx) = compilation.x_index(bunch.index)
+                    {
+                        terms.push((x_idx, 1.0));
                     }
                 }
 
@@ -144,14 +141,11 @@ pub mod limits {
                 }
 
                 // x[bunch] 项：属于该执行器的束
-                for (iter_idx, x_indices) in compilation.x_indices.iter().enumerate() {
-                    let bunches = compilation.aggregation.bunches_for_iteration(iter_idx);
-                    for (local_idx, bunch) in bunches.iter().enumerate() {
-                        if bunch.executor_id == compilation.executor_ids[ei]
-                            && let Some(&x_idx) = x_indices.get(local_idx)
-                        {
-                            terms.push((x_idx, 1.0));
-                        }
+                for bunch in compilation.aggregation.bunches() {
+                    if bunch.executor_id == compilation.executor_ids[ei]
+                        && let Some(x_idx) = compilation.x_index(bunch.index)
+                    {
+                        terms.push((x_idx, 1.0));
                     }
                 }
 
@@ -320,14 +314,11 @@ pub mod limits {
         pub fn from_compilation(compilation: &BunchCompilation) -> Self {
             let mut cost_terms = Vec::new();
 
-            for (iter_idx, x_indices) in compilation.x_indices.iter().enumerate() {
-                let bunches = compilation.aggregation.bunches_for_iteration(iter_idx);
-                for (local_idx, bunch) in bunches.iter().enumerate() {
-                    if bunch.cost != 0.0
-                        && let Some(&x_idx) = x_indices.get(local_idx)
-                    {
-                        cost_terms.push((x_idx, bunch.cost));
-                    }
+            for bunch in compilation.aggregation.bunches() {
+                if bunch.cost != 0.0
+                    && let Some(x_idx) = compilation.x_index(bunch.index)
+                {
+                    cost_terms.push((x_idx, bunch.cost));
                 }
             }
 
@@ -427,6 +418,7 @@ pub mod limits {
                     0,
                     vec![
                         BunchEntry {
+                            id: "bunch-0".into(),
                             index: 0,
                             executor_id: executor.id.clone(),
                             task_indices: vec![],
@@ -435,6 +427,7 @@ pub mod limits {
                             slot_index: Some(0),
                         },
                         BunchEntry {
+                            id: "bunch-1".into(),
                             index: 1,
                             executor_id: executor.id.clone(),
                             task_indices: vec![],
@@ -467,6 +460,7 @@ pub mod limits {
 
             // 添加初始列
             let bunches = vec![BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
@@ -490,6 +484,7 @@ pub mod limits {
             compilation.register(&mut model).unwrap();
 
             let bunches = vec![BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0],
@@ -514,6 +509,7 @@ pub mod limits {
 
             let bunches = vec![
                 BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: "exec_1".into(),
                     task_indices: vec![0],
@@ -522,6 +518,7 @@ pub mod limits {
                     slot_index: None,
                 },
                 BunchEntry {
+                    id: "bunch-1".into(),
                     index: 1,
                     executor_id: "exec_1".into(),
                     task_indices: vec![1],

@@ -456,27 +456,27 @@ where
             let mut trial = Solution::<V>::new();
             let forced = ((unit(entropy) * dimension as f64) as usize)
                 .min(dimension.saturating_sub(1));
-            for dim in 0..dimension {
+            for (dim, id) in order.iter().enumerate() {
                 let take_mutant =
                     unit(entropy) < parameters.cross_rate || dim == forced;
                 let value = if take_mutant {
-                    mutant.get(&order[dim]).copied().unwrap_or_else(|| {
+                    mutant.get(id).copied().unwrap_or_else(|| {
                         from_f64(0.0)
                     })
                 } else {
                     target
                         .solution
-                        .get(&order[dim])
+                        .get(id)
                         .copied()
                         .unwrap_or_else(|| from_f64(0.0))
                 };
-                trial.insert(order[dim], value);
+                trial.insert(*id, value);
             }
 
             match fitness_evaluator.evaluate(model, &trial) {
                 None => next_population.push(target.clone()),
                 Some(candidate) => {
-                    if compare_individuals(model, &candidate, &target) != std::cmp::Ordering::Greater
+                    if compare_individuals(model, &candidate, target) != std::cmp::Ordering::Greater
                     {
                         next_population.push(candidate);
                         next_archive.push(target.solution.clone());

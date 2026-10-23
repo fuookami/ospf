@@ -26,7 +26,7 @@
 | `src/framework/demo1` | framework routing/bandwidth context 示例。 |
 | `src/framework/demo2` | Adaptive Benders / MILP fallback 行为契约示例。 |
 | `src/framework/demo3` | CSP1D-facing demo scaffold。 |
-| `src/framework/demo4` | Gantt-scheduling-facing scaffold 与 domain layout experiment。 |
+| `src/framework/demo4` | 无损航班恢复、Gantt 受管主问题、Network 路径定价及实际结果提取。 |
 | `src/framework/demo5` | Solomon parser/adapter 与 VRPTW Branch-and-Price solver wiring。 |
 
 ## Public API
@@ -42,7 +42,7 @@
 | `framework:demo1` | framework routing/bandwidth context demo。 | Gurobi feature |
 | `framework:demo2` | Adaptive Benders 和 MILP fallback demo。 | Gurobi feature |
 | `framework:demo3` | CSP1D scaffold 入口。 | Gurobi feature |
-| `framework:demo4` | Gantt scaffold 入口。 | Gurobi feature |
+| `framework:demo4` | 航班恢复领域展示或真实 Gantt 列生成应用。 | `demo4-offline` 或 `demo4-gurobi-cg` |
 | `framework:demo5` | VRPTW Branch-and-Price demo。 | `demo5-gurobi-bp` 或 `demo5-scip-bp` |
 
 ## 条件函数迁移说明
@@ -79,7 +79,7 @@ cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
-cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+cargo +nightly-2026-08-01 run -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- framework:demo4
 cargo run -p ospf-rust-example --features demo5-gurobi-bp -- framework:demo5
 cargo run -p ospf-rust-example --features demo5-scip-bp -- framework:demo5
 ```
@@ -94,9 +94,20 @@ cargo check -p ospf-rust-example --features demo5-scip-bp
 
 未启用 backend feature 时，运行后端 demo 会返回提示 `rerun with --features backend-gurobi`。
 
-`framework:demo4` 当前保持为 scaffold 命令入口。Gantt-scheduling parity 明确暂缓，不标记为已完成功能。
+`framework:demo4` 在 `demo4-offline` 下运行恢复领域展示，在 `demo4-gurobi-cg` 下额外执行真实 Gantt
+应用：自动初始列、RMP、当前模型完整对偶、Network 路径定价、增列、最终 MILP 和生产校验。
+它不是私有简化列生成循环，也不从有限主问题报告推导全局整数最优。
+[Demo4 成对文档](src/framework/demo4/README_ch.md) 说明实际恢复记录、链接/旅客、机队、限制、流控、
+飞机/时刻锁定及完整快照边界。离线测试不依赖商业求解器，原生测试必须实际执行：
 
-`framework:demo5` 使用 inline Solomon fixture，验证 parser、adapter、route generation、restricted master 和 Branch-and-Price wiring。integration target 只覆盖 target 自身的夹具/parser 检查；下面的库内门禁命令才会执行 25 客户 direct-MIP 交叉验证、5 客户全路线 master oracle、100 客户 smoke、strict-proof fixture 和 SCIP 合法终态：
+```powershell
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-offline -- --list
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-offline
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- --list
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- --include-ignored
+```
+
+`framework:demo5` 使用 inline Solomon fixture，验证 parser、adapter、route generation、restricted master 和 Branch-and-Price wiring。对应 integration target 除夹具/parser 外，还实际执行原生求解、路线复核及小实例全路线 oracle；库内门禁另外覆盖 25 客户 direct-MIP 交叉验证、100 客户 smoke、strict-proof fixture 和 SCIP 合法终态，两者都须运行，不能互相替代：
 
 ```powershell
 cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_25_branch_and_price_matches_direct_mip_objective -- --include-ignored

@@ -89,17 +89,6 @@ where
     Some(value)
 }
 
-fn evaluate_linear_from_values<V>(poly: &Linear<V>, values: &HashMap<usize, V>) -> Option<V>
-where
-    V: Clone + Add<Output = V> + Mul<Output = V>,
-{
-    let mut value = poly.constant_term().clone();
-    for monomial in poly.monomials() {
-        value = value + monomial.coefficient().clone() * values.get(&monomial.var_index())?.clone();
-    }
-    Some(value)
-}
-
 fn tighten_token_range<V>(token: &mut Token<V>, lower: f64, upper: f64) -> Result<()>
 where
     V: Clone + Debug + Send + Sync + 'static + PartialOrd + FromPrimitive,
@@ -259,84 +248,97 @@ where
         let (xl, xu) = validate_bounds(&self.left_bounds, "left")?;
         let (yl, yu) = validate_bounds(&self.right_bounds, "right")?;
         let source: Arc<dyn IntermediateSymbol<V>> = Arc::new(self.clone());
-        let mut constraints = Vec::with_capacity(4);
-
-        // z - xl*y - yl*x >= -xl*yl.
-        constraints.push(build_envelope_row(
-            &self.id.name,
-            "lower_left",
-            &self.left,
-            &self.right,
-            result_index,
-            1.0,
-            -xl,
-            -yl,
-            ConstraintRelation::GreaterEqual,
-            -xl * yl,
-            source.clone(),
-        )?);
-        // z - xu*y - yu*x >= -xu*yu.
-        constraints.push(build_envelope_row(
-            &self.id.name,
-            "lower_right",
-            &self.left,
-            &self.right,
-            result_index,
-            1.0,
-            -xu,
-            -yu,
-            ConstraintRelation::GreaterEqual,
-            -xu * yu,
-            source.clone(),
-        )?);
-        // z - xu*y - yl*x <= -xu*yl.
-        constraints.push(build_envelope_row(
-            &self.id.name,
-            "upper_left",
-            &self.left,
-            &self.right,
-            result_index,
-            1.0,
-            -xu,
-            -yl,
-            ConstraintRelation::LessEqual,
-            -xu * yl,
-            source.clone(),
-        )?);
-        // z - xl*y - yu*x <= -xl*yu.
-        constraints.push(build_envelope_row(
-            &self.id.name,
-            "upper_right",
-            &self.left,
-            &self.right,
-            result_index,
-            1.0,
-            -xl,
-            -yu,
-            ConstraintRelation::LessEqual,
-            -xl * yu,
-            source,
-        )?);
+        let constraints = vec![
+            // z - xl*y - yl*x >= -xl*yl.
+            build_envelope_row(
+                &self.id.name,
+                &self.left,
+                &self.right,
+                result_index,
+                EnvelopeRow {
+                    suffix: "lower_left",
+                    result_coefficient: 1.0,
+                    right_scale: -xl,
+                    left_scale: -yl,
+                    relation: ConstraintRelation::GreaterEqual,
+                    rhs: -xl * yl,
+                },
+                source.clone(),
+            )?,
+            // z - xu*y - yu*x >= -xu*yu.
+            build_envelope_row(
+                &self.id.name,
+                &self.left,
+                &self.right,
+                result_index,
+                EnvelopeRow {
+                    suffix: "lower_right",
+                    result_coefficient: 1.0,
+                    right_scale: -xu,
+                    left_scale: -yu,
+                    relation: ConstraintRelation::GreaterEqual,
+                    rhs: -xu * yu,
+                },
+                source.clone(),
+            )?,
+            // z - xu*y - yl*x <= -xu*yl.
+            build_envelope_row(
+                &self.id.name,
+                &self.left,
+                &self.right,
+                result_index,
+                EnvelopeRow {
+                    suffix: "upper_left",
+                    result_coefficient: 1.0,
+                    right_scale: -xu,
+                    left_scale: -yl,
+                    relation: ConstraintRelation::LessEqual,
+                    rhs: -xu * yl,
+                },
+                source.clone(),
+            )?,
+            // z - xl*y - yu*x <= -xl*yu.
+            build_envelope_row(
+                &self.id.name,
+                &self.left,
+                &self.right,
+                result_index,
+                EnvelopeRow {
+                    suffix: "upper_right",
+                    result_coefficient: 1.0,
+                    right_scale: -xl,
+                    left_scale: -yu,
+                    relation: ConstraintRelation::LessEqual,
+                    rhs: -xl * yu,
+                },
+                source,
+            )?,
+        ];
         Ok(constraints)
     }
 }
 
-fn build_envelope_row<V>(
-    name: &str,
-    suffix: &str,
-    left: &Linear<V>,
-    right: &Linear<V>,
-    result_index: usize,
+struct EnvelopeRow<'a> {
+    suffix: &'a str,
     result_coefficient: f64,
     right_scale: f64,
     left_scale: f64,
     relation: ConstraintRelation,
     rhs: f64,
+}
+
+fn build_envelope_row<V>(
+    name: &str,
+    left: &Linear<V>,
+    right: &Linear<V>,
+    result_index: usize,
+    row: EnvelopeRow<'_>,
     source: Arc<dyn IntermediateSymbol<V>>,
 ) -> Result<LinearConstraint<V>>
 where
     V: Clone + Debug + Send + Sync + 'static + FromPrimitive + ToPrimitive,
 {
+    let EnvelopeRow { suffix, result_coefficient, right_scale, left_scale, relation, rhs } = row;
     let mut monomials = vec![LinearMonomial::new(
         from_f64(result_coefficient, "result coefficient")?,
         result_index,

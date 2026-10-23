@@ -22,6 +22,8 @@ use crate::solver::hyper_heuristic::selection::{PolicySnapshot, SelectionTransit
 use crate::solver::hyper_heuristic::{boundary, invalid};
 use crate::variable::VariableId;
 
+type WorkerSession<O, V> = (ProblemHandle<O, V>, Box<dyn PolicySession<O, V>>, RandomHandle);
+
 pub(crate) fn execute<O: Clone, V: HeuristicValue>(
     session: &mut dyn PolicySession<O, V>,
     slice: &mut SearchSlice,
@@ -120,8 +122,8 @@ impl<V> RemoteHandle<V> {
         if self.pending.get() { let _ = self.receive(); }
         let result = self.call(Command::Close).map(|_| ());
         self.closed.set(true);
-        if let Some(thread) = self.thread.borrow_mut().take() {
-            if thread.join().is_err() { return Err(invalid("worker thread panicked")); }
+        if let Some(thread) = self.thread.borrow_mut().take() && thread.join().is_err() {
+            return Err(invalid("worker thread panicked"));
         }
         result
     }
@@ -210,7 +212,7 @@ pub(crate) fn spawn<O: ObjectiveComponents + 'static, V: HeuristicValue>(
     learning: bool,
     reward: ComponentSpec,
     completed: Sender<String>,
-) -> Result<(ProblemHandle<O, V>, Box<dyn PolicySession<O, V>>, RandomHandle)> {
+) -> Result<WorkerSession<O, V>> {
     let (sender, commands) = mpsc::channel::<Request<V>>();
     let (responses, receiver) = mpsc::channel();
     let (ready, startup) = mpsc::sync_channel(1);

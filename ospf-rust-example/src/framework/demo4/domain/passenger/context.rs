@@ -9,6 +9,10 @@ pub struct PassengerContext {
     pub passengers: Vec<Passenger>,
 }
 
+impl Default for PassengerContext {
+    fn default() -> Self { Self::new() }
+}
+
 impl PassengerContext {
     /// 创建新的旅客上下文 / Create new passenger context
     pub fn new() -> Self {

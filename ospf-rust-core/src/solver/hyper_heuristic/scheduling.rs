@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use crate::model::callback::Solution;
-use crate::solver::heuristic::{Individual, Iteration};
+use crate::solver::heuristic::Iteration;
 use crate::solver::heuristic::model::HeuristicValue;
 use crate::solver::heuristic::result::Result;
 use crate::solver::heuristic::session::*;
@@ -15,9 +15,11 @@ use crate::solver::hyper_heuristic::operators::PolicySession;
 use crate::solver::hyper_heuristic::selection::{PolicySnapshot, SelectionTransition};
 use crate::solver::hyper_heuristic::invalid;
 
+type ChildSession<O, V> = (String, Box<dyn PolicySession<O, V>>, RandomHandle);
+
 /// 轮流推进岛屿或按阶段推进 memetic 子会话 / Advance islands in rotation or memetic child phases
 pub struct CompositeSearchSession<O: ObjectiveComponents, V: HeuristicValue> {
-    children: Vec<(String, Box<dyn PolicySession<O, V>>, RandomHandle)>,
+    children: Vec<ChildSession<O, V>>,
     initialized: Vec<bool>,
     cursor: usize,
     completed: u64,
@@ -25,7 +27,7 @@ pub struct CompositeSearchSession<O: ObjectiveComponents, V: HeuristicValue> {
     period: u64,
     problem: ProblemHandle<O, V>,
     memory: SearchMemory<O, V>,
-    codec: Option<Box<dyn SearchCodec<Vec<Individual<O, V>>>>>,
+    codec: Option<ArchiveCodec<O, V>>,
     iteration: Iteration,
     closed: bool,
 }
@@ -44,11 +46,11 @@ struct CompositeState {
 
 impl<O: ObjectiveComponents, V: HeuristicValue> CompositeSearchSession<O, V> {
     pub(crate) fn new(
-        children: Vec<(String, Box<dyn PolicySession<O, V>>, RandomHandle)>,
+        children: Vec<ChildSession<O, V>>,
         problem: ProblemHandle<O, V>,
         sequential: bool,
         period: u64,
-        codec: Option<Box<dyn SearchCodec<Vec<Individual<O, V>>>>>,
+        codec: Option<ArchiveCodec<O, V>>,
     ) -> Result<Self> {
         if children.is_empty() || period == 0 || children.iter().any(|(_, session, _)| !session.supports_import()) {
             return Err(invalid("composites require import-capable children and a positive phase/migration period"));
@@ -70,7 +72,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Composit
         while report.steps < slice.steps() && slice.remaining() > 0 && !slice.expired() {
             let index = self.cursor;
             let migration = !self.sequential && self.completed > 0
-                && self.completed % (self.period.saturating_mul(self.children.len() as u64)) == 0;
+                && self.completed.is_multiple_of(self.period.saturating_mul(self.children.len() as u64));
             let mut local = (*SearchSlice::child(&parent, slice.remaining(), 1)).clone();
             if self.initialized[index] && migration {
                 let seeds = self.memory.working().iter().take(1).map(|value| value.solution.clone()).collect();
@@ -98,7 +100,7 @@ impl<O: ObjectiveComponents, V: HeuristicValue> SearchSession<O, V> for Composit
                 self.completed += child.steps;
                 self.iteration.next(true);
                 if !self.sequential { self.cursor = (index + 1) % self.children.len(); }
-                else if self.completed % self.period == 0 && index + 1 < self.children.len() { self.cursor = index + 1; }
+                else if self.completed.is_multiple_of(self.period) && index + 1 < self.children.len() { self.cursor = index + 1; }
             }
             if child.termination != SearchTermination::SliceComplete {
                 report.termination = child.termination; break;

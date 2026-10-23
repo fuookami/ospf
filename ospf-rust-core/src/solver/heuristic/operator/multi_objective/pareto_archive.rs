@@ -1,5 +1,6 @@
 //! Pareto 档案 / Pareto archive
 
+use crate::solver::heuristic::model::ObjectiveCoordinates;
 use super::dominance::Dominance;
 use super::non_dominated_sort::CrowdingDistance;
 
@@ -15,7 +16,7 @@ where
     T: Clone,
 {
     capacity: usize,
-    objectives_of: Box<dyn Fn(&T) -> Vec<f64>>,
+    objectives_of: ObjectiveCoordinates<T>,
     dominance: Box<dyn Dominance>,
     members: Vec<T>,
 }
@@ -27,7 +28,7 @@ where
     /// 创建 Pareto 档案 / Create a Pareto archive
     pub fn new(
         capacity: usize,
-        objectives_of: Box<dyn Fn(&T) -> Vec<f64>>,
+        objectives_of: ObjectiveCoordinates<T>,
         dominance: Box<dyn Dominance>,
     ) -> Self {
         Self {

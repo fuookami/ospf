@@ -681,6 +681,33 @@ where
         &mut self.objective
     }
 
+    /// 读取后端使用的独立目标快照；所有目标入口已归一到注册变量。 / Read an independent backend objective snapshot; all inputs resolve to registered variables.
+    pub fn objective_snapshot(&self) -> Objective<V> {
+        self.objective.clone()
+    }
+
+    /// 删除所有子目标中的指定变量项，保留常数、权重和方向。 / Remove variable terms from every sub-objective, preserving constants, weights and directions.
+    pub fn remove_objective_terms(&mut self, variables: &std::collections::HashSet<usize>) {
+        for objective in &mut self.objective.sub_objectives {
+            let terms = objective.polynomial.monomials().iter()
+                .filter(|term| !variables.contains(&term.var_index()))
+                .cloned()
+                .collect();
+            objective.polynomial = Linear::new(terms, objective.polynomial.constant_term().clone());
+        }
+    }
+
+    /// 原位替换拥有的命名子目标，不覆盖其他组件的目标。 / Replace an owned named sub-objective in place without overwriting other components.
+    pub fn replace_sub_objective(&mut self, name: &str, replacement: SubObjective<V>) {
+        if let Some(objective) = self.objective.sub_objectives.iter_mut()
+            .find(|objective| objective.name == name)
+        {
+            *objective = replacement;
+        } else {
+            self.objective.add_sub_objective(replacement);
+        }
+    }
+
     /// 添加线性不等式约束。
     /// Add a linear inequality constraint.
     pub fn add_inequality(&mut self, inequality: LinearInequality<V>, name: &str) -> Result<()> {
@@ -1892,6 +1919,31 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn owned_objective_replacement_and_term_removal_preserve_other_components() {
+        use super::*;
+        let mut model = MetaModel::<f64>::new("owned-objectives");
+        let x = model.register_auto_variable_with_range::<crate::variable::Continuous>("x", VariableRange::bounded(0.0, 1.0)).unwrap();
+        let y = model.register_auto_variable_with_range::<crate::variable::Continuous>("y", VariableRange::bounded(0.0, 1.0)).unwrap();
+        model.set_objective_category(ObjectiveCategory::Minimum);
+        model.add_sub_objective(SubObjective::new_with_weight(ObjectiveCategory::Minimum,
+            Linear::new(vec![LinearMonomial::new(2.0, x), LinearMonomial::new(4.0, y)], 7.0), "business", 3.0));
+        model.add_linear_objective(&[(x, 5.0)], "columns");
+        let mut snapshot = model.objective_snapshot();
+        snapshot.sub_objectives.clear();
+        assert_eq!(model.objective().len(), 2);
+        model.replace_sub_objective("columns", SubObjective::minimize(
+            Linear::new(vec![LinearMonomial::new(6.0, y)], 0.0), "phase-two"));
+        assert_eq!(model.objective().len(), 2);
+        assert_eq!(model.objective().sub_objectives[0].weight, 3.0);
+        assert_eq!(model.try_to_linear_triad_model().unwrap().c, vec![6.0, 18.0]);
+        model.remove_objective_terms(&[x].into());
+        let effective = model.objective_snapshot();
+        assert_eq!(*effective.sub_objectives[0].polynomial.constant_term(), 7.0);
+        assert_eq!(effective.sub_objectives[0].weight, 3.0);
+        assert_eq!(model.try_to_linear_triad_model().unwrap().c, vec![0.0, 18.0]);
+    }
+
     use crate::error::Result;
     use crate::model::intermediate::{
         FunctionUsageSummary, LinearTriadModel, QuadraticTetradModel,
@@ -4536,7 +4588,7 @@ mod tests {
 
         // 给侧列加额外边界后不再允许省略。
         // Adding an extra bound to the side column makes it non-omittable.
-        let mut bounded = mechanism.clone();
+        let bounded = mechanism.clone();
         if let Some(index) = bounded
             .as_basic()
             .tokens()
@@ -4748,7 +4800,7 @@ mod tests {
         // 未固定：允许原生写入。
         // Not fixed: a native write is allowed.
         let open = build(&abs, false);
-        let open_summary = open.function_usage_summary(975, result_id.clone(), &[side_id.clone()]);
+        let open_summary = open.function_usage_summary(975, result_id, std::slice::from_ref(&side_id));
         assert!(!open_summary.result_is_fixed);
         assert!(!open_summary.forbids_native_write());
 

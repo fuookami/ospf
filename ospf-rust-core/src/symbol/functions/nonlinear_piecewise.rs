@@ -709,6 +709,7 @@ where
     }
 
     /// 使用可配置陡峭度与中点构造均匀分段近似 / Create uniform segments with configurable steepness and midpoint.
+    #[expect(clippy::too_many_arguments, reason = "保留既有公开分段函数构造接口 / Preserve the existing public piecewise-function constructor")]
     pub fn with_parameters_and_segments(
         id: u64,
         name: &str,

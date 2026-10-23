@@ -70,17 +70,6 @@ where
     Some(value)
 }
 
-fn evaluate_linear_from_values<V>(poly: &Linear<V>, values: &HashMap<usize, V>) -> Option<V>
-where
-    V: Clone + Add<Output = V> + Mul<Output = V>,
-{
-    let mut value = poly.constant_term().clone();
-    for monomial in poly.monomials() {
-        value = value + monomial.coefficient().clone() * values.get(&monomial.var_index())?.clone();
-    }
-    Some(value)
-}
-
 fn validate_declared_bounds<V>(
     poly: &Linear<V>,
     bounds: (f64, f64),

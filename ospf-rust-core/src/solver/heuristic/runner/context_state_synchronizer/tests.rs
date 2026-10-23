@@ -42,7 +42,7 @@ fn incoming_particles_match_original_nearest_sources_and_replace_worst_in_revers
     assert_point(&result[0].individual, &incoming[1]); assert_eq!(result[0].velocity, vec![-2.0, 2.0]);
     assert_point(&result[0].best, &state[0].best);
     let improved = point(&problem, [9.0, 9.0], -1.0);
-    assert_point(&bridge.particles(&state, &[improved.clone()]).unwrap()[1].best, &improved);
+    assert_point(&bridge.particles(&state, std::slice::from_ref(&improved)).unwrap()[1].best, &improved);
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn shade_imports_deduplicate_archive_displaced_members_and_preserve_true_memory(
     assert!(result.archive.contains(&old[0].solution)); assert_eq!(result.archive.len(), 2);
     assert_eq!(result.memory, state.memory);
     let worst = point(&problem, [8.0, 8.0], 10.0);
-    let result = bridge.shade(&state, &[worst.clone()]).unwrap();
+    let result = bridge.shade(&state, std::slice::from_ref(&worst)).unwrap();
     assert!(!result.archive.contains(&worst.solution)); assert_eq!(result.memory, state.memory);
 }
 

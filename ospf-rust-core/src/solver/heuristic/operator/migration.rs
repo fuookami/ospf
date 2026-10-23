@@ -177,12 +177,12 @@ where
         let mut source = 0;
         let mut target = 0;
         for index in 0..leaders.len() {
-            if compare_individuals(model, &leaders[index], &leaders[source])
+            if compare_individuals(model, leaders[index], leaders[source])
                 == std::cmp::Ordering::Less
             {
                 source = index;
             }
-            if compare_individuals(model, &leaders[index], &leaders[target])
+            if compare_individuals(model, leaders[index], leaders[target])
                 == std::cmp::Ordering::Greater
             {
                 target = index;

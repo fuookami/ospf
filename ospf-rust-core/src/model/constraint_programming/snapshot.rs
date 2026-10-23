@@ -96,35 +96,6 @@ impl ConstraintProgrammingSnapshot {
         &self.fingerprint
     }
 
-    /// 从约束子集重建不可变快照 / Rebuild an immutable snapshot from a constraint subset.
-    ///
-    /// 派生快照只用于分析中的临时删除或追加操作；原始快照不会被修改。重建后重新
-    /// 规范化约束顺序、计算指纹并执行完整身份校验，避免把未经校验的模型交给后端。
-    /// Derived snapshots are used only for temporary analysis deletion or addition. The source
-    /// snapshot is never mutated. Rebuilding reorders constraints, recomputes the fingerprint,
-    /// and performs the full identity validation before a backend can receive the result.
-    pub(crate) fn with_constraint_set(
-        &self,
-        mut constraints: Vec<ConstraintSnapshot>,
-    ) -> Result<Self> {
-        constraints.sort_by(|left, right| left.id.cmp(&right.id));
-        let mut derived = self.clone();
-        derived.constraints = constraints;
-        derived.fingerprint = derived.compute_fingerprint();
-        derived.validate_identity()?;
-        Ok(derived)
-    }
-
-    /// 在快照中追加临时约束 / Append temporary constraints to an immutable snapshot.
-    pub(crate) fn with_additional_constraints(
-        &self,
-        additions: impl IntoIterator<Item = ConstraintSnapshot>,
-    ) -> Result<Self> {
-        let mut constraints = self.constraints.clone();
-        constraints.extend(additions);
-        self.with_constraint_set(constraints)
-    }
-
     /// 校验稳定身份和指纹 / Validate stable identities and fingerprint.
     pub fn validate_identity(&self) -> Result<()> {
         if self.identity_namespace.trim().is_empty() {

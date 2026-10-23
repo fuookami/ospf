@@ -13,6 +13,95 @@ pub enum CmaNumerics {
     PolarFdlibmV1,
 }
 
+impl CmaNumerics {
+    pub(crate) fn sum(self, values: impl Iterator<Item = f64>) -> f64 {
+        match self {
+            Self::Native => values.sum(),
+            Self::PolarFdlibmV1 => values.fold(0.0, |total, value| total + value),
+        }
+    }
+
+    pub(crate) fn ln(self, value: f64) -> f64 {
+        match self { Self::Native => value.ln(), Self::PolarFdlibmV1 => super::fdlibm_log::log(value) }
+    }
+
+    pub(crate) fn sqrt(self, value: f64) -> f64 {
+        match self { Self::Native => value.sqrt(), Self::PolarFdlibmV1 => libm::sqrt(value) }
+    }
+
+    pub(crate) fn exp(self, value: f64) -> f64 {
+        match self { Self::Native => value.exp(), Self::PolarFdlibmV1 => libm::exp(value) }
+    }
+
+    pub(crate) fn pow(self, base: f64, exponent: f64) -> f64 {
+        match self { Self::Native => base.powf(exponent), Self::PolarFdlibmV1 => libm::pow(base, exponent) }
+    }
+
+    pub(crate) fn gaussian(self, entropy: &mut dyn Entropy) -> f64 {
+        if self == Self::Native {
+            let first = unit(entropy).max(1.0e-12);
+            let second = unit(entropy);
+            return (-2.0 * first.ln()).sqrt() * (2.0 * std::f64::consts::PI * second).cos();
+        }
+        // 每次仅使用极坐标对的第一分量，不缓存第二分量，检查点无需隐藏采样状态。
+        // Use only the first polar component without caching its partner, leaving no hidden checkpoint state.
+        loop {
+            let x = 2.0 * unit(entropy) - 1.0;
+            let y = 2.0 * unit(entropy) - 1.0;
+            let radius = x * x + y * y;
+            if radius > 0.0 && radius < 1.0 {
+                return x * self.sqrt((-2.0 * self.ln(radius)) / radius);
+            }
+        }
+    }
+
+    pub(crate) fn eigen(self, matrix: &[Vec<f64>]) -> Option<SymmetricEigen> {
+        if self == Self::Native { return symmetric_eigen(matrix); }
+        let n = matrix.len();
+        if n == 0 || matrix.iter().any(|row| row.len() != n || row.iter().any(|x| !x.is_finite())) { return None; }
+        let mut a = matrix.to_vec();
+        let mut vectors: Vec<Vec<f64>> = (0..n).map(|row|
+            (0..n).map(|column| if row == column { 1.0 } else { 0.0 }).collect()).collect();
+        for _ in 0..60 {
+            let mut off_diagonal = 0.0;
+            for (index, row) in a.iter().enumerate() {
+                for value in row.iter().skip(index + 1) { off_diagonal += value * value; }
+            }
+            if off_diagonal <= 1.0e-12 { break; }
+            for first in 0..n {
+                for second in first + 1..n {
+                    let pair = a[first][second];
+                    if pair.abs() <= 1.0e-12 { continue; }
+                    let theta = (a[second][second] - a[first][first]) / (2.0 * pair);
+                    let sign = if theta >= 0.0 { 1.0 } else { -1.0 };
+                    let t = sign / (theta.abs() + self.sqrt(theta * theta + 1.0));
+                    let cosine = 1.0 / self.sqrt(t * t + 1.0);
+                    let sine = t * cosine;
+                    for row in &mut a {
+                        let left = row[first]; let right = row[second];
+                        row[first] = cosine * left - sine * right;
+                        row[second] = sine * left + cosine * right;
+                    }
+                    let (before_second, from_second) = a.split_at_mut(second);
+                    for (left, right) in before_second[first].iter_mut().zip(&mut from_second[0]) {
+                        let upper = *left; let lower = *right;
+                        *left = cosine * upper - sine * lower;
+                        *right = sine * upper + cosine * lower;
+                    }
+                    for row in &mut vectors {
+                        let left = row[first]; let right = row[second];
+                        row[first] = cosine * left - sine * right;
+                        row[second] = sine * left + cosine * right;
+                    }
+                }
+            }
+        }
+        let values: Vec<_> = (0..n).map(|i| a[i][i]).collect();
+        if values.iter().any(|x| !x.is_finite()) { return None; }
+        Some(SymmetricEigen { values, vectors: (0..n).map(|column| (0..n).map(|row| vectors[row][column]).collect()).collect() })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -69,91 +158,5 @@ mod tests {
         let rotated = CmaNumerics::PolarFdlibmV1.eigen(&[vec![2.0, 1.0], vec![1.0, 2.0]]).unwrap();
         assert_eq!(rotated.vectors[0][0].to_bits(), rotated.vectors[1][1].to_bits());
         assert!(CmaNumerics::PolarFdlibmV1.eigen(&[vec![f64::NAN]]).is_none());
-    }
-}
-
-impl CmaNumerics {
-    pub(crate) fn sum(self, values: impl Iterator<Item = f64>) -> f64 {
-        match self {
-            Self::Native => values.sum(),
-            Self::PolarFdlibmV1 => values.fold(0.0, |total, value| total + value),
-        }
-    }
-
-    pub(crate) fn ln(self, value: f64) -> f64 {
-        match self { Self::Native => value.ln(), Self::PolarFdlibmV1 => super::fdlibm_log::log(value) }
-    }
-
-    pub(crate) fn sqrt(self, value: f64) -> f64 {
-        match self { Self::Native => value.sqrt(), Self::PolarFdlibmV1 => libm::sqrt(value) }
-    }
-
-    pub(crate) fn exp(self, value: f64) -> f64 {
-        match self { Self::Native => value.exp(), Self::PolarFdlibmV1 => libm::exp(value) }
-    }
-
-    pub(crate) fn pow(self, base: f64, exponent: f64) -> f64 {
-        match self { Self::Native => base.powf(exponent), Self::PolarFdlibmV1 => libm::pow(base, exponent) }
-    }
-
-    pub(crate) fn gaussian(self, entropy: &mut dyn Entropy) -> f64 {
-        if self == Self::Native {
-            let first = unit(entropy).max(1.0e-12);
-            let second = unit(entropy);
-            return (-2.0 * first.ln()).sqrt() * (2.0 * std::f64::consts::PI * second).cos();
-        }
-        // 每次仅使用极坐标对的第一分量，不缓存第二分量，检查点无需隐藏采样状态。
-        // Use only the first polar component without caching its partner, leaving no hidden checkpoint state.
-        loop {
-            let x = 2.0 * unit(entropy) - 1.0;
-            let y = 2.0 * unit(entropy) - 1.0;
-            let radius = x * x + y * y;
-            if radius > 0.0 && radius < 1.0 {
-                return x * self.sqrt((-2.0 * self.ln(radius)) / radius);
-            }
-        }
-    }
-
-    pub(crate) fn eigen(self, matrix: &[Vec<f64>]) -> Option<SymmetricEigen> {
-        if self == Self::Native { return symmetric_eigen(matrix); }
-        let n = matrix.len();
-        if n == 0 || matrix.iter().any(|row| row.len() != n || row.iter().any(|x| !x.is_finite())) { return None; }
-        let mut a = matrix.to_vec();
-        let mut vectors: Vec<Vec<f64>> = (0..n).map(|row|
-            (0..n).map(|column| if row == column { 1.0 } else { 0.0 }).collect()).collect();
-        for _ in 0..60 {
-            let mut off_diagonal = 0.0;
-            for row in 0..n { for column in row + 1..n { off_diagonal += a[row][column] * a[row][column]; } }
-            if off_diagonal <= 1.0e-12 { break; }
-            for first in 0..n {
-                for second in first + 1..n {
-                    let pair = a[first][second];
-                    if pair.abs() <= 1.0e-12 { continue; }
-                    let theta = (a[second][second] - a[first][first]) / (2.0 * pair);
-                    let sign = if theta >= 0.0 { 1.0 } else { -1.0 };
-                    let t = sign / (theta.abs() + self.sqrt(theta * theta + 1.0));
-                    let cosine = 1.0 / self.sqrt(t * t + 1.0);
-                    let sine = t * cosine;
-                    for row in &mut a {
-                        let left = row[first]; let right = row[second];
-                        row[first] = cosine * left - sine * right;
-                        row[second] = sine * left + cosine * right;
-                    }
-                    for column in 0..n {
-                        let upper = a[first][column]; let lower = a[second][column];
-                        a[first][column] = cosine * upper - sine * lower;
-                        a[second][column] = sine * upper + cosine * lower;
-                    }
-                    for row in &mut vectors {
-                        let left = row[first]; let right = row[second];
-                        row[first] = cosine * left - sine * right;
-                        row[second] = sine * left + cosine * right;
-                    }
-                }
-            }
-        }
-        let values: Vec<_> = (0..n).map(|i| a[i][i]).collect();
-        if values.iter().any(|x| !x.is_finite()) { return None; }
-        Some(SymmetricEigen { values, vectors: (0..n).map(|column| (0..n).map(|row| vectors[row][column]).collect()).collect() })
     }
 }

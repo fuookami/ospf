@@ -7,7 +7,7 @@ pub mod demo1;
 pub mod demo2;
 #[cfg(feature = "backend-gurobi")]
 pub mod demo3;
-#[cfg(feature = "backend-gurobi")]
+#[cfg(any(feature = "backend-gurobi", feature = "demo4-offline"))]
 pub mod demo4;
 #[cfg(any(
     feature = "backend-gurobi",
@@ -23,7 +23,7 @@ pub use demo1::run as run_demo1;
 pub use demo2::run as run_demo2;
 #[cfg(feature = "backend-gurobi")]
 pub use demo3::run as run_demo3;
-#[cfg(feature = "backend-gurobi")]
+#[cfg(any(feature = "backend-gurobi", feature = "demo4-offline"))]
 pub use demo4::run as run_demo4;
 #[cfg(any(
     feature = "backend-gurobi",

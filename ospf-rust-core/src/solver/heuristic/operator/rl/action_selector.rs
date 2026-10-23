@@ -18,9 +18,9 @@ fn argmax(values: &[f64]) -> usize {
     }
     let mut best = 0;
     let mut best_value = values[0];
-    for index in 1..values.len() {
-        if values[index] > best_value {
-            best_value = values[index];
+    for (index, value) in values.iter().copied().enumerate().skip(1) {
+        if value > best_value {
+            best_value = value;
             best = index;
         }
     }

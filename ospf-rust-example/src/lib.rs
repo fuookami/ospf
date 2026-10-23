@@ -3,6 +3,7 @@
 pub mod constraint_programming;
 
 #[cfg(any(
+    feature = "demo4-offline",
     feature = "backend-gurobi",
     feature = "demo5-offline",
     feature = "demo5-gurobi-bp",

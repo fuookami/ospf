@@ -7,6 +7,10 @@ pub struct CargoContext {
     pub aggregation: super::Aggregation,
 }
 
+impl Default for CargoContext {
+    fn default() -> Self { Self::new() }
+}
+
 impl CargoContext {
     /// 创建新的货物上下文 / Create new cargo context
     pub fn new() -> Self {

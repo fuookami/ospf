@@ -15,7 +15,7 @@ use crate::model::callback::Solution;
 use crate::solver::heuristic::entropy::Entropy;
 use crate::solver::heuristic::individual::Individual;
 use crate::solver::heuristic::iteration::Iteration;
-use crate::solver::heuristic::model::{HeuristicValue, VariableModel};
+use crate::solver::heuristic::model::{HeuristicValue, ObjectiveCoordinates, VariableModel};
 use crate::solver::heuristic::operator::mutation::Mutation;
 use crate::solver::heuristic::operator::multi_objective::{
     CrowdingDistance, Dominance, FastNonDominatedSort, ParetoArchive, ParetoDominance,
@@ -63,7 +63,7 @@ where
     V: HeuristicValue,
 {
     config: NsgaConfig,
-    objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+    objectives_of: ObjectiveCoordinates<Solution<V>>,
     dominance: Rc<dyn Dominance>,
     update: Box<dyn SolutionUpdate<V>>,
     mutation: Box<dyn Mutation<V>>,
@@ -78,7 +78,7 @@ where
     /// 创建 NSGA-II 骨架 / Create an NSGA-II skeleton
     pub fn new(
         size: usize,
-        objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+        objectives_of: ObjectiveCoordinates<Solution<V>>,
         dominance: Box<dyn Dominance>,
         update: Box<dyn SolutionUpdate<V>>,
         mutation: Box<dyn Mutation<V>>,
@@ -105,7 +105,7 @@ where
     pub fn minimization(
         size: usize,
         objective_amount: usize,
-        objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+        objectives_of: ObjectiveCoordinates<Solution<V>>,
         update: Box<dyn SolutionUpdate<V>>,
         mutation: Box<dyn Mutation<V>>,
         entropy: Box<dyn Entropy>,
@@ -342,13 +342,13 @@ where
             // Fill one slot at a time: pick the reference direction with the fewest members and take the closest candidate.
             let mut target_reference = 0;
             let mut fewest = usize::MAX;
-            for index in 0..niche_count.len() {
-                if niche_count[index] < fewest
+            for (index, &count) in niche_count.iter().enumerate() {
+                if count < fewest
                     && available.iter().any(|candidate| {
                         nearest_reference(&normalise(candidate)) == index
                     })
                 {
-                    fewest = niche_count[index];
+                    fewest = count;
                     target_reference = index;
                 }
             }
@@ -462,7 +462,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         size: usize,
-        objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+        objectives_of: ObjectiveCoordinates<Solution<V>>,
         dominance: Box<dyn Dominance>,
         update: Box<dyn SolutionUpdate<V>>,
         mutation: Box<dyn Mutation<V>>,

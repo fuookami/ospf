@@ -15,6 +15,12 @@ pub mod local_evaluation;
 
 pub use local_evaluation::{EvaluatedSolution, LocalEvaluation};
 
+/// 将业务对象映射为多目标坐标，不隐式执行模型评估。 / Map a business object to multi-objective coordinates without implicit model evaluation.
+pub type ObjectiveCoordinates<T> = Box<dyn Fn(&T) -> Vec<f64>>;
+
+type ObjectiveExtractor<'a, O, V> = Box<dyn Fn(&Solution<V>) -> Option<O> + 'a>;
+type ObjectiveComparator<'a, O> = Box<dyn Fn(&O, &O) -> Option<Ordering> + 'a>;
+
 /// 启发式值类型约束 / Heuristic value type bound
 ///
 /// 要求浮点语义（`Float` 同时提供 `NumCast`/`ToPrimitive`/`PartialOrd`），从而可以安全地在 `f64`
@@ -198,7 +204,6 @@ where
 {
     fn default_objective(&self) -> Option<V> {
         self.objective_value
-            .clone()
             .or_else(|| AbstractCallBackModelInterface::calculate_objective(self))
     }
 
@@ -270,7 +275,6 @@ where
     fn default_objective(&self) -> Option<V> {
         self.base
             .objective_value
-            .clone()
             .or_else(|| AbstractCallBackModelInterface::calculate_objective(&self.base))
     }
 
@@ -301,8 +305,8 @@ where
     V: HeuristicValue,
 {
     inner: &'a mut M,
-    objective: Box<dyn Fn(&Solution<V>) -> Option<O> + 'a>,
-    compare: Box<dyn Fn(&O, &O) -> Option<Ordering> + 'a>,
+    objective: ObjectiveExtractor<'a, O, V>,
+    compare: ObjectiveComparator<'a, O>,
     default_objective: Option<O>,
 }
 

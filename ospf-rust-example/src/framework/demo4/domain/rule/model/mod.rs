@@ -3,6 +3,8 @@
 pub mod flow_control;
 /// 航段连接模型 / Flight leg link model
 pub mod link;
+/// 实际起飞时刻锁定模型。 / Actual departure-time lock model.
+pub mod lock;
 /// 限制规则模型 / Restriction rule model
 pub mod restriction;
 
@@ -10,5 +12,7 @@ pub mod restriction;
 pub use flow_control::*;
 /// 航段连接重导出 / Flight leg link re-exports
 pub use link::*;
+/// 时刻锁定重导出。 / Departure-lock re-exports.
+pub use lock::*;
 /// 限制规则重导出 / Restriction rule re-exports
 pub use restriction::*;

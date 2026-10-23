@@ -4,6 +4,9 @@ use crate::solver::heuristic::entropy::Entropy;
 use crate::solver::heuristic::result::{HeuristicError, Result};
 use crate::solver::heuristic::session::SearchRandom;
 
+type RemovalCost<T> = Box<dyn Fn(&[T], usize) -> Result<f64>>;
+type Relatedness<T> = Box<dyn Fn(&T, &T) -> Result<f64>>;
+
 /// 保留完整元素集合的部分排列 / Partial permutation retaining the complete element set
 #[derive(Clone, Debug, PartialEq)]
 pub struct RuinResult<T> {
@@ -26,6 +29,7 @@ fn boundary<T>(callback: impl FnOnce() -> Result<T>) -> Result<T> {
         .unwrap_or_else(|_| Err(HeuristicError::Model("破坏修复回调异常 / Ruin/recreate callback panicked".into())))
 }
 
+#[expect(clippy::eq_op, reason = "必须拒绝 NaN 等非自反身份 / Reject non-reflexive identities such as NaN")]
 fn unique<T: PartialEq>(items: &[T]) -> bool {
     items.iter().enumerate().all(|(index, item)| item == item && !items[..index].contains(item))
 }
@@ -58,7 +62,7 @@ impl<T: Clone + PartialEq> Ruin<T> for RandomRuin {
 
 /// 按业务收益从高到低移除，等值保留原顺序 / Remove by descending domain benefit, retaining original order for ties
 pub struct WorstCostRuin<T> {
-    cost: Box<dyn Fn(&[T], usize) -> Result<f64>>,
+    cost: RemovalCost<T>,
 }
 
 impl<T> WorstCostRuin<T> {
@@ -81,7 +85,7 @@ impl<T: Clone + PartialEq> Ruin<T> for WorstCostRuin<T> {
 
 /// 从随机种子扩展相关簇的Shaw破坏 / Shaw removal expanding a related cluster from a random seed
 pub struct RelatednessRuin<T> {
-    distance: Box<dyn Fn(&T, &T) -> Result<f64>>,
+    distance: Relatedness<T>,
 }
 
 impl<T> RelatednessRuin<T> {

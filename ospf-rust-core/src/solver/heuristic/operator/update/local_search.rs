@@ -71,10 +71,10 @@ impl<V: HeuristicValue> SolutionUpdate<V> for OppositionUpdate {
         parents.iter().map(|parent| {
             let mut result = parent.clone();
             for (index, id) in order.iter().enumerate() {
-                if let (Some(lower), Some(upper), Some(value)) = (model.lower_bound(index), model.upper_bound(index), parent.get(id)) {
-                    if lower.is_finite() && upper.is_finite() {
-                        result.insert(*id, clamp_at(model, index, lower + (upper - to_f64(value))));
-                    }
+                if let (Some(lower), Some(upper), Some(value)) = (model.lower_bound(index), model.upper_bound(index), parent.get(id))
+                    && lower.is_finite() && upper.is_finite()
+                {
+                    result.insert(*id, clamp_at(model, index, lower + (upper - to_f64(value))));
                 }
             }
             result
@@ -125,8 +125,10 @@ impl<V: HeuristicValue> SolutionUpdate<V> for PatternSearchUpdate {
                     let mut trial = current.solution().clone();
                     trial.insert(*id, clamp_at(model, index, to_f64(value) + sign * mesh[index]));
                     if trial == *current.solution() { continue; }
-                    if let Some(candidate) = EvaluatedSolution::evaluate(ledger, trial) {
-                        if candidate.compare(&current) == Some(Ordering::Less) { current = candidate; }
+                    if let Some(candidate) = EvaluatedSolution::evaluate(ledger, trial)
+                        && candidate.compare(&current) == Some(Ordering::Less)
+                    {
+                        current = candidate;
                     }
                 }
             }
@@ -140,8 +142,10 @@ impl<V: HeuristicValue> SolutionUpdate<V> for PatternSearchUpdate {
                 }
                 if pattern != *current.solution() {
                     if ledger.remaining() <= 2 { return vec![current.solution().clone()]; }
-                    if let Some(candidate) = EvaluatedSolution::evaluate(ledger, pattern) {
-                        if candidate.compare(&current) == Some(Ordering::Less) { current = candidate; }
+                    if let Some(candidate) = EvaluatedSolution::evaluate(ledger, pattern)
+                        && candidate.compare(&current) == Some(Ordering::Less)
+                    {
+                        current = candidate;
                     }
                 }
             }
@@ -214,10 +218,10 @@ impl<V: HeuristicValue> SolutionUpdate<V> for VNDCompositeUpdate<V> {
             if index >= self.neighborhoods.len() { break; }
             let candidates = evaluate_all(ledger, self.neighborhoods[index].update(model, iteration, &[current.solution().clone()], entropy));
             let Some(ranking) = EvaluatedSolution::rank(&candidates) else { return Vec::new(); };
-            if let Some(candidate) = ranking.first().map(|&index| &candidates[index]) {
-                if candidate.compare(&current) == Some(Ordering::Less) {
-                    current = candidate.clone(); index = 0; continue;
-                }
+            if let Some(candidate) = ranking.first().map(|&index| &candidates[index])
+                && candidate.compare(&current) == Some(Ordering::Less)
+            {
+                current = candidate.clone(); index = 0; continue;
             }
             index += 1;
         }
@@ -244,7 +248,7 @@ impl<V: HeuristicValue> SolutionUpdate<V> for EliteLocalSearchWrapper<V> {
         parents: &[Solution<V>],
         entropy: &mut dyn Entropy,
     ) -> Vec<Solution<V>> {
-        parents.iter().take(self.amount).flat_map(|parent| self.local_search.update(model, iteration, &[parent.clone()], entropy))
+        parents.iter().take(self.amount).flat_map(|parent| self.local_search.update(model, iteration, std::slice::from_ref(parent), entropy))
             .chain(parents.iter().skip(self.amount).cloned()).collect()
     }
 }

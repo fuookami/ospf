@@ -16,6 +16,8 @@ pub use error::{NetworkSchedulingError, Result};
 mod tests {
     #![allow(clippy::borrow_interior_mutable_const)]
 
+    mod route_pricing_rows;
+
     use std::collections::{BTreeMap, BTreeSet};
     use std::sync::Arc;
     use std::time::Instant;
@@ -45,7 +47,7 @@ mod tests {
         LinearProgrammingSolver, LinearProgrammingStatus, select_branch_decision,
     };
     use crate::domain::flow::{
-        FlowContext, FlowContextExtension, FlowGraph, FlowNode, FlowUnits, SupplyDemand,
+        FlowContext, FlowContextExtension, FlowProblem, FlowNode, FlowUnits, FlowCommodity,
     };
     use crate::domain::route_compilation::{RouteCompilationContext, RouteCompilationExtension};
     use crate::domain::route_generation::{
@@ -440,10 +442,10 @@ mod tests {
             .expect("valid capacity"),
             NetworkCost::new(Quantity::new(2.0, cost_unit)),
         );
-        let commodity = crate::domain::flow::SupplyDemand::new("m1")
+        let commodity = crate::domain::flow::FlowCommodity::new("m1")
             .with_balance("a", Quantity::new(5.0, unit.clone()))
             .with_balance("b", Quantity::new(-5.0, unit));
-        let graph = crate::domain::flow::FlowGraph::new(
+        let graph = crate::domain::flow::FlowProblem::new(
             vec![
                 crate::domain::flow::FlowNode::new("a"),
                 crate::domain::flow::FlowNode::new("b"),
@@ -495,11 +497,11 @@ mod tests {
             .expect("valid capacity"),
             NetworkCost::new(Quantity::new(1.0, cost_unit.clone())),
         );
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![FlowNode::new("a"), FlowNode::new("b")],
             vec![arc],
             vec![
-                SupplyDemand::new("m1")
+                FlowCommodity::new("m1")
                     .with_balance("a", Quantity::new(1.0, unit.clone()))
                     .with_balance("b", Quantity::new(-1.0, unit)),
             ],
@@ -590,14 +592,14 @@ mod tests {
             .expect("valid shared capacity"),
             NetworkCost::new(Quantity::new(-2.0, cost_unit.clone())),
         );
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![FlowNode::new("source"), FlowNode::new("sink")],
             vec![shared_arc],
             vec![
-                SupplyDemand::new("commodity-a")
+                FlowCommodity::new("commodity-a")
                     .with_balance("source", Quantity::new(3.0, flow_unit.clone()))
                     .with_balance("sink", Quantity::new(-3.0, flow_unit.clone())),
-                SupplyDemand::new("commodity-b")
+                FlowCommodity::new("commodity-b")
                     .with_balance("source", Quantity::new(2.0, flow_unit.clone()))
                     .with_balance("sink", Quantity::new(-2.0, flow_unit.clone())),
             ],
@@ -621,7 +623,7 @@ mod tests {
                 .all(|constraint| { constraint.inequality.polynomial.monomials().len() == 2 })
         );
 
-        let inventory_graph = FlowGraph::new_with_units(
+        let inventory_graph = FlowProblem::new_with_units(
             vec![
                 FlowNode::new("raw@0"),
                 FlowNode::new("raw@1"),
@@ -652,7 +654,7 @@ mod tests {
                 ),
             ],
             vec![
-                SupplyDemand::new("material")
+                FlowCommodity::new("material")
                     .with_balance("raw@0", Quantity::new(4.0, flow_unit.clone()))
                     .with_balance("finished@1", Quantity::new(-4.0, flow_unit)),
             ],
@@ -660,15 +662,15 @@ mod tests {
                 .expect("valid inventory units"),
         )
         .expect("MRP-shaped flow graph");
-        assert_eq!(inventory_graph.nodes.len(), 3);
-        assert_eq!(inventory_graph.arcs.len(), 2);
+        assert_eq!(inventory_graph.nodes().len(), 3);
+        assert_eq!(inventory_graph.arcs().len(), 2);
     }
 
     #[test]
     fn mrp_shape_has_a_complete_bounded_integral_flow_oracle_certificate() {
         let flow_unit = Kilogram::INSTANT.clone();
         let cost_unit = VrptwUnits::default().cost_unit;
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![
                 FlowNode::new("raw@0"),
                 FlowNode::new("raw@1"),
@@ -699,7 +701,7 @@ mod tests {
                 ),
             ],
             vec![
-                SupplyDemand::new("material")
+                FlowCommodity::new("material")
                     .with_balance("raw@0", Quantity::new(4.0, flow_unit.clone()))
                     .with_balance("finished@1", Quantity::new(-4.0, flow_unit)),
             ],
@@ -724,7 +726,7 @@ mod tests {
     fn nonzero_lower_bound_flow_model() -> ospf_rust_core::model::intermediate::LinearTriadModel {
         let flow_unit = Kilogram::INSTANT.clone();
         let cost_unit = VrptwUnits::default().cost_unit;
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![FlowNode::new("source"), FlowNode::new("sink")],
             vec![crate::domain::flow::FlowArc::new(
                 "negative",
@@ -738,7 +740,7 @@ mod tests {
                 NetworkCost::new(Quantity::new(-2.0, cost_unit.clone())),
             )],
             vec![
-                SupplyDemand::new("m1")
+                FlowCommodity::new("m1")
                     .with_balance("source", Quantity::new(5.0, flow_unit.clone()))
                     .with_balance("sink", Quantity::new(-5.0, flow_unit)),
             ],
@@ -889,11 +891,11 @@ mod tests {
             .expect("valid capacity"),
             NetworkCost::new(Quantity::new(2.0, cost_unit)),
         );
-        let graph = FlowGraph::new(
+        let graph = FlowProblem::new(
             vec![FlowNode::new("a"), FlowNode::new("b")],
             vec![arc],
             vec![
-                SupplyDemand::new("m1")
+                FlowCommodity::new("m1")
                     .with_balance("a", Quantity::new(5.0, unit.clone()))
                     .with_balance("b", Quantity::new(-5.0, unit)),
             ],
@@ -910,6 +912,7 @@ mod tests {
         context
             .refresh_shadow_price(&model, &[])
             .expect("refresh flow extension");
+        model.set_solution(&[5.0, 0.0]);
         context
             .extract_solution(&model)
             .expect("extract flow extension");
@@ -951,11 +954,11 @@ mod tests {
             .expect("valid capacity"),
             NetworkCost::new(Quantity::new(2.0, cost_unit)),
         );
-        let graph = FlowGraph::new(
+        let graph = FlowProblem::new(
             vec![FlowNode::new("a"), FlowNode::new("b")],
             vec![arc],
             vec![
-                SupplyDemand::new("m1")
+                FlowCommodity::new("m1")
                     .with_balance("a", Quantity::new(5.0, unit.clone()))
                     .with_balance("b", Quantity::new(-5.0, unit)),
             ],
@@ -983,54 +986,22 @@ mod tests {
     }
 
     #[test]
-    fn flow_context_register_variables_rolls_back_partial_aggregation_registration() {
-        let flow_unit = Kilogram::INSTANT.clone();
-        let cost_unit = VrptwUnits::default().cost_unit;
-        let finite_arc = crate::domain::flow::FlowArc::new(
-            "finite",
-            "a",
-            "b",
+    fn flow_problem_rejects_nonfinite_capacity_before_registration() {
+        let unit = Kilogram::INSTANT.clone();
+        let cost = VrptwUnits::default().cost_unit;
+        let arc = crate::domain::flow::FlowArc::new(
+            "non-finite", "a", "b",
             CapacityBounds::try_new(
-                Quantity::new(0.0, flow_unit.clone()),
-                Quantity::new(5.0, flow_unit.clone()),
-            )
-            .expect("valid finite capacity"),
-            NetworkCost::new(Quantity::new(1.0, cost_unit.clone())),
+                Quantity::new(0.0, unit.clone()),
+                Quantity::new(f64::INFINITY, unit),
+            ).expect("raw capacity"),
+            NetworkCost::new(Quantity::new(1.0, cost)),
         );
-        let non_finite_arc = crate::domain::flow::FlowArc::new(
-            "non-finite",
-            "a",
-            "b",
-            CapacityBounds::try_new(
-                Quantity::new(0.0, flow_unit.clone()),
-                Quantity::new(f64::INFINITY, flow_unit),
-            )
-            .expect("capacity bounds preserve the conversion failure input"),
-            NetworkCost::new(Quantity::new(1.0, cost_unit)),
-        );
-        let graph = FlowGraph::new(
+        assert!(FlowProblem::new(
             vec![FlowNode::new("a"), FlowNode::new("b")],
-            vec![finite_arc, non_finite_arc],
-            vec![SupplyDemand::new("m1")],
-        )
-        .expect("valid partial-registration graph");
-        let mut context = FlowContext::new(graph);
-        let mut model = MetaModel::<f64>::new("flow-partial-registration-rollback");
-
-        assert!(context.register_variables(&mut model).is_err());
-        assert!(model.tokens().is_empty());
-        assert!(context.aggregation.variable_indices().is_empty());
-
-        let retry_unit = context.aggregation.graph.units.flow_unit.clone();
-        context.aggregation.graph.arcs[1].capacity.upper = Quantity::new(5.0, retry_unit);
-        let mut retry_model = MetaModel::<f64>::new("flow-partial-registration-retry");
-        context
-            .register_variables(&mut retry_model)
-            .expect("failed registration must restore the model binding");
-        assert_eq!(retry_model.tokens().len(), 2);
-        assert_eq!(context.aggregation.variable_indices().len(), 2);
+            vec![arc], vec![FlowCommodity::new("m1")],
+        ).is_err());
     }
-
     #[test]
     fn initial_route_is_valid_and_branch_mask_filters_it() {
         let instance = test_instance();
@@ -1526,6 +1497,74 @@ mod tests {
     }
 
     #[test]
+    fn shared_espprc_keeps_admitted_routes_and_budget_takes_precedence_over_depth() {
+        let instance = multi_customer_instance(3);
+        let pricer = EspprcPricer::new(RouteGraphBuilder::new(
+            instance.clone(), EuclideanDistanceCalculator,
+            DistanceAsTravelTimeCalculator::new(EuclideanDistanceCalculator),
+            DistanceArcCostCalculator, FixedPlusArcCostPolicy,
+        ));
+        let mut request = PricingRequest::new(instance, PricingDuals::new(
+            PricingPhase::PhaseTwo,
+            (1..=3).map(|index| (CustomerId::from(format!("c{index}")), 100.0)),
+            [("v1".into(), 0.0)],
+        ), "v1".into());
+        request.max_depth = Some(1);
+        request.max_labels = Some(5);
+        let result = pricer.price_request(&request).unwrap();
+        assert_eq!(result.routes.len(), 1);
+        assert_eq!(result.statistics.labels_created, 5);
+        assert!(!result.exact_pricing_complete);
+        assert_eq!(result.truncation_reason, Some(crate::domain::route_generation::TruncationReason::MaxLabels));
+        request.max_labels = Some(0);
+        let result = pricer.price_request(&request).unwrap();
+        assert!(result.routes.is_empty());
+        assert_eq!(result.statistics.labels_created, 0);
+        assert!(!result.exact_pricing_complete);
+        assert_eq!(result.truncation_reason, Some(crate::domain::route_generation::TruncationReason::MaxLabels));
+    }
+
+    #[test]
+    fn shared_espprc_preserves_public_dominance_label_metadata() {
+        struct Inspect {
+            graph: PricingGraph,
+            checks: std::sync::atomic::AtomicUsize,
+        }
+        impl crate::domain::route_generation::LabelDominancePolicy for Inspect {
+            fn is_certified(&self) -> bool { true }
+            fn dominates(
+                &self,
+                left: &crate::domain::route_generation::EspprcLabel,
+                right: &crate::domain::route_generation::EspprcLabel,
+            ) -> bool {
+                for label in [left, right] {
+                    assert!(label.predecessor.is_some());
+                    let arc = &self.graph.arcs[label.predecessor_arc.unwrap()];
+                    assert_eq!(arc.to, label.current_node);
+                    if self.graph.nodes[label.current_node].is_end_depot {
+                        assert!(label.predecessor.unwrap() > 0);
+                    }
+                }
+                self.checks.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                false
+            }
+        }
+        let instance = multi_customer_instance(3);
+        let duals = PricingDuals::new(PricingPhase::PhaseTwo,
+            (1..=3).map(|index| (CustomerId::from(format!("c{index}")), 100.0)), [("v1".into(), 0.0)]);
+        let builder = RouteGraphBuilder::new(instance.clone(), EuclideanDistanceCalculator,
+            DistanceAsTravelTimeCalculator::new(EuclideanDistanceCalculator), DistanceArcCostCalculator, FixedPlusArcCostPolicy);
+        let graph = builder.build(&"v1".into(), &duals, None).unwrap();
+        let oracle = exhaustive_pricing_paths(&graph, &instance, 3);
+        let inspect = Inspect { graph: graph.clone(), checks: std::sync::atomic::AtomicUsize::new(0) };
+        let pricer = EspprcPricer::with_policies(builder, inspect, DefaultPricingColumnSelector);
+        let result = pricer.price(&graph, &PricingRequest::new(instance, duals, "v1".into())).unwrap();
+        assert!(result.exact_pricing_complete);
+        assert_eq!(result.routes.len(), oracle.len());
+        assert!(pricer.dominance_policy.checks.load(std::sync::atomic::Ordering::Relaxed) > 0);
+    }
+
+    #[test]
     fn espprc_rejects_stale_graph_snapshots_and_corrupted_reduced_cost() {
         let instance = test_instance();
         let vehicle_type_id = VehicleTypeId::from("v1");
@@ -1608,6 +1647,35 @@ mod tests {
             .expect("remove column");
         assert!(context.aggregation.routes().is_empty());
         assert!(context.aggregation.route_variable_indices().is_empty());
+    }
+
+    #[test]
+    fn route_objective_refresh_preserves_extensions_and_cleans_removed_terms() {
+        use ospf_rust_core::variable::{Continuous, VariableRange};
+        let instance = test_instance();
+        let route = InitialRouteGenerator::new(
+            instance.clone(), EuclideanDistanceCalculator,
+            DistanceAsTravelTimeCalculator::new(EuclideanDistanceCalculator),
+            DistanceArcCostCalculator, FixedPlusArcCostPolicy,
+        ).generate(None).unwrap().remove(0);
+        let mut model = MetaModel::<f64>::new("owned-route-objective");
+        let extra = model.register_auto_variable_with_range::<Continuous>("extra", VariableRange::bounded(0.0, 1.0)).unwrap();
+        model.add_linear_objective(&[(extra, 17.0)], "business-extra");
+        let mut context = RouteCompilationContext::new(instance);
+        context.register(&mut model).unwrap();
+        context.add_columns(0, [route.clone()], &mut model).unwrap();
+        context.switch_to_phase_two(&mut model).unwrap();
+        let route_index = context.aggregation.route_variable_indices().values().next().unwrap().model_index;
+        model.add_linear_objective(&[(route_index, 3.0)], "business-route-term");
+        assert_eq!(model.try_to_linear_triad_model().unwrap().c[extra], 17.0);
+        context.remove_columns([route.clone()], &mut model).unwrap();
+        let compiled = model.try_to_linear_triad_model().unwrap();
+        assert_eq!(compiled.c[extra], 17.0);
+        assert_eq!(compiled.c[route_index], 0.0);
+        context.add_columns(1, [route], &mut model).unwrap();
+        let new_index = context.aggregation.route_variable_indices().values().next().unwrap().model_index;
+        assert_ne!(route_index, new_index);
+        assert_eq!(model.try_to_linear_triad_model().unwrap().c[extra], 17.0);
     }
 
     #[test]
@@ -1947,26 +2015,26 @@ mod tests {
             .expect("valid kilometer capacity"),
             NetworkCost::new(Quantity::new(3.0, cost_unit.clone())),
         );
-        let commodity = SupplyDemand::new("m1")
+        let commodity = FlowCommodity::new("m1")
             .with_balance("a", Quantity::new(1000.0, flow_unit.clone()))
             .with_balance("b", Quantity::new(-1000.0, flow_unit.clone()));
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![FlowNode::new("a"), FlowNode::new("b")],
             vec![arc],
             vec![commodity.clone()],
             FlowUnits::new(flow_unit.clone(), cost_unit.clone()).expect("valid flow units"),
         )
         .expect("flow units normalize");
-        assert_eq!(graph.arcs[0].capacity.lower.value, 1000.0);
-        assert_eq!(graph.arcs[0].capacity.upper.value, 2000.0);
+        assert_eq!(graph.arcs()[0].capacity.lower.value, 1000.0);
+        assert_eq!(graph.arcs()[0].capacity.upper.value, 2000.0);
         assert_eq!(
-            graph.commodities[0].balances[&NetworkNodeId::from("a")].value,
+            graph.commodities()[0].balances[&NetworkNodeId::from("a")].value,
             1000.0
         );
 
-        let duplicate = FlowGraph::new_with_units(
+        let duplicate = FlowProblem::new_with_units(
             vec![FlowNode::new("a"), FlowNode::new("b")],
-            graph.arcs.clone(),
+            graph.arcs().to_vec(),
             vec![commodity.clone(), commodity],
             FlowUnits::new(flow_unit, cost_unit).expect("valid flow units"),
         );
@@ -1999,10 +2067,10 @@ mod tests {
             NetworkCost::new(Quantity::new(1.0, cost_unit.clone())),
         );
         assert!(
-            FlowGraph::new_with_units(
+            FlowProblem::new_with_units(
                 vec![FlowNode::new("a"), FlowNode::new("b")],
                 vec![mismatched_arc],
-                vec![SupplyDemand::new("m1")],
+                vec![FlowCommodity::new("m1")],
                 FlowUnits::new(Meter::INSTANT.clone(), cost_unit.clone())
                     .expect("valid flow units"),
             )
@@ -2020,10 +2088,10 @@ mod tests {
             .expect("valid self-loop capacity"),
             NetworkCost::new(Quantity::new(1.0, cost_unit.clone())),
         );
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![FlowNode::new("a")],
             vec![self_loop],
-            vec![SupplyDemand::new("m1")],
+            vec![FlowCommodity::new("m1")],
             FlowUnits::new(Kilogram::INSTANT.clone(), cost_unit).expect("valid flow units"),
         )
         .expect("self-loop flow graph");
@@ -2304,6 +2372,134 @@ mod tests {
 
     #[derive(Debug, Clone, Copy)]
     struct NegativeTravelTimeCalculator;
+
+    fn nonmetric_window_instance<V>() -> Arc<VrptwInstance<V>>
+    where
+        V: SolveValue + ospf_rust_quantities::unit::UnitConversionValue,
+    {
+        let value = |value| V::from_f64_with_policy(value, SolveValueConversionPolicy::AllowRounding).unwrap();
+        let start = OffsetDateTime::UNIX_EPOCH;
+        let end = start + TimeDuration::seconds(1000);
+        let units = VrptwUnits::default();
+        let depot = |id| Depot {
+            node: coordinate_node(id, value(0.0), value(0.0), Meter::INSTANT.clone()).unwrap(),
+            time_window: ServiceTimeWindow::new(start, end).unwrap(),
+        };
+        let customers = (1..=3).map(|index| Customer::new(
+            CustomerId::from(format!("c{index}")),
+            coordinate_node(format!("c{index}-node"), value(index as f64), value(0.0), Meter::INSTANT.clone()).unwrap(),
+            Quantity::new(value(1.0), Kilogram::INSTANT.clone()),
+            ServiceTimeWindow::new(start, if index == 3 { start + TimeDuration::seconds(5) } else { end }).unwrap(),
+            TimeDuration::ZERO,
+        ).unwrap()).collect();
+        let arcs = [
+            ("start", "c1-node", 1), ("c1-node", "c3-node", 100),
+            ("c1-node", "c2-node", 1), ("c2-node", "c3-node", 1), ("c3-node", "end", 1),
+        ].into_iter().map(|(from, to, seconds)| VrptwArc::new(
+            format!("{from}:{to}"), NetworkNodeId::from(from), NetworkNodeId::from(to),
+            Quantity::new(value(1.0), Meter::INSTANT.clone()),
+            TravelTime::new(TimeDuration::seconds(seconds)).unwrap(),
+            Quantity::new(value(1.0), units.cost_unit.clone()),
+        ).unwrap()).collect();
+        Arc::new(VrptwInstance::new_with_arcs(
+            "nonmetric-window", depot("start"), depot("end"), customers,
+            vec![VehicleType::new(
+                "v1", Quantity::new(value(10.0), Kilogram::INSTANT.clone()),
+                Quantity::new(value(0.0), units.cost_unit.clone()), 1,
+            ).unwrap()],
+            TimeWindow::seconds(TimeRange::new(start, end), value(0.0), false, value(1.0)),
+            units, Default::default(), arcs,
+        ).unwrap())
+    }
+
+    #[test]
+    fn espprc_keeps_customer_reachable_via_a_faster_indirect_path() {
+        let instance = nonmetric_window_instance::<f64>();
+        let duals = PricingDuals::new(
+            PricingPhase::PhaseTwo,
+            (1..=3).map(|index| (CustomerId::from(format!("c{index}")), 100.0)),
+            [(VehicleTypeId::from("v1"), 0.0)],
+        );
+        let pricer = EspprcPricer::new(RouteGraphBuilder::new(
+            instance.clone(), EuclideanDistanceCalculator,
+            DistanceAsTravelTimeCalculator::new(EuclideanDistanceCalculator),
+            DistanceArcCostCalculator, FixedPlusArcCostPolicy,
+        ));
+        let result = pricer.price_request(&PricingRequest::new(instance, duals, "v1".into())).unwrap();
+        assert!(result.exact_pricing_complete);
+        assert!(result.routes.iter().any(|route| route.customer_ids().len() == 3));
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    struct WholeRouteDiscount;
+
+    impl crate::domain::vrp::RouteCostPolicy<f64> for WholeRouteDiscount {
+        fn cost(
+            &self,
+            _vehicle: &VehicleType<f64>,
+            arcs: &[Quantity<f64, ospf_rust_quantities::unit::Unit>],
+            instance: &VrptwInstance<f64>,
+        ) -> crate::Result<Quantity<f64, ospf_rust_quantities::unit::Unit>> {
+            Ok(Quantity::new(if arcs.len() == 4 { 1.0 } else { 100.0 }, instance.units.cost_unit.clone()))
+        }
+    }
+
+    #[test]
+    fn nonadditive_terminal_cost_is_applied_before_filtering_and_phase_one_ignores_it() {
+        let instance = nonmetric_window_instance::<f64>();
+        let pricer = EspprcPricer::new(RouteGraphBuilder::new(
+            instance.clone(), EuclideanDistanceCalculator,
+            DistanceAsTravelTimeCalculator::new(EuclideanDistanceCalculator),
+            DistanceArcCostCalculator, WholeRouteDiscount,
+        ));
+        for phase in [PricingPhase::PhaseOne, PricingPhase::PhaseTwo] {
+            let duals = PricingDuals::new(
+                phase, (1..=3).map(|index| (CustomerId::from(format!("c{index}")), 1.0)),
+                [(VehicleTypeId::from("v1"), 0.0)],
+            );
+            let mut request = PricingRequest::new(instance.clone(), duals, "v1".into());
+            let result = pricer.price_request(&request).unwrap();
+            assert!(result.exact_pricing_complete);
+            assert_eq!(result.statistics.dominance_checks, 0);
+            match phase {
+                PricingPhase::PhaseOne => {
+                    assert_eq!(result.routes.len(), 1);
+                    assert_eq!(result.routes[0].cost.value, 1.0);
+                    assert_eq!(result.min_reduced_cost, -3.0);
+                }
+                PricingPhase::PhaseTwo => {
+                    assert_eq!(result.routes.len(), 1);
+                    assert_eq!(result.routes[0].cost.value, 1.0);
+                    assert_eq!(result.min_reduced_cost, -2.0);
+                    request.max_columns_per_pricing = 0;
+                    let truncated = pricer.price_request(&request).unwrap();
+                    assert!(truncated.routes.is_empty());
+                    assert!(truncated.exact_pricing_complete);
+                    assert_eq!(truncated.min_reduced_cost, -2.0);
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "big-decimal")]
+    #[test]
+    fn exact_decimal_pricing_keeps_a_faster_indirect_path() {
+        use bigdecimal::BigDecimal;
+        use crate::domain::route_generation::{
+            ExactBigDecimalEspprcPricer, ExactBigDecimalPricingDuals,
+            ExactBigDecimalPricingRequest, ExactBigDecimalRouteGraphBuilder,
+        };
+        let instance = nonmetric_window_instance::<BigDecimal>();
+        let duals = ExactBigDecimalPricingDuals::new(
+            PricingPhase::PhaseTwo,
+            (1..=3).map(|index| (CustomerId::from(format!("c{index}")), BigDecimal::from(100))),
+            [(VehicleTypeId::from("v1"), BigDecimal::from(0))],
+        );
+        let pricer = ExactBigDecimalEspprcPricer::new(ExactBigDecimalRouteGraphBuilder::new(instance.clone()));
+        let result = pricer.price_request(&ExactBigDecimalPricingRequest::new(instance, duals, "v1".into())).unwrap();
+        assert!(result.exact_pricing_complete);
+        assert!(result.routes.iter().any(|route| route.customer_ids().len() == 3));
+    }
 
     impl TravelTimeCalculator<f64> for NegativeTravelTimeCalculator {
         fn travel_time(
@@ -2786,7 +2982,7 @@ mod tests {
 
         let mut register_context = RouteCompilationContext::with_extensions(
             instance.clone(),
-            vec![Arc::new(FailingModelMutationExtension)],
+            vec![Box::new(FailingModelMutationExtension)],
         );
         let mut register_model = MetaModel::<f64>::new("failing-register-model");
         assert!(register_context.register(&mut register_model).is_err());
@@ -2807,7 +3003,7 @@ mod tests {
 
         let mut failing_add_context = RouteCompilationContext::with_extensions(
             add_context.aggregation.instance.clone(),
-            vec![Arc::new(FailingModelMutationExtension)],
+            vec![Box::new(FailingModelMutationExtension)],
         );
         failing_add_context
             .register(&mut register_model)
@@ -2827,7 +3023,7 @@ mod tests {
         let mut fresh_model = MetaModel::<f64>::new("failing-add-model");
         let mut failing_add_context = RouteCompilationContext::with_extensions(
             add_context.aggregation.instance.clone(),
-            vec![Arc::new(FailingModelMutationExtension)],
+            vec![Box::new(FailingModelMutationExtension)],
         );
         failing_add_context
             .aggregation
@@ -2934,7 +3130,7 @@ mod tests {
     #[test]
     fn route_compilation_extension_and_model_binding_cover_full_lifecycle() {
         let events = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let extension = Arc::new(RecordingExtension {
+        let extension = Box::new(RecordingExtension {
             events: events.clone(),
         });
         let instance = test_instance();
@@ -3321,7 +3517,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let phase_one_provider = BranchNodeSolver::new(
             instance.clone(),
@@ -3371,7 +3568,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider =
             BranchNodeSolver::new(instance.clone(), Arc::new(FinalLpInfeasibleSolver), config)
@@ -3417,7 +3615,8 @@ mod tests {
                     ),
                     dominance_policy: DefaultLabelDominancePolicy,
                     column_selector: DefaultPricingColumnSelector,
-                    extensions: Vec::new(),
+                    extension_factories: Vec::new(),
+                    pricing_rows: Arc::new(Default::default()),
                 },
             )
             .expect("application provider construction"),
@@ -3444,7 +3643,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(
             instance.clone(),
@@ -3489,7 +3689,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(FailingLpSolver), config)
             .expect("provider construction");
@@ -3530,7 +3731,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(
             instance.clone(),
@@ -3575,7 +3777,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider =
             BranchNodeSolver::new(instance.clone(), Arc::new(NonConvergingLpSolver), config)
@@ -3617,7 +3820,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(FakeLpSolver), config)
             .expect("provider construction");
@@ -3704,7 +3908,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: vec![Arc::new(FailingSolutionExtension)],
+            extension_factories: vec![Arc::new(|| Ok(Box::new(FailingSolutionExtension) as Box<dyn RouteCompilationExtension<f64>>))],
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(FakeLpSolver), config)
             .expect("provider construction");
@@ -3735,7 +3940,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(FakeLpSolver), config)
             .expect("provider construction");
@@ -3910,10 +4116,10 @@ mod tests {
         .expect("valid decimal capacity");
         assert_eq!(bounds.upper.value, BigDecimal::from(2));
 
-        let imbalanced = FlowGraph::new_with_units(
+        let imbalanced = FlowProblem::new_with_units(
             vec![FlowNode::new("n")],
             Vec::new(),
-            vec![SupplyDemand::new("m").with_balance(
+            vec![FlowCommodity::new("m").with_balance(
                 "n",
                 Quantity::new(
                     BigDecimal::from_str("0.00000001").expect("high-precision imbalance"),
@@ -3923,7 +4129,13 @@ mod tests {
             FlowUnits::new(unit.clone(), VrptwUnits::default().cost_unit)
                 .expect("valid decimal flow units"),
         );
-        assert!(imbalanced.is_err());
+        let mut imbalanced = FlowContext::new(imbalanced.expect("hard imbalance is a model feasibility question"));
+        let mut imbalanced_model = MetaModel::new("decimal-hard-imbalance");
+        imbalanced.register(&mut imbalanced_model).expect("register an infeasible model normally");
+        let compiled = imbalanced_model.try_to_linear_triad_model().expect("compile hard balance");
+        let audit = ospf_rust_core::solver::audit::evaluate_linear_solution(&compiled, &[], 1e-12)
+            .expect("audit empty incumbent against a nonzero hard balance");
+        assert!(!audit.issues.is_empty());
 
         let adapter = NetworkSchedulingSolverValueAdapter::<BigDecimal>::default();
         let value = BigDecimal::from(3) / BigDecimal::from(2);

@@ -173,12 +173,32 @@ impl<N, A> NetworkGraph<N, A> {
             .filter_map(|index| self.arcs.get(*index))
     }
 
-    /// 按条件创建弧过滤视图 / Create a filtered arc view.
-    pub fn filtered<'a, F>(&'a self, predicate: F) -> impl Iterator<Item = &'a NetworkArc<A>>
+    /// 按条件创建保留节点及弧身份的视图 / Create an identity-preserving arc-filtered view.
+    pub fn filtered<F>(&self, predicate: F) -> NetworkGraphView<'_, N, A>
     where
-        F: Fn(&NetworkArc<A>) -> bool + 'a,
+        F: Fn(&NetworkArc<A>) -> bool,
     {
-        self.arcs.iter().filter(move |arc| predicate(arc))
+        self.view().filtered(predicate)
+    }
+
+    /// 创建只读拓扑视图 / Create a read-only topology view.
+    pub fn view(&self) -> NetworkGraphView<'_, N, A> {
+        NetworkGraphView {
+            nodes: self.nodes.iter().collect(), arcs: self.arcs.iter().collect(), reversed: false,
+        }
+    }
+
+    /// 创建反向视图，业务弧载荷保持不变 / Reverse topology without changing business arc payloads.
+    pub fn reverse(&self) -> NetworkGraphView<'_, N, A> {
+        self.view().reverse()
+    }
+
+    /// 按节点过滤，同时移除被过滤节点的关联弧 / Filter nodes and their incident arcs.
+    pub fn filtered_nodes<F>(&self, predicate: F) -> NetworkGraphView<'_, N, A>
+    where
+        F: Fn(&NetworkNode<N>) -> bool,
+    {
+        self.view().filtered_nodes(predicate)
     }
 
     /// 按弧 ID 生成有序路线签名 / Build an ordered arc-ID route signature.
@@ -194,6 +214,95 @@ impl<N, A> NetworkGraph<N, A> {
             signature.push(';');
         }
         signature
+    }
+}
+
+/// 拓扑访问合同；算法必须使用访问器端点，而不是载荷端点。 / Topology access; algorithms must use accessor endpoints rather than payload endpoints.
+pub trait NetworkGraphAccess<N, A> {
+    /// 当前视图中的节点 / Nodes in the current view.
+    fn nodes<'a>(&'a self) -> impl Iterator<Item = &'a NetworkNode<N>> where N: 'a;
+
+    /// 当前视图中的弧 / Arcs in the current view.
+    fn arcs<'a>(&'a self) -> impl Iterator<Item = &'a NetworkArc<A>> where A: 'a;
+
+    /// 视图中的起点 / Origin in the view.
+    fn from<'a>(&'a self, arc: &'a NetworkArc<A>) -> &'a NetworkNodeId;
+
+    /// 视图中的终点 / Destination in the view.
+    fn to<'a>(&'a self, arc: &'a NetworkArc<A>) -> &'a NetworkNodeId;
+
+    /// 按稳定身份获取节点 / Find a node by stable identity.
+    fn node(&self, id: &NetworkNodeId) -> Option<&NetworkNode<N>> {
+        self.nodes().find(|node| &node.id == id)
+    }
+
+    /// 按稳定身份获取弧 / Find an arc by stable identity.
+    fn arc(&self, id: &NetworkArcId) -> Option<&NetworkArc<A>> {
+        self.arcs().find(|arc| &arc.id == id)
+    }
+}
+
+impl<N, A> NetworkGraphAccess<N, A> for NetworkGraph<N, A> {
+    fn nodes<'a>(&'a self) -> impl Iterator<Item = &'a NetworkNode<N>> where N: 'a { self.nodes.iter() }
+
+    fn arcs<'a>(&'a self) -> impl Iterator<Item = &'a NetworkArc<A>> where A: 'a { self.arcs.iter() }
+
+    fn from<'a>(&'a self, arc: &'a NetworkArc<A>) -> &'a NetworkNodeId { &arc.from }
+
+    fn to<'a>(&'a self, arc: &'a NetworkArc<A>) -> &'a NetworkNodeId { &arc.to }
+
+    fn node(&self, id: &NetworkNodeId) -> Option<&NetworkNode<N>> { NetworkGraph::node(self, id) }
+
+    fn arc(&self, id: &NetworkArcId) -> Option<&NetworkArc<A>> { NetworkGraph::arc(self, id) }
+}
+
+/// 无克隆载荷的不可变视图 / Immutable view without cloning payloads.
+#[derive(Debug)]
+pub struct NetworkGraphView<'a, N, A> {
+    nodes: Vec<&'a NetworkNode<N>>,
+    arcs: Vec<&'a NetworkArc<A>>,
+    reversed: bool,
+}
+
+impl<'a, N, A> NetworkGraphView<'a, N, A> {
+    /// 反转当前视图，保持稳定弧身份 / Reverse this view while retaining stable arc identities.
+    pub fn reverse(mut self) -> Self {
+        self.reversed = !self.reversed;
+        self
+    }
+
+    /// 在当前视图上继续过滤弧 / Filter arcs within the current view.
+    pub fn filtered<F>(mut self, predicate: F) -> Self
+    where
+        F: Fn(&NetworkArc<A>) -> bool,
+    {
+        self.arcs.retain(|arc| predicate(arc));
+        self
+    }
+
+    /// 过滤节点及关联弧 / Filter nodes and incident arcs.
+    pub fn filtered_nodes<F>(mut self, predicate: F) -> Self
+    where
+        F: Fn(&NetworkNode<N>) -> bool,
+    {
+        self.nodes.retain(|node| predicate(node));
+        let ids: std::collections::HashSet<_> = self.nodes.iter().map(|node| &node.id).collect();
+        self.arcs.retain(|arc| ids.contains(&arc.from) && ids.contains(&arc.to));
+        self
+    }
+}
+
+impl<N, A> NetworkGraphAccess<N, A> for NetworkGraphView<'_, N, A> {
+    fn nodes<'a>(&'a self) -> impl Iterator<Item = &'a NetworkNode<N>> where N: 'a { self.nodes.iter().copied() }
+
+    fn arcs<'a>(&'a self) -> impl Iterator<Item = &'a NetworkArc<A>> where A: 'a { self.arcs.iter().copied() }
+
+    fn from<'a>(&'a self, arc: &'a NetworkArc<A>) -> &'a NetworkNodeId {
+        if self.reversed { &arc.to } else { &arc.from }
+    }
+
+    fn to<'a>(&'a self, arc: &'a NetworkArc<A>) -> &'a NetworkNodeId {
+        if self.reversed { &arc.from } else { &arc.to }
     }
 }
 

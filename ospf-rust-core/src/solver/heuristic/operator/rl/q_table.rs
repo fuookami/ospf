@@ -73,6 +73,7 @@ impl QTable {
     /// 时序差分更新 / Temporal-difference update
     ///
     /// `Q(s, a) ← Q(s, a) + α · (r + γ · max_a' Q(s', a') − Q(s, a))`
+    #[expect(clippy::too_many_arguments, reason = "保留既有公开 Q 学习转移接口 / Preserve the existing public Q-learning transition interface")]
     pub fn update(
         &mut self,
         state: usize,
@@ -114,12 +115,12 @@ impl QTable {
                 "invalid reward / 奖励无效".to_string(),
             ));
         }
-        if let Some(actions) = available_actions {
-            if actions.iter().any(|action| *action >= self.action_amount) {
-                return Err(HeuristicError::InvalidArgument(
-                    "invalid action mask / 动作掩码无效".to_string(),
-                ));
-            }
+        if let Some(actions) = available_actions
+            && actions.iter().any(|action| *action >= self.action_amount)
+        {
+            return Err(HeuristicError::InvalidArgument(
+                "invalid action mask / 动作掩码无效".to_string(),
+            ));
         }
 
         // 下一状态的最大动作价值，而非当前状态自身的最大值。

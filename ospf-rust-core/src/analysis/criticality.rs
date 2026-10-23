@@ -85,7 +85,8 @@ impl CriticalityProfile {
     pub fn constraints(&self, kind: CriticalityKind) -> BTreeSet<StableConstraintId> {
         self.classifications
             .iter()
-            .filter_map(|(id, kinds)| kinds.contains(&kind).then(|| id.clone()))
+            .filter(|(_, kinds)| kinds.contains(&kind))
+            .map(|(id, _)| id.clone())
             .collect()
     }
 }
@@ -167,11 +168,10 @@ pub fn analyze_criticality_targets<S: ConstraintProgrammingSolver + ?Sized>(
         // A status alone is insufficient for cross-target evidence. Partial conflicts and
         // unknown/unsupported reports must remain auditable in the observation, but their
         // members cannot be promoted into a criticality classification.
-        let blocking_constraint_ids = (explanation.status == AnalysisStatus::Unreachable
+        let blocking_constraint_ids = if explanation.status == AnalysisStatus::Unreachable
             && explanation.validity == ConflictValidity::Verified
-            && explanation.minimality_verified())
-        .then(|| explanation.constraint_ids())
-        .unwrap_or_default();
+            && explanation.minimality_verified()
+        { explanation.constraint_ids() } else { BTreeSet::new() };
         observations.push(CriticalityObservation {
             target: target.clone(),
             status: explanation.status,

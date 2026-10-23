@@ -40,7 +40,7 @@ pub(crate) fn log(mut x: f64) -> f64 {
     let dk = k as f64;
     if (0x000fffff & (2 + high)) < 3 {
         if f == 0.0 { return if k == 0 { 0.0 } else { dk * LN2_HI + dk * LN2_LO }; }
-        let r = f * f * (0.5 - 0.33333333333333333 * f);
+        let r = f * f * (0.5 - 0.333_333_333_333_333_3 * f);
         return if k == 0 { f - r } else { dk * LN2_HI - ((r - dk * LN2_LO) - f) };
     }
     let s = f / (2.0 + f);

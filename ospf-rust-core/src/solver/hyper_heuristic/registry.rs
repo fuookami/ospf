@@ -24,6 +24,8 @@ use crate::solver::hyper_heuristic::problem::{ProblemHandle, RandomHandle};
 use crate::solver::hyper_heuristic::operators::{ControlledSession, OperatorBindings, PolicySession, UncontrolledSession};
 use crate::variable::VariableId;
 
+type EvaluatedCandidates = std::rc::Rc<std::cell::RefCell<Vec<crate::solver::heuristic::Individual<Vec<f64>, f64>>>>;
+
 /// 工厂上下文，每次调用都创建新会话 / Factory context creating a new session on every invocation
 pub struct AlgorithmContext<O, V> {
     /// 算法实例配置 / Algorithm instance configuration
@@ -36,7 +38,7 @@ pub struct AlgorithmContext<O, V> {
 
 type ProblemFactory<O, V> = Arc<dyn Fn(&ComponentSpec, SearchRandom) -> Result<Box<dyn SearchProblem<O, V>>> + Send + Sync>;
 type AlgorithmFactory<O, V> = Arc<dyn Fn(AlgorithmContext<O, V>, bool, &OperatorRegistry<V>, &BTreeMap<String, SelectorFactory>, Box<dyn RewardPolicy>) -> Result<Box<dyn PolicySession<O, V>>> + Send + Sync>;
-type ArchiveCodecFactory<O, V> = Arc<dyn Fn(Vec<VariableId>) -> Box<dyn SearchCodec<Vec<crate::solver::heuristic::Individual<O, V>>>> + Send + Sync>;
+type ArchiveCodecFactory<O, V> = Arc<dyn Fn(Vec<VariableId>) -> ArchiveCodec<O, V> + Send + Sync>;
 type ObjectiveCodecFactory<O> = Arc<dyn Fn() -> Box<dyn SearchCodec<O>> + Send + Sync>;
 pub(crate) type Scalarization<O> = Arc<dyn Fn(&O) -> Result<f64> + Send + Sync>;
 type ScalarAdapter<O, V> = Arc<dyn Fn(AlgorithmContext<O, V>, Scalarization<O>, bool, &OperatorRegistry<V>, &BTreeMap<String, SelectorFactory>, Box<dyn RewardPolicy>) -> Result<Box<dyn PolicySession<O, V>>> + Send + Sync>;
@@ -86,12 +88,12 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
     /// 设置无损档案编码工厂，变量身份按当前问题的规范顺序重建 / Set a lossless archive codec factory rebuilding identities in canonical order
     pub fn set_archive_codec(
         &mut self,
-        factory: impl Fn(Vec<VariableId>) -> Box<dyn SearchCodec<Vec<crate::solver::heuristic::Individual<O, V>>>> + Send + Sync + 'static,
+        factory: impl Fn(Vec<VariableId>) -> ArchiveCodec<O, V> + Send + Sync + 'static,
     ) {
         self.archive_codec = Some(Arc::new(factory));
     }
 
-    pub(crate) fn archive_codec(&self, order: Vec<VariableId>) -> Option<Box<dyn SearchCodec<Vec<crate::solver::heuristic::Individual<O, V>>>>> {
+    pub(crate) fn archive_codec(&self, order: Vec<VariableId>) -> Option<ArchiveCodec<O, V>> {
         self.archive_codec.as_ref().map(|factory| factory(order))
     }
 
@@ -199,12 +201,12 @@ impl<O: Clone + 'static, V: HeuristicValue> SearchRegistry<O, V> {
         }
         let reward = self.components.reward(reward_spec)?;
         reward.validate_mode(context.problem.multi_objective(), context.problem.has_objective_coordinates())?;
-        if let Some(adapter) = &self.scalar_adapter {
-            if BUILTIN_ALGORITHMS.contains(&context.config.algorithm.r#type.as_str()) {
-                let id = context.config.scalarization.as_ref().ok_or_else(|| invalid("multi-objective scalar algorithms require an explicit scalarization"))?;
-                let projection = self.scalarizations.get(id).ok_or_else(|| invalid("unknown scalarization"))?.clone();
-                return super::boundary(|| adapter(context, projection, learning, &self.operators, &self.components.selectors, reward));
-            }
+        if let Some(adapter) = &self.scalar_adapter
+            && BUILTIN_ALGORITHMS.contains(&context.config.algorithm.r#type.as_str())
+        {
+            let id = context.config.scalarization.as_ref().ok_or_else(|| invalid("multi-objective scalar algorithms require an explicit scalarization"))?;
+            let projection = self.scalarizations.get(id).ok_or_else(|| invalid("unknown scalarization"))?.clone();
+            return super::boundary(|| adapter(context, projection, learning, &self.operators, &self.components.selectors, reward));
         }
         let factory = self.algorithms.get(&context.config.algorithm.r#type)
             .ok_or_else(|| invalid(format!("unknown algorithm: {}", context.config.algorithm.r#type)))?;
@@ -297,7 +299,7 @@ impl crate::solver::heuristic::operator::multi_objective::Dominance for ProblemD
 struct ProjectedProblem {
     canonical: ProblemHandle<Vec<f64>, f64>,
     projection: Scalarization<Vec<f64>>,
-    evaluated: std::rc::Rc<std::cell::RefCell<Vec<crate::solver::heuristic::Individual<Vec<f64>, f64>>>>,
+    evaluated: EvaluatedCandidates,
     errors: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
 }
 
@@ -370,7 +372,7 @@ impl SearchProblem<f64, f64> for ProjectedProblem {
 
 struct ProjectedSession {
     delegate: Box<dyn SearchSession<f64, f64>>,
-    evaluated: std::rc::Rc<std::cell::RefCell<Vec<crate::solver::heuristic::Individual<Vec<f64>, f64>>>>,
+    evaluated: EvaluatedCandidates,
     errors: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
 }
 
@@ -453,7 +455,7 @@ fn assemble<R>(
     context: AlgorithmContext<f64, f64>,
     runner: R,
     codec: Box<dyn SearchCodec<R::State>>,
-    importer: Option<Box<dyn Fn(&R::State, &[crate::solver::heuristic::Individual<f64, f64>]) -> Result<R::State>>>,
+    importer: Option<SessionImporter<R::State, f64, f64>>,
 ) -> Result<Box<dyn SearchSession<f64, f64>>>
 where
     R: NativeRunner<f64> + 'static,
@@ -468,8 +470,8 @@ where
         codecs,
         100,
     ).with_committed_archive();
-    if context.config.import_mode == ImportMode::Native {
-        if let Some(importer) = importer { return Ok(Box::new(session.with_importer(importer))); }
+    if context.config.import_mode == ImportMode::Native && let Some(importer) = importer {
+        return Ok(Box::new(session.with_importer(importer)));
     }
     Ok(Box::new(session))
 }
@@ -590,7 +592,7 @@ fn native_session_parts(
             };
             let import_order = order.clone();
             let import_problem = context.problem.clone();
-            let importer: Box<dyn Fn(&CmaEsState<f64>, &[crate::solver::heuristic::Individual<f64, f64>]) -> Result<CmaEsState<f64>>> = Box::new(move |state, candidates| {
+            let importer: SessionImporter<CmaEsState<f64>, f64, f64> = Box::new(move |state, candidates| {
                 if candidates.is_empty() { return Ok(state.clone()); }
                 let ranked: Vec<_> = import_problem.rank_indices(candidates).into_iter().map(|index| candidates[index].clone()).collect();
                 let dimension = import_order.len();

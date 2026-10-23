@@ -226,7 +226,7 @@ fn cp_subproblem_report(
     if use_cp == 0 {
         ConstraintProgrammingSubproblemResult::infeasible_from_snapshot_for_master(
             report,
-            &snapshot,
+            snapshot,
             master_assignment,
             &binding,
             None,

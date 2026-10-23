@@ -499,8 +499,8 @@ where
         // decides if a native path may omit it.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
-            vec![self.indicator.clone()],
+            self.result,
+            vec![self.indicator],
         ))
     }
 

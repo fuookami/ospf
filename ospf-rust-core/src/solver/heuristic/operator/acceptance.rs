@@ -43,7 +43,7 @@ where
         candidate: &Individual<O, V>,
         _entropy: &mut dyn Entropy,
     ) -> bool {
-        compare_individuals(model, &candidate, &current) == std::cmp::Ordering::Less
+        compare_individuals(model, candidate, current) == std::cmp::Ordering::Less
     }
 }
 
@@ -63,7 +63,7 @@ where
         candidate: &Individual<O, V>,
         _entropy: &mut dyn Entropy,
     ) -> bool {
-        compare_individuals(model, &candidate, &current)
+        compare_individuals(model, candidate, current)
             != std::cmp::Ordering::Greater
     }
 }
@@ -124,7 +124,7 @@ where
     ) -> bool {
         let tier = model.compare_constraint_tiers(&candidate.solution, &current.solution);
         if tier != std::cmp::Ordering::Equal { return tier == std::cmp::Ordering::Less; }
-        if compare_individuals(model, &candidate, &current)
+        if compare_individuals(model, candidate, current)
             == std::cmp::Ordering::Less
         {
             return true;

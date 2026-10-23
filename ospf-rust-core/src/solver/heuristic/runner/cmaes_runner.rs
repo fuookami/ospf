@@ -264,19 +264,19 @@ where
                 .map(|_| numerics.gaussian(entropy))
                 .collect();
             let mut y = vec![0.0; dimension];
-            for row in 0..dimension {
+            for (row, value) in y.iter_mut().enumerate() {
                 let mut total = 0.0;
                 for column in 0..dimension {
                     total += eigen.vectors[column][row] * axes[column] * z[column];
                 }
-                y[row] = total;
+                *value = total;
             }
 
             let mut solution = crate::model::callback::Solution::<V>::new();
-            for axis in 0..dimension {
+            for (axis, shift) in y.iter().enumerate() {
                 let (lower, upper) = model.bounds_at(axis);
                 let value = clamped_value(
-                    state.mean[axis] + state.sigma * y[axis],
+                    state.mean[axis] + state.sigma * shift,
                     lower,
                     upper,
                 );
@@ -298,11 +298,11 @@ where
         let mut new_mean = vec![0.0; dimension];
         for index in 0..mu.min(samples.len()) {
             let weight = weights[index];
-            for axis in 0..dimension {
+            for (axis, mean) in new_mean.iter_mut().enumerate() {
                 let value = value_at(&samples[index].1.solution, &order, axis)
                     .map(|value| to_f64(&value))
                     .unwrap_or(0.0);
-                new_mean[axis] += weight * value;
+                *mean += weight * value;
             }
         }
 
@@ -397,7 +397,7 @@ where
             (None, best) => best.clone(),
             (Some(candidate), None) => Some(candidate),
             (Some(candidate), Some(current)) => {
-                if compare_individuals(model, &candidate, &current)
+                if compare_individuals(model, &candidate, current)
                     == std::cmp::Ordering::Less
                 {
                     Some(candidate)

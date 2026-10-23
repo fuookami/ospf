@@ -18,6 +18,10 @@ pub struct ShadowPriceMap {
     pub prices: HashMap<TaskShadowPriceArguments, f64>,
 }
 
+impl Default for ShadowPriceMap {
+    fn default() -> Self { Self::new() }
+}
+
 impl ShadowPriceMap {
     /// 创建空的影子价格映射 / Create an empty shadow price map
     pub fn new() -> Self {

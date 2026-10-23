@@ -1073,11 +1073,7 @@ mod tests {
                 constraints[1].inequality.relation,
                 ConstraintRelation::LessEqual
             );
-            let indicator_coefficient = if relation == ConditionRelation::GreaterEqual {
-                -9.1
-            } else {
-                -9.1
-            };
+            let indicator_coefficient = -9.1;
             let lower_indicator = constraints[0]
                 .inequality
                 .polynomial

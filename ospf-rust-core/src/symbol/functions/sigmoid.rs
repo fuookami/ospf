@@ -997,7 +997,7 @@ where
         // Both the segment indicators and the segment weights are helpers of this structure.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             self.helpers.clone(),
         ))
     }

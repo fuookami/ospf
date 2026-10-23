@@ -617,8 +617,8 @@ where
         // and omittable analysis.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
-            vec![self.positive.clone(), self.negative.clone()],
+            self.result,
+            vec![self.positive, self.negative],
         ))
     }
 

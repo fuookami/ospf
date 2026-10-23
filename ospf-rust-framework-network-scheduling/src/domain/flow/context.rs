@@ -10,7 +10,7 @@ use ospf_rust_quantities::unit::UnitConversionValue;
 use crate::error::Result;
 
 use super::aggregation::FlowAggregation;
-use super::model::FlowGraph;
+use super::model::{FlowProblem, FlowSolution};
 use super::pipeline::{
     CapacityBoundsPipeline, FlowConservationPipeline, MinCostFlowObjectivePipeline,
 };
@@ -50,6 +50,19 @@ pub struct FlowContext<V: SolveValue + UnitConversionValue> {
     registration: RegistrationStage,
     /// 已绑定模型的身份 / Identity of the model this context is bound to.
     registered_model: Option<u64>,
+    name: String,
+    options: Option<FlowRegistration>,
+}
+
+/// 独立或嵌入式流注册选项。 / Standalone or embedded flow-registration options.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlowRegistration {
+    /// 注册总运行费用目标；场景嵌入时可关闭。 / Register total operating cost, disabled for embedded scenarios.
+    pub minimize_cost: bool,
+}
+
+impl Default for FlowRegistration {
+    fn default() -> Self { Self { minimize_cost: true } }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,18 +77,19 @@ where
     V: SolveValue + UnitConversionValue,
 {
     /// 创建 flow context / Create a flow context.
-    pub fn new(graph: FlowGraph<V>) -> Self {
+    pub fn new(graph: FlowProblem<V>) -> Self {
         Self {
             aggregation: FlowAggregation::new(graph),
             extensions: Vec::new(),
             registration: RegistrationStage::Empty,
             registered_model: None,
+            name: "flow".into(), options: None,
         }
     }
 
     /// 创建带扩展的 flow context / Create a flow context with extensions.
     pub fn with_extensions(
-        graph: FlowGraph<V>,
+        graph: FlowProblem<V>,
         extensions: Vec<Arc<dyn FlowContextExtension<V>>>,
     ) -> Self {
         Self {
@@ -83,6 +97,7 @@ where
             extensions,
             registration: RegistrationStage::Empty,
             registered_model: None,
+            name: "flow".into(), options: None,
         }
     }
 
@@ -92,7 +107,7 @@ where
     /// `FlowContextExtension` is the pipeline facade with aggregation access and keeps the
     /// legacy extension naming for compatibility.
     pub fn with_extra_pipelines(
-        graph: FlowGraph<V>,
+        graph: FlowProblem<V>,
         pipelines: Vec<Arc<dyn FlowContextExtension<V>>>,
     ) -> Self {
         Self::with_extensions(graph, pipelines)
@@ -111,34 +126,63 @@ where
 
     /// 注册变量、守恒、容量和目标 / Register variables, conservation, capacities, and objective.
     pub fn register(&mut self, model: &mut MetaModel<f64>) -> Result<()> {
+        self.register_with_options(model, Default::default())
+    }
+
+    /// 指定每模型命名空间；注册后不能修改。 / Set a per-model namespace; immutable after registration.
+    pub fn with_name(mut self, name: impl Into<String>) -> Result<Self> {
+        let name = name.into();
+        if self.registered_model.is_some() || name.is_empty() {
+            return Err(crate::error::NetworkSchedulingError::contract("流名称非法或已注册 / invalid flow name or already registered"));
+        }
+        self.name = name;
+        Ok(self)
+    }
+
+    /// 原子注册同一领域组件，可将运行费用交给外层聚合。 / Atomically register the same components, optionally delegating operating cost to an outer aggregation.
+    pub fn register_with_options(
+        &mut self,
+        model: &mut MetaModel<f64>,
+        options: FlowRegistration,
+    ) -> Result<()> {
         let aggregation_before = self.aggregation.clone();
         let registration_before = self.registration;
         let registered_model_before = self.registered_model;
+        let options_before = self.options;
         let result = model.transaction(|model| {
             self.bind_model(model)?;
             if self.registration == RegistrationStage::Complete {
-                return Ok(());
+                return if self.options == Some(options) { Ok(()) } else {
+                    Err(crate::error::NetworkSchedulingError::contract("流重复注册选项不一致 / inconsistent repeated flow-registration options"))
+                };
             }
             if self.registration == RegistrationStage::Empty {
-                self.aggregation.register(model)?;
+                self.aggregation.register_named(model, &self.name)?;
                 self.registration = RegistrationStage::Variables;
             }
-            FlowConservationPipeline::new(self.aggregation.graph.clone())
-                .apply(model, &self.aggregation)?;
-            CapacityBoundsPipeline::new(self.aggregation.graph.clone())
-                .apply(model, &self.aggregation)?;
-            MinCostFlowObjectivePipeline::new(self.aggregation.graph.clone())
-                .apply(model, &self.aggregation)?;
+            let mut conservation = FlowConservationPipeline::new(self.aggregation.graph.clone());
+            conservation.name = format!("{}_conservation", self.name);
+            conservation.apply(model, &self.aggregation)?;
+            let mut capacity = CapacityBoundsPipeline::new(self.aggregation.graph.clone());
+            capacity.name = format!("{}_capacity", self.name);
+            capacity.apply(model, &self.aggregation)?;
+            if options.minimize_cost {
+                let mut objective = MinCostFlowObjectivePipeline::new(self.aggregation.graph.clone());
+                objective.name = format!("{}_cost", self.name);
+                objective.apply(model, &self.aggregation)?;
+            }
             for extension in &self.extensions {
                 extension.register(model, &self.aggregation)?;
             }
             self.registration = RegistrationStage::Complete;
+            self.options = Some(options);
             Ok(())
         });
         if result.is_err() {
             self.aggregation = aggregation_before;
             self.registration = registration_before;
             self.registered_model = registered_model_before;
+            self.options = options_before;
         }
         result
     }
@@ -151,7 +195,7 @@ where
         let result = model.transaction(|model| {
             self.bind_model(model)?;
             if self.registration == RegistrationStage::Empty {
-                self.aggregation.register(model)?;
+                self.aggregation.register_named(model, &self.name)?;
                 self.registration = RegistrationStage::Variables;
             }
             Ok(())
@@ -178,16 +222,21 @@ where
     }
 
     /// 提取扩展结果生命周期 / Extract the extension result lifecycle.
-    pub fn extract_solution(&mut self, model: &MetaModel<f64>) -> Result<()> {
-        self.bind_model(model)?;
+    pub fn extract_solution(&mut self, model: &MetaModel<f64>) -> Result<FlowSolution<V>> {
+        if self.registration != RegistrationStage::Complete || self.registered_model != Some(model.model_identity()) {
+            return Err(crate::error::NetworkSchedulingError::contract(
+                "流模型未完整注册或模型身份不匹配 / flow model is not fully registered or has a different identity",
+            ));
+        }
+        let solution = super::extraction::extract(&self.aggregation, model)?;
         for extension in &self.extensions {
             extension.extract_solution(model)?;
         }
-        Ok(())
+        Ok(solution)
     }
 
     /// 获取图 / Get the immutable graph.
-    pub fn graph(&self) -> &FlowGraph<V> {
+    pub fn problem(&self) -> &FlowProblem<V> {
         &self.aggregation.graph
     }
 

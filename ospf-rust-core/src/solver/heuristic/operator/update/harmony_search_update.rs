@@ -76,7 +76,7 @@ where
                 let dimension = current.len();
                 let mut child = Vec::with_capacity(dimension);
 
-                for index in 0..dimension {
+                for (index, _) in current.iter().enumerate() {
                     let (lower, upper) = model.bounds_at(index);
                     let width = width_of(lower, upper);
 

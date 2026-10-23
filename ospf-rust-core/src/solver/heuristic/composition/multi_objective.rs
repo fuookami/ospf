@@ -8,7 +8,7 @@
 use crate::model::callback::Solution;
 
 use crate::solver::heuristic::entropy::Entropy;
-use crate::solver::heuristic::model::HeuristicValue;
+use crate::solver::heuristic::model::{HeuristicValue, ObjectiveCoordinates};
 use crate::solver::heuristic::operator::multi_objective::dominance::{Dominance, ParetoDominance};
 use crate::solver::heuristic::operator::mutation::PolynomialMutation;
 use crate::solver::heuristic::operator::stopping::StoppingCriterion;
@@ -21,7 +21,7 @@ use crate::solver::heuristic::runner::nsga2_runner::{Nsga2Runner, Nsga3Runner};
 /// Crossover and mutation default to the usual multi-objective pair: SBX plus polynomial mutation.
 pub fn nsga2<V>(
     size: usize,
-    objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+    objectives_of: ObjectiveCoordinates<Solution<V>>,
     dominance: Box<dyn Dominance>,
     entropy: Box<dyn Entropy>,
     stopping: Box<dyn StoppingCriterion>,
@@ -44,7 +44,7 @@ where
 pub fn nsga2_minimization<V>(
     size: usize,
     objective_amount: usize,
-    objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+    objectives_of: ObjectiveCoordinates<Solution<V>>,
     entropy: Box<dyn Entropy>,
     stopping: Box<dyn StoppingCriterion>,
 ) -> Nsga2Runner<V>
@@ -67,7 +67,7 @@ where
 /// `C(p + m − 1, m − 1)`.
 pub fn nsga3<V>(
     size: usize,
-    objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+    objectives_of: ObjectiveCoordinates<Solution<V>>,
     dominance: Box<dyn Dominance>,
     entropy: Box<dyn Entropy>,
     stopping: Box<dyn StoppingCriterion>,
@@ -92,7 +92,7 @@ where
 pub fn nsga3_minimization<V>(
     size: usize,
     objective_amount: usize,
-    objectives_of: Box<dyn Fn(&Solution<V>) -> Vec<f64>>,
+    objectives_of: ObjectiveCoordinates<Solution<V>>,
     entropy: Box<dyn Entropy>,
     stopping: Box<dyn StoppingCriterion>,
     divisions: usize,

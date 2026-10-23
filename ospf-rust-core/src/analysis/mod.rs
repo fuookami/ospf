@@ -776,7 +776,7 @@ pub enum SolverModelType {
 /// unsupported behavior.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapabilityMatrix {
     /// 可处理模型种类 / Supported model kinds.
     pub model_types: BTreeSet<SolverModelType>,
@@ -785,6 +785,7 @@ pub struct CapabilityMatrix {
     /// 是否原生支持不可满足核心 / Whether native unsat-core extraction is available.
     pub native_unsat_core: bool,
     /// 是否允许 satisfaction-only fallback / Whether satisfaction-only fallback is allowed.
+    /// 空矩阵不描述任何后端，默认不得声称回退可用。 / An empty matrix describes no backend and must not claim an available fallback by default.
     pub fallback_satisfaction_only: bool,
     /// 是否能访问 LP dual / Whether LP duals are available.
     pub dual: bool,
@@ -797,26 +798,6 @@ pub struct CapabilityMatrix {
         BTreeMap<ConstraintProgrammingFeature, ConstraintProgrammingSupport>,
     /// 分析能力显式覆盖 / Explicit analysis-capability overrides.
     pub analysis_capabilities: BTreeMap<AnalysisCapability, CapabilitySupport>,
-}
-
-impl Default for CapabilityMatrix {
-    fn default() -> Self {
-        Self {
-            model_types: BTreeSet::new(),
-            native_assumption_solving: false,
-            native_unsat_core: false,
-            // An empty matrix describes no backend at all, so it must not claim a
-            // satisfaction-only fallback: that would report unsupported stages as usable.
-            // 空矩阵没有描述任何后端，因此不得声称具备 satisfaction-only 回退，
-            // 否则会把不受支持的分析阶段报告为可用。
-            fallback_satisfaction_only: false,
-            dual: false,
-            warm_start: false,
-            exact_cp_lowering: false,
-            constraint_programming_features: BTreeMap::new(),
-            analysis_capabilities: BTreeMap::new(),
-        }
-    }
 }
 
 /// 能力查询对象 / Capability query object.

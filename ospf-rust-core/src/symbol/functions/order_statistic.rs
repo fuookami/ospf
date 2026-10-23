@@ -674,7 +674,7 @@ where
                         best = index;
                     }
                 }
-                return V::from_usize(best);
+                V::from_usize(best)
             }
             StatisticKind::ArgMax => {
                 let mut best = 0;
@@ -683,22 +683,22 @@ where
                         best = index;
                     }
                 }
-                return V::from_usize(best);
+                V::from_usize(best)
             }
             StatisticKind::KthLargest(k) => {
                 let mut sorted = values;
                 Self::sort_values(&mut sorted)?;
-                return Some(sorted[sorted.len() - 1 - k].clone());
+                Some(sorted[sorted.len() - 1 - k].clone())
             }
             StatisticKind::TopKSum(k) => {
                 let mut sorted = values;
                 Self::sort_values(&mut sorted)?;
-                return sorted
+                sorted
                     .iter()
                     .rev()
                     .take(k)
                     .cloned()
-                    .try_fold(V::zero(), |sum, value| Some(sum + value));
+                    .try_fold(V::zero(), |sum, value| Some(sum + value))
             }
         }
     }
@@ -1356,7 +1356,7 @@ mod tests {
         let constraints = IntermediateSymbol::mechanism_constraints_with_tokens(
             function.as_ref(),
             &indexes,
-            &tokens,
+            tokens,
         )
         .unwrap();
         assert!(!constraints.is_empty());

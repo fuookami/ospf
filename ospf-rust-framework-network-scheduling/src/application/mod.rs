@@ -29,8 +29,14 @@ use crate::domain::vrp::{
 use crate::error::{NetworkSchedulingError, Result};
 
 mod branch_node_solver;
+mod standalone;
 
 pub use branch_node_solver::{BranchNodeSolver, BranchNodeSolverConfig, LinearProgrammingSolver};
+pub use standalone::{
+    AllocationApplicationService, FlowApplicationService, GeneralizedFlowApplicationService, NetworkApplicationContext,
+    NetworkApplicationService, NetworkDesignApplicationService, NetworkResilienceApplicationService,
+    NetworkStructureApplicationService, PathCompilationApplicationService,
+};
 
 /// 不可变分支决策 / Immutable branching decision.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]

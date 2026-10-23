@@ -37,7 +37,8 @@ Explicit non-goals:
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README.md) | `ospf-kotlin-framework-csp1d` | Reusable one-dimensional cutting-stock framework with material, generation, produce, yield, waste, length, and application flows. |
 | [`ospf-rust-framework-csp2d`](ospf-rust-framework-csp2d/README.md) | `ospf-kotlin-framework-csp2d` | Reusable 2D cutting-stock framework with dual-mode materials, guillotine cut trees, pattern generation, the master problem, waste/yield analysis and both solve paths. |
 | [`ospf-rust-framework-gantt-scheduling`](ospf-rust-framework-gantt-scheduling/README.md) | `ospf-kotlin-framework-gantt-scheduling` | Reusable Gantt scheduling framework with task, bunch, capacity, resource, produce, and branch-and-price flows. |
-| [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README.md) | `ospf-kotlin-framework-network-scheduling` | Generic network flow, VRPTW, ESPPRC pricing, route compilation, and Branch-and-Price framework. |
+| [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README.md) | `ospf-kotlin-framework-network-scheduling` | Multigraph/resource paths, flow, design/resilience, allocation, full-path compilation, rooted structures, generalized flow and VRPTW pricing. |
+| [`ospf-rust-framework-gantt-network`](ospf-rust-framework-gantt-network/README.md) | Gantt / Network bridge | Optional shared-path, full-state and column-batch bridge, without owning a master or starting another global solve. |
 | [`ospf-rust-example`](ospf-rust-example/README.md) | `ospf-kotlin-example` | Runnable examples and migration compatibility demos. |
 
 ## Architecture Overview
@@ -154,7 +155,16 @@ cargo test --workspace --features "ospf-rust-framework/async ospf-rust-framework
 
 This repository is actively migrating Kotlin framework capabilities into Rust. Some domain crates expose Kotlin-aligned public surfaces while still using Rust-side deterministic, fake, or feature-gated solver paths for parts of the lifecycle. Each domain crate README records its own current coverage and known gaps.
 
-`ospf-rust-framework-network-scheduling` is wired into the workspace and its `99/99` migration is complete, with offline graph/flow, VRPTW, ESPPRC, route-compilation, and Branch-and-Price coverage. Its Gurobi/SCIP Demo5 validation remains feature-gated and depends on the local native solver environment; the crate README records the long-lived numeric, correctness, and E2E boundaries.
+The Network / Gantt migration targets Kotlin snapshots `907d28d` and `3dc1225`; current scope and
+breaking APIs are documented in the [migration guide](ospf-rust-framework-network-scheduling/MIGRATION.md).
+The old `99/99` delivery status cannot establish acceptance for this migration. Shared graphs/paths,
+seven standalone Network services and the optional Gantt bridge are connected.
+[Demo4](ospf-rust-example/src/framework/demo4/README.md) now connects recovery records, RMP/full duals,
+path columns and final MILP through the existing Gantt lifecycle rather than remaining a scaffold.
+Demo4/Demo5 native gates require working Gurobi/SCIP runtimes and licenses and actual feature-specific
+test execution, not compilation alone. Finite-candidate optima and heuristic pricing termination do
+not establish full-path lower bounds or global integer proofs; incomplete regression/strict checks
+must be disclosed separately.
 
 ## Related Modules
 

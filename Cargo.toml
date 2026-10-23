@@ -13,6 +13,7 @@ members = [
     "ospf-rust-framework-csp1d",
     "ospf-rust-framework-csp2d",
     "ospf-rust-framework-gantt-scheduling",
+    "ospf-rust-framework-gantt-network",
     "ospf-rust-framework-network-scheduling",
     "ospf-rust-example"
 ]

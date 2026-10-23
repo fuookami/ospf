@@ -411,7 +411,7 @@ fn mutation(spec: &ComponentSpec) -> Result<Box<dyn Mutation<f64>>> {
     Ok(match spec.r#type.as_str() {
         "none" => Box::new(NoMutation), "polynomial" => Box::new(PolynomialMutation::default()),
         "swap" => Box::new(SwapMutation), "inversion" => Box::new(InversionMutation),
-        "uniform" => Box::new(UniformMutation::default()), "levy" => Box::new(LevyMutation::default()),
+        "uniform" => Box::new(UniformMutation), "levy" => Box::new(LevyMutation::default()),
         _ => return Err(invalid("unknown mutation operator")),
     })
 }

@@ -1,0 +1,26 @@
+[package]
+name = "ospf-rust-framework-gantt-network"
+version = "1.1.0"
+edition = "2024"
+description = "Optional resource-path bridge for Gantt column generation"
+license.workspace = true
+readme = "README.md"
+
+[features]
+default = []
+serde = ["ospf-rust-framework/serde", "ospf-rust-framework-gantt-scheduling/serde", "ospf-rust-framework-network-scheduling/serde"]
+async = ["ospf-rust-framework/async", "ospf-rust-framework-gantt-scheduling/async", "ospf-rust-framework-network-scheduling/async"]
+big-decimal = ["ospf-rust-framework-gantt-scheduling/big-decimal", "ospf-rust-framework-network-scheduling/big-decimal"]
+big-rational = ["ospf-rust-framework-gantt-scheduling/big-rational", "ospf-rust-framework-network-scheduling/big-rational"]
+gurobi10 = ["ospf-rust-framework-gantt-scheduling/gurobi10", "ospf-rust-framework-network-scheduling/gurobi10"]
+gurobi11 = ["ospf-rust-framework-gantt-scheduling/gurobi11", "ospf-rust-framework-network-scheduling/gurobi11"]
+gurobi12 = ["ospf-rust-framework-gantt-scheduling/gurobi12", "ospf-rust-framework-network-scheduling/gurobi12"]
+scip = ["ospf-rust-framework-gantt-scheduling/scip", "ospf-rust-framework-network-scheduling/scip"]
+scip-bundled = ["scip", "ospf-rust-framework-network-scheduling/scip-bundled"]
+scip-from-source = ["scip", "ospf-rust-framework-network-scheduling/scip-from-source"]
+scip-quadratic = ["scip", "ospf-rust-framework-network-scheduling/scip-quadratic"]
+
+[dependencies]
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+ospf-rust-framework-gantt-scheduling = { path = "../ospf-rust-framework-gantt-scheduling", version = "1.1.0" }
+ospf-rust-framework-network-scheduling = { path = "../ospf-rust-framework-network-scheduling", version = "1.1.0" }

@@ -104,8 +104,10 @@ impl RewardContext {
 
     fn validate_dimensions(reference: &[Vec<f64>], candidates: &[Vec<f64>]) -> Result<()> {
         let mut points = reference.iter().chain(candidates);
-        if let Some(first) = points.next() {
-            if points.any(|point| point.len() != first.len()) { return Err(invalid("inconsistent reward coordinate dimensions")); }
+        if let Some(first) = points.next()
+            && points.any(|point| point.len() != first.len())
+        {
+            return Err(invalid("inconsistent reward coordinate dimensions"));
         }
         Ok(())
     }
@@ -188,7 +190,7 @@ impl RecoverableComponent for PeriodicExchange { fn stateless(&self) -> bool { t
 impl ExchangePolicy for PeriodicExchange {
     fn requires_import(&self) -> bool { self.period > 0 }
     fn amount(&mut self, decision: u64) -> Result<usize> {
-        Ok(if self.period > 0 && decision > 0 && decision % self.period == 0 { self.amount } else { 0 })
+        Ok(if self.period > 0 && decision > 0 && decision.is_multiple_of(self.period) { self.amount } else { 0 })
     }
 }
 
@@ -354,6 +356,7 @@ impl<O: Clone, V: HeuristicValue> RuntimeComponents<O, V> {
 #[cfg(test)]
 mod tests {
     use std::cell::Cell;
+    use std::rc::Rc;
     use crate::model::callback::Solution;
     use crate::solver::heuristic::session::SearchBudget;
     use crate::solver::hyper_heuristic::problem::ProblemHandle;
@@ -362,7 +365,7 @@ mod tests {
 
     struct Coordinates {
         x: VariableId,
-        bias: Arc<Cell<f64>>,
+        bias: Rc<Cell<f64>>,
     }
 
     impl SearchProblem<Vec<f64>, f64> for Coordinates {
@@ -391,10 +394,10 @@ mod tests {
     #[test]
     fn frozen_reference_coordinates_do_not_follow_stateful_projection_changes() {
         let x = new_standalone_id();
-        let bias = Arc::new(Cell::new(0.0));
+        let bias = Rc::new(Cell::new(0.0));
         let problem = ProblemHandle::new(Box::new(Coordinates { x, bias: bias.clone() }));
         let reference = point(x, 2.0, vec![20.0, 40.0]);
-        let frozen = RewardContext::default().with_reference(&problem, &[reference.clone()]).unwrap();
+        let frozen = RewardContext::default().with_reference(&problem, std::slice::from_ref(&reference)).unwrap();
         bias.set(1.0);
         let context = frozen.with_candidates(&problem, &[point(x, 3.0, vec![30.0, 50.0])]).unwrap();
         assert_eq!(context.reference, vec![vec![-0.2, -0.4]]);
@@ -407,7 +410,7 @@ mod tests {
     #[test]
     fn credit_excludes_infeasible_forbidden_and_invalid_candidates_without_charging_budget() {
         let x = new_standalone_id();
-        let problem = Coordinates { x, bias: Arc::new(Cell::new(0.0)) };
+        let problem = Coordinates { x, bias: Rc::new(Cell::new(0.0)) };
         let budget = SearchBudget::new(10);
         let entries = vec![point(x, 0.5, vec![10.0, 20.0]), point(x, 12.0, vec![10.0, 20.0]),
             point(x, 2.0, vec![f64::NAN, 20.0]), Individual::new(Solution::new(), vec![10.0, 20.0]),
@@ -421,7 +424,7 @@ mod tests {
     #[test]
     fn credit_rejects_empty_nonfinite_and_cross_batch_coordinate_dimensions() {
         let x = new_standalone_id();
-        let bias = Arc::new(Cell::new(0.0));
+        let bias = Rc::new(Cell::new(0.0));
         let problem = Coordinates { x, bias: bias.clone() };
         let frozen = RewardContext::default().with_reference(&problem, &[point(x, 2.0, vec![1.0, 2.0])]).unwrap();
         assert!(frozen.with_candidates(&problem, &[point(x, 2.0, vec![1.0, 2.0, 3.0])]).is_err());
@@ -436,7 +439,7 @@ mod tests {
     #[test]
     fn strict_memory_never_accepts_search_infeasibility_or_forbidden_feasible_points() {
         let x = new_standalone_id();
-        let problem = Coordinates { x, bias: Arc::new(Cell::new(0.0)) };
+        let problem = Coordinates { x, bias: Rc::new(Cell::new(0.0)) };
         let mut memory = crate::solver::hyper_heuristic::memory::SearchMemory::new(5, 5);
         let infeasible = point(x, 0.5, vec![0.0, 0.0]);
         let forbidden = point(x, 12.0, vec![0.0, 0.0]);

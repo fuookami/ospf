@@ -29,18 +29,18 @@ fn gamma(value: f64) -> f64 {
     let coefficients = [
         676.5203681218851,
         -1259.1392167224028,
-        771.32342877765313,
-        -176.61502916214059,
+        771.323_428_777_653_1,
+        -176.615_029_162_140_6,
         12.507343278686905,
         -0.13857109526572012,
-        9.9843695780195716e-6,
+        9.984_369_578_019_572e-6,
         1.5056327351493116e-7,
     ];
     if value < 0.5 {
         return PI / ((PI * value).sin() * gamma(1.0 - value));
     }
     let shifted = value - 1.0;
-    let mut series = 0.99999999999980993;
+    let mut series = 0.999_999_999_999_809_9;
     for (index, coefficient) in coefficients.iter().enumerate() {
         series += coefficient / (shifted + index as f64 + 1.0);
     }

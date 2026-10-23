@@ -37,7 +37,8 @@
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README_ch.md) | `ospf-kotlin-framework-csp1d` | 可复用一维分切框架，包括 material、generation、produce、yield、waste、length 和 application flow。 |
 | [`ospf-rust-framework-csp2d`](ospf-rust-framework-csp2d/README_ch.md) | `ospf-kotlin-framework-csp2d` | 可复用二维套裁框架，包括双模式物料、断头台切分树、图案生成、主问题、余料良率与双路径求解。 |
 | [`ospf-rust-framework-gantt-scheduling`](ospf-rust-framework-gantt-scheduling/README_ch.md) | `ospf-kotlin-framework-gantt-scheduling` | 可复用 Gantt 排程框架，包括 task、bunch、capacity、resource、produce 和 branch-and-price flow。 |
-| [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README_ch.md) | `ospf-kotlin-framework-network-scheduling` | 通用 network flow、VRPTW、ESPPRC 定价、路线编译和 Branch-and-Price 框架。 |
+| [`ospf-rust-framework-network-scheduling`](ospf-rust-framework-network-scheduling/README_ch.md) | `ospf-kotlin-framework-network-scheduling` | 多重图/资源路径、Flow、建设/韧性、分配、完整路径编译、根树结构、广义流及 VRPTW 定价。 |
+| [`ospf-rust-framework-gantt-network`](ospf-rust-framework-gantt-network/README_ch.md) | Gantt / Network 桥接 | 可选的共享路径、完整业务状态和列批次桥接，不拥有主模型或启动第二次全局求解。 |
 | [`ospf-rust-example`](ospf-rust-example/README_ch.md) | `ospf-kotlin-example` | 可运行示例和迁移兼容 demo。 |
 
 ## 架构概览
@@ -150,7 +151,13 @@ cargo test --workspace --features "ospf-rust-framework/async ospf-rust-framework
 
 本仓库正在把 Kotlin framework 能力迁移到 Rust。部分领域 crate 已暴露 Kotlin 对齐 public surface，但生命周期中的一些阶段仍使用 Rust 侧确定性、fake 或 feature-gated solver 路径。每个领域 crate README 会记录自身覆盖范围与已知差距。
 
-`ospf-rust-framework-network-scheduling` 已接入 workspace，`99/99` 迁移全部完成，并具备 graph/flow、VRPTW、ESPPRC、路线编译和 Branch-and-Price 的离线覆盖。其 Gurobi/SCIP Demo5 验证仍由 feature 控制并依赖本机 native solver 环境；长期数值、正确性与 E2E 边界记录在 crate README 中。
+Network / Gantt 迁移以 Kotlin `907d28d`、`3dc1225` 为快照边界，当前范围及破坏性 API 调整见
+[迁移说明](ospf-rust-framework-network-scheduling/MIGRATION_ch.md)。旧 `99/99` 交付状态不能用于
+宣布本轮完整迁移验收完成。共享图/路径、七类 Network 独立入口和可选 Gantt 桥接已接通；
+[Demo4](ospf-rust-example/src/framework/demo4/README_ch.md) 已通过既有 Gantt 生命周期连接恢复记录、
+RMP/完整对偶、路径增列和最终 MILP，不再只是 scaffold。Demo4 与 Demo5 的原生门禁仍依赖实际
+Gurobi/SCIP runtime 及许可证，须运行对应 feature 的测试而非仅编译。有限候选最优及启发式定价
+终止不代表完整路径域下界或全局整数证明；整体回归和严格检查的未通过项须单独披露。
 
 ## 相关模块
 
