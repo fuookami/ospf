@@ -20,6 +20,7 @@
 
 | Rust 模块或目录 | Kotlin 边界 | 职责 |
 | --- | --- | --- |
+| [`src/domain/activity`](src/domain/activity/README_ch.md) | `3f15899` 的 `gantt-scheduling-domain-activity-context` | 有限候选、事务注册、事件库存、原域校验和完整审计的单次 MILP 服务。 |
 | [`src/infrastructure`](src/infrastructure/README_ch.md) | `gantt-scheduling-infrastructure` | Time range、window、slot、duration range、working calendar、calendar policy、local date offset 和 render DTO。 |
 | [`src/domain/task`](src/domain/task/README_ch.md) | `gantt-scheduling-domain-task-context` | Task、executor、assignment、task plan、task bunch、cost、solver value adapter、task-step graph 和 shadow-price key。 |
 | [`src/domain/task_compilation`](src/domain/task_compilation/README_ch.md) | `gantt-scheduling-domain-task-compilation-context` | task-level MILP component、CP assignment/NoOverlap component、time variable、switch、makespan、solution analysis 和 limit/objective pipeline。 |

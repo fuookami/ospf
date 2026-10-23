@@ -12,11 +12,13 @@ This directory provides ergonomic constructors and default policies for applicat
 
 ## Modules
 
+- `activity.rs`: finite-candidate single-MILP service sharing transactional context registration and complete compiled-incumbent audit; see the [activity guide](../../domain/activity/README.md).
 - `task.rs`: helper for creating task column generation workflows.
 - `bunch.rs`: helpers for bunch column generation, branch-and-price construction, fresh-model search, and default bunch generation policy.
 
 ## Public API
 
+- `ActivitySchedulingApplicationService::{solve, solve_with}`: fresh context factories, optional downstream extension and `SolveReport<ActivitySchedule<V>>`, with matching synchronous/async semantics.
 - `create_task_column_generation`
 - `create_bunch_branch_and_price`
 - `search_bunch_branch_and_price_with_fresh_model`

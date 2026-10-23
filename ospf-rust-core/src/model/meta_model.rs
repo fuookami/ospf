@@ -1383,6 +1383,21 @@ impl MetaModel<f64> {
         self.try_to_linear_triad_model_with_status_callback(None)
     }
 
+    /// 当前源模型的进程内结构快照，不是求解或对偶来源证书。
+    /// In-process source-structure snapshot, not a solve or dual-provenance certificate.
+    ///
+    /// 不含解和求值缓存；消费者还须审计实际编译模型及其完整 incumbent。
+    /// Excludes solutions and evaluation caches; consumers must also audit the compiled model and its complete incumbent.
+    pub fn linear_source_snapshot(&self) -> String {
+        let tokens = self.tokens().iter().map(|token| (
+            token.id(), token.name(), token.var_type(), token.variable.lower_bound(), token.variable.upper_bound(),
+        )).collect::<Vec<_>>();
+        let dependencies = self.symbols().iter().map(|symbol| (symbol.id(), self.symbol_dependency_ids(symbol.id().id)))
+            .collect::<Vec<_>>();
+        format!("{:?}", (tokens, self.basic.constraints(), self.symbols(), dependencies,
+            &self.objective, &self.config, self.basic.config(), &self.symbolic_constraints, &self.symbolic_quadratic_constraints))
+    }
+
     /// 转换为线性三元组模型（带构建回调）。
     /// Convert into linear triad model with model-building callback.
     pub fn try_to_linear_triad_model_with_status_callback(
@@ -1942,6 +1957,23 @@ mod tests {
         assert_eq!(*effective.sub_objectives[0].polynomial.constant_term(), 7.0);
         assert_eq!(effective.sub_objectives[0].weight, 3.0);
         assert_eq!(model.try_to_linear_triad_model().unwrap().c, vec![0.0, 18.0]);
+    }
+
+    #[test]
+    fn linear_source_snapshot_tracks_structure_but_not_solver_values() {
+        let mut model = MetaModel::<f64>::new("source-snapshot");
+        let x = model.register_auto_variable_with_range::<crate::variable::Binary>("x", VariableRange::bounded(0.0, 1.0)).unwrap();
+        let snapshot = model.linear_source_snapshot();
+        model.set_solution(&[1.0]);
+        assert_eq!(snapshot, model.linear_source_snapshot());
+        model.add_le_constraint(&[(x, 1.0)], 0.0, "rule").unwrap();
+        assert_ne!(snapshot, model.linear_source_snapshot());
+        let snapshot = model.linear_source_snapshot();
+        model.add_sub_objective(crate::model::SubObjective::minimize(Linear::new(vec![], 7.0), "constant"));
+        assert_ne!(snapshot, model.linear_source_snapshot());
+        let snapshot = model.linear_source_snapshot();
+        model.set_variable_range_by_index(x, VariableRange::bounded(0.0, 0.0)).unwrap();
+        assert_ne!(snapshot, model.linear_source_snapshot());
     }
 
     use crate::error::Result;

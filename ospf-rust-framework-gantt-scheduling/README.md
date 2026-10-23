@@ -20,6 +20,7 @@ Explicit non-goals:
 
 | Rust module or directory | Kotlin boundary | Responsibility |
 | --- | --- | --- |
+| [`src/domain/activity`](src/domain/activity/README.md) | `gantt-scheduling-domain-activity-context` at `3f15899` | Finite candidates, transactional registration, event inventory, native validation and audited single-MILP service. |
 | [`src/infrastructure`](src/infrastructure/README.md) | `gantt-scheduling-infrastructure` | Time ranges, windows, slots, duration ranges, working calendars, calendar policies, local date offsets, and render DTOs. |
 | [`src/domain/task`](src/domain/task/README.md) | `gantt-scheduling-domain-task-context` | Task, executor, assignment, task plan, task bunch, cost, solver value adapter, task-step graph, and shadow-price keys. |
 | [`src/domain/task_compilation`](src/domain/task_compilation/README.md) | `gantt-scheduling-domain-task-compilation-context` | Task-level MILP components, CP assignment/NoOverlap components, time variables, switches, makespan, solution analysis, and limit/objective pipelines. |
