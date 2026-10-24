@@ -5,7 +5,7 @@
     <parent>
         <groupId>io.github.fuookami.ospf.kotlin</groupId>
         <artifactId>ospf-kotlin-parent</artifactId>
-        <version>1.1.1</version>
+        <version>1.1.2</version>
         <relativePath>../ospf-kotlin-parent</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
@@ -21,6 +21,13 @@
         <module>network-scheduling-domain-route-generation-context</module>
         <module>network-scheduling-domain-route-compilation-context</module>
         <module>network-scheduling-application</module>
+        <module>network-scheduling-domain-path-context</module>
+        <module>network-scheduling-domain-design-context</module>
+        <module>network-scheduling-domain-resilience-context</module>
+        <module>network-scheduling-domain-allocation-context</module>
+        <module>network-scheduling-domain-path-compilation-context</module>
+        <module>network-scheduling-domain-structure-context</module>
+        <module>network-scheduling-domain-generalized-flow-context</module>
     </modules>
 
     <dependencies>

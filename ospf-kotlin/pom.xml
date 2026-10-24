@@ -16,6 +16,8 @@
         <module>ospf-kotlin-framework</module>
         <module>ospf-kotlin-core-plugin</module>
         <module>ospf-kotlin-framework-plugin</module>
+        <module>ospf-kotlin-framework-geometry2d</module>
+        <module>ospf-kotlin-framework-bpp</module>
         <module>ospf-kotlin-framework-bpp1d</module>
         <module>ospf-kotlin-framework-bpp2d</module>
         <module>ospf-kotlin-framework-bpp3d</module>
@@ -28,7 +30,7 @@
         <module>ospf-kotlin-benchmark</module>
     </modules>
     <groupId>io.github.fuookami.ospf.kotlin</groupId>
-    <version>1.1.1</version>
+    <version>1.1.2</version>
     <packaging>pom</packaging>
     <name>ospf-kotlin</name>
     <description>operation research algorithm software framework</description>
@@ -80,6 +82,12 @@
         <mybatis.version>3.5.19</mybatis.version>
         <mybatis-spring.version>4.0.0</mybatis-spring.version>
         <mybatis-plus.version>3.5.17</mybatis-plus.version>
+        <mysql.version>8.2.0</mysql.version>
+        <postgresql.version>42.7.8</postgresql.version>
+        <h2.version>2.3.232</h2.version>
+        <sqlite-jdbc.version>3.45.3.0</sqlite-jdbc.version>
+        <dbcp.version>2.12.0</dbcp.version>
+        <commons-logging.version>1.3.5</commons-logging.version>
         <!-- kotlinx -->
         <kotlinx-datetime.version>0.8.0</kotlinx-datetime.version>
         <kotlinx-coroutines.version>1.11.0</kotlinx-coroutines.version>

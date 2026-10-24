@@ -1047,6 +1047,9 @@ class LinearMetaModel<V>(
     converter: IntoValue<V>,
     identityRegistry: ModelElementIdentityRegistry? = null
 ) : AbstractMetaModel<V>(Linear, configuration, converter, identityRegistry), AbstractLinearMetaModel<V> where V : RealNumber<V>, V : NumberField<V> {
+    /** 模型自有的快照、版本和稳定动态行入口。 / Model-owned snapshots, revisions and stable dynamic-row entry. */
+    val state: LinearModelState<V> by lazy { LinearModelState(this) }
+
     // 基于数学不等式的约束存储 / Math inequality-based constraints storage
     internal val _relationConstraints: MutableList<LinearInequalityConstraint<V>> = ArrayList()
     override val constraints: List<MathConstraint> get() = _relationConstraints
@@ -1058,6 +1061,17 @@ class LinearMetaModel<V>(
     // 新增：基于 FlattenData 的子目标存储 / New: FlattenData-based sub-objects storage
     internal val _flattenSubObjects: MutableList<LinearSubObject<V>> = ArrayList()
     internal val flattenSubObjects: List<LinearSubObject<V>> by ::_flattenSubObjects
+
+    /** 是否存在通过扁平 API 注册的目标；供需要完整目标来源的建模组件进行保守校验。
+     * / Whether flattened objectives exist, for conservative validation by components requiring complete objective provenance.
+     */
+    val hasFlattenedObjectives: Boolean get() = _flattenSubObjects.isNotEmpty()
+
+    /** 返回与机制模型相同的有效目标快照，包括扁平目标；修改快照不会改写模型目标。
+     * / Return the effective objective snapshot used by the mechanism model, including flattened objectives; modifying it does not change model objectives.
+     * @return 有效目标单元和常数项快照 / Snapshot of effective objective terms and constants
+     */
+    fun objectiveSnapshot(): List<LinearSubObject<V>> = buildLinearObjectiveSubObjects(this, tokens)
 
     /**
      * 使用线性多项式添加目标子项。 / Add an objective sub-item using a linear polynomial.
@@ -1083,6 +1097,31 @@ class LinearMetaModel<V>(
                 polynomial = polynomial
             )
         )
+        return ok
+    }
+
+    /**
+     * 从所有目标子项中移除指定变量项。 / Remove terms for the specified variables from every objective sub-object.
+     * @param variables 待移除的变量 / Variables whose terms should be removed
+     * @return 操作结果 / Operation result
+     */
+    fun removeObjectiveTerms(variables: Set<AbstractVariableItem<*, *>>): Try {
+        if (variables.isEmpty()) return ok
+
+        _flattenSubObjects.forEach { it.removeTerms(variables) }
+        for (index in _subObjects.indices) {
+            val source = _subObjects[index]
+            val retained = source.polynomial.monomials.filterNot { it.symbol in variables }
+            if (retained.size != source.polynomial.monomials.size) {
+                _subObjects[index] = MetaModel.SubObject(
+                    parent = this,
+                    category = source.category,
+                    name = source.name,
+                    displayName = source.displayName,
+                    polynomial = LinearPolynomial(retained, source.polynomial.constant)
+                )
+            }
+        }
         return ok
     }
 
