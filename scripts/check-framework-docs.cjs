@@ -10,6 +10,8 @@ const entries = registry.split('\n')
   .filter(line => /^\s*\['/.test(line))
   .map(line => [...line.matchAll(/'([^']*)'/g)].map(match => match[1]))
 assert.equal(entries.length, 7, 'Expected seven registered business frameworks')
+const nextLessons = Object.fromEntries([...registry.matchAll(/^\s*(\w+): \['([^']*)', '([^']*)'\]/gm)]
+  .map(([, slug, zh, en]) => [slug, [zh, en]]))
 const pages = ['index.md', 'setup.md', 'integration.md', 'verification.md', ...entries.flatMap(([slug, , , lesson]) => [
   `${slug}/index.md`, `${slug}/${lesson}.md`, `${slug}/business-scenario.md`
 ])]
@@ -26,6 +28,13 @@ function filesUnder(directory, suffix) {
       ? (['target', 'node_modules', '.git'].includes(entry.name) ? [] : filesUnder(file, suffix))
       : (entry.name.endsWith(suffix) ? [file] : [])
   })
+}
+
+function proseOnly(text) {
+  // API names, source paths and executable examples retain their original spelling.
+  return text.replace(/^```[^\n]*\n[\s\S]*?^```[^\n]*$/gm, '')
+    .replace(/^<<<.*$/gm, '').replace(/`+[^`\n]*`+/g, '')
+    .replace(/\]\([^)]+\)/g, ']')
 }
 
 function checkLink(file, href) {
@@ -54,17 +63,52 @@ for (const locale of ['frameworks', 'zh-cn/frameworks']) {
   for (const page of pages) {
     const file = path.join(directory, page)
     const text = read(file)
+    assert.ok(!/下面没有测试 solver 或预设解|不是测试代码|contain no test harness|手算对照不是原生执行日志|不要用换目标来替代后端接线|编排和提取路径在该夹具下工作/.test(text),
+      `${file}: use developer-facing guidance instead of authoring instructions`)
+    const wording = proseOnly(text)
+    if (locale.startsWith('zh-cn')) {
+      assert.ok(!/接线|接缝|终态|口径|契约|兑现|夹具|成本|实箱|箱子|守卫|\b(?:incumbent|seed|RMP|final|trace|helper|adapter|mock|fake|oracle|smoke|schema|DTO)\b/.test(wording),
+        `${file}: use consistent domain terms and explain technical names in Chinese`)
+      if (page.startsWith('bpp1d/')) assert.ok(!/箱型|货槽/.test(wording), `${file}: BPP1D uses 容器 and 容器类型`)
+      if (page.startsWith('csp1d/')) assert.ok(!/物料|切片|图案/.test(wording), `${file}: CSP1D uses 原料, 切条 and 切割方案`)
+    } else {
+      assert.ok(!/\b(?:fixture|oracle|seam)\b/i.test(wording), `${file}: use reader-facing descriptions`)
+    }
+    if (page === 'index.md') assert.ok(text.includes('{#terminology}'), `${file}: missing terminology reference`)
+    if (page.endsWith('/index.md')) {
+      const [, zhTitle, , lesson, zhLesson, enLesson] = entries.find(([slug]) => page === `${slug}/index.md`)
+      const next = text.split(/## (?:继续实践|Continue Practicing)/)[1]
+      assert.ok(next, `${file}: missing continuation section`)
+      assert.equal(next.match(/\]\(\.\/([^)]+)\)/)?.[1], lesson,
+        `${file}: next lesson must start with ${lesson}, not skip to the business scenario`)
+      assert.ok(next.includes(locale.startsWith('zh-cn') ? zhLesson : enLesson), `${file}: missing first-lesson title`)
+      assert.ok(text.includes('](../#terminology)'), `${file}: missing terminology link`)
+      if (locale.startsWith('zh-cn')) {
+        const title = zhTitle.replace(/ (\S+)$/, '（$1）')
+        assert.equal(text.split(/\r?\n/)[0], `# ${title}：适用问题与学习路线`, `${file}: use a framework-specific overview heading`)
+      }
+    }
     const lesson = entries.find(([slug, , , lesson]) => page === `${slug}/${lesson}.md`)
     if (lesson) {
       assert.ok(!/\b(?:mvn\s.*\btest|cargo\s.*\btest)\b/.test(text), `${file}: keep regression commands in verification`)
       for (const extension of ['kt', 'rs']) {
         assert.ok(text.includes(`/${lesson[0]}.${extension}`), `${file}: missing ${extension} application example`)
+        const source = read(path.join(docs, 'frameworks', '_examples', `${lesson[0]}.${extension}`))
+        if (lesson[0] !== 'bpp1d') {
+          assert.ok(source.includes('// #region result\n') || source.includes('// #region result\r\n'),
+            `${file}: first lesson must expand actual result fields`)
+        }
       }
     }
     for (const match of text.matchAll(/^<<<\s+(\S+)/gm)) {
-      const source = path.resolve(path.dirname(file), match[1])
+      const [includePath, region] = match[1].split('#')
+      const source = path.resolve(path.dirname(file), includePath)
       assert.ok(fs.existsSync(source), `${file}: missing example include ${match[1]}`)
-      const code = read(source)
+      const code = read(source).replaceAll('\r\n', '\n')
+      if (region) {
+        assert.ok(code.includes(`// #region ${region}\n`) && code.includes(`// #endregion ${region}\n`),
+          `${file}: missing example region ${region}`)
+      }
       assert.ok(!/assertIs|valueOrFail|Delegating|#\[test\]|kotlin\.test|org\.junit/.test(code), `${source}: example must not depend on a test harness`)
     }
     if (page.includes('/') && !page.endsWith('business-scenario.md')) {
@@ -73,8 +117,29 @@ for (const locale of ['frameworks', 'zh-cn/frameworks']) {
     }
     if (page.endsWith('business-scenario.md')) {
       const entry = entries.find(([slug]) => page.startsWith(`${slug}/`))
+      const title = nextLessons[entry[0]][locale.startsWith('zh-cn') ? 0 : 1]
+      assert.ok(text.startsWith(`# ${title}`), `${file}: business title must match the sidebar`)
       assert.ok(text.includes(`](./${entry[3]})`), `${file}: missing first-lesson prerequisite`)
       assert.ok(text.includes('](../integration)'), `${file}: missing integration link`)
+      if (entry[0] === 'bpp1d') {
+        for (const region of ['csv', 'policy', 'policy-injection', 'extension', 'extension-injection', 'cg']) {
+          assert.ok(text.includes(`.rs#${region} `), `${file}: missing Rust ${region} example`)
+          if (region !== 'policy-injection') assert.ok(text.includes(`.kt#${region} `), `${file}: missing Kotlin ${region} example`)
+        }
+      } else {
+        for (const region of ['input', 'rule', 'entry']) {
+          for (const extension of ['kt', 'rs']) {
+            assert.ok(text.includes(`/${entry[0]}-business.${extension}#${region} `),
+              `${file}: missing ${extension} ${region} example`)
+          }
+        }
+        assert.ok(text.includes('{#entry-budget}'), `${file}: missing stable entry/budget anchor`)
+        for (const region of entry[0] === 'csp2d' ? ['injection', 'master', 'cut'] : entry[0] === 'network' ? ['slack'] : []) {
+          for (const extension of ['kt', 'rs']) {
+            assert.ok(text.includes(`.${extension}#${region} `), `${file}: missing ${extension} ${region} wiring`)
+          }
+        }
+      }
     }
     if (page === 'setup.md') {
       assert.ok(text.includes(`JDK ${jvmTarget}`), `${file}: update prerequisites for JVM ${jvmTarget}`)

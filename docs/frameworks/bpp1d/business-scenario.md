@@ -1,6 +1,6 @@
 # Container Types, Stock and Cost
 
-After [your first 1D packing](./first-packing), offer two container types for the same items. Use this **new shared input** to replace the Kotlin and Rust first-lesson inputs.
+After [your first 1D packing](./first-packing), offer two container types for the same items. Load CSV, compare objectives, then add a mixing policy and generation budgets.
 
 ## 1. Start with Hand-Checkable Data
 
@@ -20,54 +20,136 @@ small,10,100,3,2
 large,20,100,10,1
 ```
 
-Explicitly declare meters and kilograms; start with zero spacing. Net length is 20 m. One large or two small containers can carry everything without exceeding weight capacity.
+Use meters and kilograms, initially with zero spacing. Net item length is 20 m. One large or two small containers can carry everything without exceeding weight capacity.
 
-| Objective | An optimal choice | Containers | Total cost |
+| Objective | An optimal choice | Containers | Cost |
 | --- | --- | ---: | ---: |
 | Minimum count | One large | 1 | 10 |
 | Minimum cost | Two small, each carrying a+b | 2 | 6 |
-| Minimum consumed length | Both choices consume 20 m | Not unique | Not decided by this objective |
+| Minimum consumed length | Total enabled container capacity is 20 m in both cases: $1 \times 20\text{ m}$ or $2 \times 10\text{ m}$, fully packed with no tail | Not unique | Not decided by this objective |
 
-These are hand calculations for the complete tiny problem. If generation budgets omit a composition, preserve the restricted-model scope of program conclusions.
+Use these hand calculations as a small-instance business reference. Interpret program evidence using candidate completeness and the solve report together.
 
-## 2. Map to Actual Entry Points
+## 2. Load CSV and Change Objectives
 
-Kotlin uses `Bpp1dCsvDatasetLoader`; Rust uses `load_packing_csv`. Both require explicit units and numeric parsing: the CSV contains no units. Alternatively, construct `Item`, `BinType` and `PackingProblem` using the first lesson's factories.
-
-These contextual fragments switch the objective **after `problem` has been built**; they are not standalone programs:
+Assign the CSV texts above to `itemsCsv` / `binsCsv` (Rust: `ITEMS_CSV` / `BINS_CSV`). The full source at the end includes imports and numeric parsers `parseNumber` / `parse_number`.
 
 ::: code-group
 
-```kotlin [Kotlin]
-val costProblem = problem.copy(objective = PackingObjective.Cost)
-```
+<<< ../_examples/bpp1d-business.kt#csv [Kotlin]
 
-```rust [Rust]
-let mut cost_problem = problem.clone();
-cost_problem.objective = PackingObjective::Cost;
-```
+<<< ../_examples/bpp1d-business.rs#csv [Rust]
 
 :::
 
-See the [Kotlin input model](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-bpp1d/bpp1d-domain-item-context/src/main/fuookami/ospf/kotlin/framework/bpp1d/domain/item/model/PackingProblem.kt) and [Rust input model](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-bpp1d/src/domain/model.rs). Retain the working solver and outcome handling from the first lesson; an objective change does not wire a backend.
+::: tip Explicit Units and Null Stock
+CSV carries no units: bind `Meter` and `Kilogram` and supply spacing when loading. This example parses `Flt64` / `f64`; higher-precision domains should parse directly into their numeric type. An empty `inventory` cell means unlimited stock; `0` means unavailable.
+:::
+
+::: info Different Loader Results
+Kotlin returns `Ret<PackingProblem<Flt64>>`; the example's `getOrThrow()` handles CLI errors before `copy(objective = ...)` switches objectives. Rust returns a validated `PackingContext`. To switch objectives, clone `context.problem()`, modify `objective`, then validate and rebuild with `PackingContext::new`. The complete source solves each objective in turn.
+:::
+
+Reuse the first lesson's backend for `BinCount`, `Cost` and `ConsumedLength`, and extract physical results in the same way.
 
 ## 3. Change One Condition at a Time
 
-1. Reduce small stock to 1, keeping zero spacing. Minimum cost becomes 10 with one large; do not silently procure a second small.
-2. Restore small stock to 2 and set large stock to zero. Two small still work, costing 6.
-3. Also reduce small stock to 1. Total capacity is insufficient: no complete feasible plan exists.
-4. Restore original stock and set spacing to 1 m. One large cannot carry all four items, and a+b no longer fits a small. A large carrying a+a+b plus a small carrying b costs 13. Validate this new problem instead of retaining old assertions.
+Use minimum cost throughout; step 4 restores original stock.
 
-Blank inventory means unlimited; zero means unavailable. Do not map both to the same adapter default.
+| Step | Change | Result and interpretation |
+| --- | --- | --- |
+| 1 | Reduce small stock from 2 to 1, keeping zero spacing | One large, minimum cost 10 |
+| 2 | Restore two small; set large stock to zero | Two small carrying a+b each, minimum cost 6 |
+| 3 | From step 2, reduce small stock to one | Insufficient capacity; no complete feasible packing |
+| 4 | Restore original stock; set spacing to 1 m | large carries a+a+b and small carries b, costing $10 + 3 = 13$ |
 
-## 4. Recompute Before Delivery
+For step 4: all four items require $20 + 3 \times 1 = 23\text{ m} > 20\text{ m}$ in large; a+b requires $6 + 1 + 4 = 11\text{ m} > 10\text{ m}$ in small. The a+a+b composition needs $6 + 1 + 6 + 1 + 4 = 18\text{ m}$ in large; the remaining b (4 m) fits in small.
 
-Count exactly two a and two b from actual placements; check stock by type, then length, weight and inter-piece gaps per container. Recompute cost from actual container use. Equal consumed length does not imply equal count or cost.
+## 4. Validate Results and Add a Mixing Rule
 
-Use `PatternPolicy` for a single-composition prohibition. For cross-container quantities or budgets, investigate `PatternModelingExtension` and verify consistency across MILP, LP, final and final-domain checks. Do not merely remove offending containers from a report.
+Independently check the actual placements:
 
-Replace the first-lesson item and container lists directly, retaining units, stock and objective fields. Solve again and independently recompute the result.
+1. **Exact item counts:** group `placements` by ID; both a and b must occur twice.
+2. **Container stock:** count `plans` by container type and compare with non-null inventory limits.
+3. **Per-container physics:** check intervals, length, weight and adjacent spacing.
+4. **Recomputed total cost:** add each used container type's `cost` once; compare with KPIs and the selected objective.
 
-Move the data, invariants and failure cases into your application using the [integration guide](../integration).
+### Per-Container Policy: PatternPolicy
 
-Repository regression commands live in [Verification](../verification). Complete the business input, call and result checks before using them.
+Restore zero spacing and original stock. Add the rule that a and b cannot share a container. Kotlin supplies the policy to the generator, then injects that generator into the solver entry:
+
+::: code-group
+
+<<< ../_examples/bpp1d-business.kt#policy [Kotlin]
+
+<<< ../_examples/bpp1d-business.rs#policy [Rust: implement]
+
+:::
+
+Rust passes the policy explicitly, alongside the no-op model extension:
+
+<<< ../_examples/bpp1d-business.rs#policy-injection [Rust: inject]
+
+`problem` / `context` comes from section 2. `backend(solver)` forwards the model, remaining time and cancellation handle to the backend from the first lesson. With this policy, large can carry a+a and small can carry b+b, giving minimum cost 13. Keep the count and stock checks, and also verify that no container contains both IDs.
+
+::: info Custom-Rule Report Scope
+The policy applies to candidate enumeration and initial-candidate generation. Completeness is relative to its accepted compositions. Rust's `solve_with_extension` conservatively leaves `globally_optimal` false for custom rules; interpret the current-model `report`, completeness and business checks together.
+:::
+
+### Cross-Container Rules: PatternModelingExtension
+
+For example, limiting total enabled containers to two constrains the sum of pattern usages. This ordinary-MILP example is independent of the mixing exercise:
+
+::: code-group
+
+<<< ../_examples/bpp1d-business.kt#extension [Kotlin]
+
+<<< ../_examples/bpp1d-business.rs#extension [Rust]
+
+:::
+
+::: code-group
+
+<<< ../_examples/bpp1d-business.kt#extension-injection [Kotlin: pass to SolveConfig]
+
+<<< ../_examples/bpp1d-business.rs#extension-injection [Rust: pass to solve_with_extension]
+
+:::
+
+::: warning Before Using Model Extensions with Column Generation
+Kotlin's lifecycle includes `register(context): Try`, `refresh(context): Try`, `reducedCost(pattern, context, dual): Flt64` and `extractSolution(context, values): Ret<Map<String, String>>`. Update additional expressions as columns change and include extra rows' dual contributions in pricing. This Kotlin `BinLimit` supports ordinary MILP only and explicitly checks the stage.
+
+Rust rebuilds the complete model when the pool changes. `register(model, packing, aggregation, stage)` receives the current model and columns; optional `extract_solution(values)` extracts business indicators. Pricing uses the complete matrix. These lifecycles differ; consult the overview's [API references](./#api-references) for full signatures and constraint identity handling.
+:::
+
+## 5. Switch to Column Generation and Set Budgets {#column-generation}
+
+Keep the section 2 input and backend; change the entry and configure its budgets:
+
+::: code-group
+
+<<< ../_examples/bpp1d-business.kt#cg [Kotlin]
+
+<<< ../_examples/bpp1d-business.rs#cg [Rust]
+
+:::
+
+`maxPatterns` / `max_patterns` bounds generated candidates; `maxNodes` / `max_nodes` bounds enumeration nodes. `iterationLimit` / `iteration_limit` bounds pricing rounds; `columnsPerIteration` / `columns_per_iteration` bounds columns activated per round. Read completeness, `columnCount` / `column_count` and `pricingIterations` / `pricing_iterations` from the solution. These differ from backend time limits; when generation is truncated, retain the finite-pool scope of any optimality claim.
+
+## 6. Run in Your Application
+
+Kotlin: add the complete source and call `runBusinessExample(solver)`. Rust: place it in `src/bpp1d_business.rs` and call `bpp1d_business::run_business_example(&solver)`. Reuse the first lesson's launcher, replacing its import or module name. The example runs objective comparisons, the mixing policy, column generation and the container limit in turn.
+
+:::: details Complete source: CSV, parsers, imports and backend forwarding
+
+::: code-group
+
+<<< ../_examples/bpp1d-business.kt [Kotlin]
+
+<<< ../_examples/bpp1d-business.rs [Rust]
+
+:::
+
+::::
+
+Use [integration guidance](../integration) to migrate your data, result invariants and failure handling. Consult [repository verification](../verification) for source regressions.

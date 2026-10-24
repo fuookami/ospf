@@ -1,31 +1,38 @@
-# 三维装箱 BPP3D
+# 三维装箱（BPP3D）：适用问题与学习路线
 
 货物具有长宽高和重量，需要选择箱型、朝向和放置位置，最后得到可检查、可展示的装载方案。第一课只处理长方体，不从圆柱与复杂支撑开始。
 
 ## 最少需要理解的对象
 
-| 业务概念 | API | 输入或输出 |
-| --- | --- | --- |
-| 货物与包装 | `Item` / `Package` | 尺寸、重量、物料和允许朝向 |
-| 箱型 | `BinType` | 几何、承重和类型身份 |
-| 箱层候选 | `BinLayer` | 箱型、需求覆盖与放置追踪 |
-| 应用服务 | `ColumnGenerationApplicationService` | 主问题、生成、最终选择与装载分析 |
-| 终态验证 | `PackingGeometryGuard` | 越界、重叠和对应形状路径的合法性 |
+| 业务概念 | API | 角色 | 核心字段 |
+| --- | --- | --- | --- |
+| 货物与包装 | `Item` / `Package` | 输入 | 尺寸、重量、物料和允许朝向 |
+| 箱型 | `BinType` | 输入 | 几何、承重和类型 ID |
+| 候选装载层 | `BinLayer` | 中间概念 | 箱型、需求覆盖与物品放置记录 |
+| 应用服务 | `ColumnGenerationApplicationService` | 调用 / 校验入口 | 主问题、生成、最终选择与装载分析 |
+| 最终结果校验 | `PackingGeometryGuard` | 调用 / 校验入口 | 越界、重叠和已支持形状的几何规则 |
+| 最终装箱结果 | `PackingResult` / `packingSnapshot` | 输出 | 箱体实例、货物坐标、朝向、装载顺序 |
 
 候选列描述可选的装载结构，不是已经完成的最终装箱。优化选择、实际放置和报告都要接通。
 
+箱型规定尺寸、承重等规格；箱体实例是具有独立 ID 的具体可用箱体。定义一种箱型，不等于可无限使用该规格的箱体。
+
 ## 从哪个入口调用？
 
-Kotlin 的应用请求、标准执行器和 packing analyzer 组成入口。Rust 提供 materialized / CSV 路径，以 RMP 与 final executor 注入后端。不能只把 Kotlin 类型改成蛇形命名就当作 Rust 实现。
+::: info Kotlin 与 Rust 的入口差异
+Kotlin 通过应用请求、标准执行器和装箱结果分析器完成求解。Rust 支持转换后的领域输入和 CSV 输入，需要分别提供受限主问题与最终整数求解的执行器。请按各语言示例构造输入并配置后端。
+:::
 
-先用固定箱型和少量 seed 验证装配，再引入自动候选、多箱型与目标配置。
+先用固定箱型和少量初始候选层验证配置与调用，再引入自动候选、多箱型与目标配置。受限主问题只考虑已生成的候选层；常用算法名称见[术语说明](../#terminology)。
+
+本课的应用服务已经包含列生成和最终整数求解，没有单独的 `Bpp3dMilp` 入口。小实例先固定带实际坐标的初始候选层与可用箱体；增加朝向和箱型后，再扩大候选数和迭代次数上限。具体字段与后端配置见[第二课](./business-scenario#entry-budget)。
 
 ## 能力边界
 
-- 圆柱支持依赖轴向以及生成、支撑、终态验证路径，不代表任意三维旋转都支持。
+- 圆柱支持取决于所选轴向，以及候选生成、支撑检查、最终结果校验是否支持该形状，不代表支持任意三维旋转。
 - 装载率应使用对应形状的真实体积，不能把外接体积当实占体积。
-- 外部 renderer 的实现不在框架内；输出 DTO 不等于已经启动可视化页面。
-- `finalSolved`、packing snapshot 和定价诊断应一起检查，不能只看非空候选列表。
+- 框架提供用于展示的结果数据；可视化页面和渲染器仍需应用自行实现。
+- `finalSolved`、实际装箱结果和定价诊断应一起检查，不能只看非空的候选列表。
 
 ## 学习路线
 
@@ -36,11 +43,11 @@ Kotlin 的应用请求、标准执行器和 packing analyzer 组成入口。Rust
 
 ## 接口参考
 
-- [Kotlin 入口与形状路径矩阵](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-bpp3d/README_ch.md)
-- [Rust 入口与领域契约](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-bpp3d/README_ch.md)
+- [Kotlin 入口与形状支持说明](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-bpp3d/README_ch.md)
+- [Rust 入口与领域规则](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-bpp3d/README_ch.md)
 
 [返回场景选型](../)
 
 ## 继续实践
 
-下一课：[多箱型与目标配置](./business-scenario)。将场景迁入自己的应用前，完成[业务接入检查](../integration)。
+下一课：[第一次三维装箱](./first-loading)。完成后再学[多箱型与目标配置](./business-scenario)。将场景迁入自己的应用前，完成[业务接入检查](../integration)。

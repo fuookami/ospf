@@ -24,7 +24,17 @@ l1,b1,4
     let result = service.run_csv_materialized_with_bins(request, &rmp, &final_executor)
         .map_err(|e| format!("{e:?}"))?;
     println!("rmp objective={:?}", result.rmp.objective);
-    println!("selected layers={}", result.final_execution.layers.len());
+    // #region result
+    println!("final={}, objective={:?}", result.final_execution.final_solved, result.final_execution.objective);
+    for bin in &result.final_execution.packed_bins {
+        println!("bin={}, type={:?}, weight={:?}, volume={:?}", bin.name, bin.bin_type.type_code, bin.total_weight(), bin.total_actual_volume());
+        for item in &bin.items {
+            println!("item={:?}, xyz={:?}, orientation={:?}, order={}", item.item.id, item.position, item.orientation, item.loading_order);
+        }
+    }
+    let count: usize = result.final_execution.packed_bins.iter().map(|b| b.items.len()).sum();
+    if result.final_execution.final_solved && count != 1 { return Err(format!("Expected one carton, got {count}")); }
+    // #endregion result
     println!("diagnostics={:?}", result.result.info);
     Ok(())
 }

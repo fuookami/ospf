@@ -27,12 +27,31 @@ pub fn run_example(solver: &dyn LinearSolver) -> Result<(), String> {
             time_limit: Some(remaining), cancellation_handle: Some(handle), ..Default::default()
         })
     };
-    let result = Bpp1dMilp::solve(context, Default::default(), &SolveHandle::new(), solve)
+    let result = Bpp1dMilp::solve(context.clone(), Default::default(), &SolveHandle::new(), solve)
         .map_err(|e| format!("{e:?}"))?;
-    println!("globally_optimal={}", result.globally_optimal);
-    match result.packing {
-        Some(packing) => println!("plans={:?}", packing.plans),
-        None => println!("No packing; inspect the solve report"),
+    println!("report={:?}, globally_optimal={}", result.report, result.globally_optimal);
+    if let Some(packing) = &result.packing {
+        // #region result
+        println!("candidate_complete={}", result.candidate_complete);
+        for plan in &packing.plans {
+            let bin_type = context.problem().bin_types.iter().find(|b| b.id == plan.bin_type_id).ok_or("Unknown bin type")?;
+            println!("bin={}, type={}", plan.bin_id, bin_type.id);
+            for p in &plan.placements { println!("{}: [{}, {}) m", p.item_id, p.start.value, p.start.value + p.length.value); }
+        }
+        for f in &packing.free_intervals { println!("free {}: [{}, {}) m", f.bin_id, f.start.value, f.start.value + f.length.value); }
+        let kpi = context.kpi(packing).map_err(|e| format!("{e:?}"))?;
+        println!("bins={}, items={}, cost={}, utilization={}", kpi.bin_count, kpi.item_count, kpi.cost, kpi.utilization);
+        println!("consumed={} m, tail={} m", kpi.consumed_length.value, kpi.remnant_length.value);
+        // #endregion result
+        let mut counts = BTreeMap::<&str, u64>::new();
+        for p in packing.plans.iter().flat_map(|plan| &plan.placements) {
+            *counts.entry(p.item_id.as_str()).or_default() += 1;
+        }
+        if !context.problem().items.iter().all(|item| counts.get(item.id.as_str()).copied().unwrap_or(0) == item.amount) {
+            return Err("Packed item counts differ from demand".into());
+        }
+    } else {
+        println!("No packing; inspect the solve report");
     }
     Ok(())
 }

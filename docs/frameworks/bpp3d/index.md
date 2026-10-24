@@ -1,24 +1,29 @@
-# 3D Packing · BPP3D
+# 3D Packing · BPP3D: Scope and Learning Path
 
-Cargo has three dimensions and weight. Choose container types, orientations and positions, then produce a checkable, renderable loading plan. The first lesson uses cuboids rather than cylinders or complex support rules.
+Cargo has three dimensions and weight. Choose bin types, orientations and positions, then produce a checkable, renderable loading plan. The first lesson uses cuboids rather than cylinders or complex support rules.
 
 ## Minimum Vocabulary
 
-| Concept | API | Input or output |
-| --- | --- | --- |
-| Cargo and package | `Item` / `Package` | Dimensions, weight, materials and allowed orientations |
-| Container type | `BinType` | Geometry, load capacity and type identity |
-| Candidate container layer | `BinLayer` | Container type, demand coverage and placement traces |
-| Application service | `ColumnGenerationApplicationService` | Master solves, generation, final selection and packing analysis |
-| Final validation | `PackingGeometryGuard` | Bounds, overlap and supported shape-path checks |
+| Concept | API | Role | Key Fields |
+| --- | --- | --- | --- |
+| Cargo and package | `Item` / `Package` | Input | Dimensions, weight, materials and allowed orientations |
+| Container type | `BinType` | Input | Geometry, load capacity and type identity |
+| Candidate container layer | `BinLayer` | Intermediate | Container type, demand coverage and placement traces |
+| Application service | `ColumnGenerationApplicationService` | Entry / validation | Master solves, generation, final selection and packing analysis |
+| Final validation | `PackingGeometryGuard` | Entry / validation | Bounds, overlap and supported shape-path checks |
+| Final packing result | `PackingResult` / packing snapshot | Output | Physical bins, item positions, orientations and loading order |
 
 A candidate column represents a selectable loading structure, not a completed final packing. Connect selection, physical placement and reporting.
 
 ## Entry Points
 
-Kotlin combines application requests, standard executors and a packing analyzer. Rust provides materialized/CSV paths with injected RMP and final executors. Renaming Kotlin types into snake case is not a Rust implementation.
+::: info Kotlin and Rust Entry Points
+Kotlin combines application requests, standard executors and a packing analyzer. Rust provides input-conversion and CSV interfaces with injected restricted-master and final-integer executors. Use the language-specific inputs and adapters shown in each lesson.
+:::
 
-Start with a fixed container and a small seed set, then add generators, container types and objective configuration.
+Start with a fixed bin and a small set of initial layers, then add generators, bin types and objective configuration.
+
+This lesson uses the application service for restricted-master and final-integer execution, not a `Bpp3dMilp` switch. Start with initial layers with actual placements and physical bins, then expand orientations, types and budgets. See [entry and budget configuration](./business-scenario#entry-budget).
 
 ## Boundaries
 
@@ -34,13 +39,15 @@ Start with a fixed container and a small seed set, then add generators, containe
 3. Add types, weight and costs, and explain the business meaning of objective weights.
 4. See [framework example 2](/examples/framework-example2) for integrated aircraft loading. Industry safety rules are not automatically included by using BPP3D.
 
+For LP, MILP, pricing and other algorithm terms, see the [terminology guide](../#terminology).
+
 ## Reference
 
 - [Kotlin entry points and shape paths](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-bpp3d/README.md)
-- [Rust entry points and domain contracts](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-bpp3d/README.md)
+- [Rust entry points and domain rules](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-bpp3d/README.md)
 
 [Back to scenario selection](../)
 
 ## Continue Practicing
 
-Next: [Bin Types and Objectives](./business-scenario). Before adapting the scenario to your application, complete the [business integration checks](../integration).
+Next: [Your First 3D Loading](./first-loading). Then explore [Bin Types and Objectives](./business-scenario). Before adapting the scenario to your application, complete the [business integration checks](../integration).

@@ -16,6 +16,35 @@ Set spacing to 0.2 m: two items need `2 + 0.2 + 2 = 4.2 m` per row. S loses the 
 
 ## 2. Send Every Sheet Type to Generation
 
+### Construct This Lesson’s Request
+
+`makeRequest` / `make_input` builds R×4 and sheet types S/L, explicitly binding geometry to metres. Kotlin binds load to kilograms separately. Change `spacing` to 0.2 and solve again.
+
+::: code-group
+
+<<< ../_examples/bpp2d-business.kt#input [Kotlin]
+
+<<< ../_examples/bpp2d-business.rs#input [Rust]
+
+:::
+
+::: warning Rust Unit Boundary
+The current Rust interface shares a unit type between weight and length. This example is geometry-only with zero weight/load; it does not provide type-safe kilogram modeling. Production load handling needs explicit normalization and independent unit checks.
+:::
+
+### Put Costs in Objective Configuration
+
+
+::: code-group
+
+<<< ../_examples/bpp2d-business.kt#objective [Kotlin]
+
+<<< ../_examples/bpp2d-business.rs#objective [Rust]
+
+:::
+
+Kotlin passes configuration through `request.executorConfig`. Supply Rust `cost_config()` to the application’s standard executor adapters; `run_business` receives those configured restricted-master and final-integer adapters rather than creating a backend.
+
 | Responsibility | Kotlin | Rust |
 | --- | --- | --- |
 | Multiple types | `Bpp2dLayerGenerationRequest.sheets` | Sheet collection on `Bpp2dLayerGenerationRequest` |
@@ -31,7 +60,43 @@ Use the first-lesson item constructors, create S and L sheet types and pass both
 
 After changing spacing, regenerate candidates, solve again and independently measure actual edge-to-edge gaps. Fewer candidates do not prove every placement has legal spacing.
 
-## 4. Isolate Rotation in Another Tiny Case
+### Entry and Generation Budget {#entry-budget}
+
+This service already uses column generation. Bound iterations and columns per round; these are neither exhaustive-enumeration evidence nor backend node limits.
+
+::: code-group
+
+<<< ../_examples/bpp2d-business.kt#entry [Kotlin]
+
+<<< ../_examples/bpp2d-business.rs#entry [Rust]
+
+:::
+
+## 4. Add Approval Rules, Then Isolate Rotation
+
+### Minimal Extension: Approved Sheet Types
+
+Suppose L is not approved for purchase. Wrap generation to reject L. Kotlin injects the wrapper through `algorithmFactory` and applies it to both initial candidates and later generation, so initial columns cannot bypass the rule.
+
+::: code-group
+
+<<< ../_examples/bpp2d-business.kt#rule [Kotlin]
+
+<<< ../_examples/bpp2d-business.rs#rule [Rust]
+
+:::
+
+Injection point:
+
+::: code-group
+
+<<< ../_examples/bpp2d-business.kt#injection [Kotlin]
+
+<<< ../_examples/bpp2d-business.rs#injection [Rust]
+
+:::
+
+Rust injects generation into the lower-level algorithm and explicitly runs the packing analyzer. The final adapter must preserve sheet-type identity. A per-candidate approval rule is not a cross-sheet purchase-budget constraint.
 
 Use one `3 × 2 m` sheet and one `2 × 3 m` rectangle with zero spacing. It fits with 90° rotation and does not fit without rotation. This isolates `allowRotate`; a square cannot demonstrate the difference.
 
@@ -45,3 +110,20 @@ Use one `3 × 2 m` sheet and one `2 × 3 m` rectangle with zero spacing. It fits
 Continue to [CSP2D process requirements](../csp2d/business-scenario) for a guillotine tree, not a renamed BPP2D layout. Complete the [integration checks](../integration) before delivering business results.
 
 Repository regression commands live in [Verification](../verification). Complete the business input, call and result checks before using them.
+
+
+## Complete Application Sources
+
+The snippets come from the same source files. Keep imports and helpers, then call `runBusiness` / `run_business` from your application. Constructors can also be used independently for input validation. Reuse first-lesson backend dependencies; these functions do not create an implicit backend.
+
+:::: details Full Kotlin / Rust sources
+
+::: code-group
+
+<<< ../_examples/bpp2d-business.kt [Kotlin]
+
+<<< ../_examples/bpp2d-business.rs [Rust]
+
+:::
+
+::::

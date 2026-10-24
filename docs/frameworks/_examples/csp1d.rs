@@ -21,9 +21,14 @@ pub fn run_example() {
     let problem = Csp1dProblem::new(vec![product], vec![material], vec![], vec![demand]);
     // The default implementation is heuristic; this does not invoke native MILP.
     let solution = Csp1dMilp::<f64>::default().solve(problem, None);
-    println!("status={:?}, failure={:?}", solution.status, solution.failure_message);
+    // #region result
+    println!("status={:?}, failure={:?}, kpi={:?}", solution.status, solution.failure_message, solution.kpi);
     println!("unmet={:?}", solution.produce.unmet_demands);
-    for usage in solution.produce.cutting_plans {
-        println!("plan={}, usages={}", usage.plan.id, usage.amount);
+    for usage in &solution.produce.cutting_plans {
+        println!("plan={}, material={}, usages={}, rest={:?}", usage.plan.id, usage.plan.material.id, usage.amount, usage.plan.rest_width());
+        for slice in &usage.plan.slices { println!("width={:?}, pieces per usage={}", slice.width, slice.amount); }
+        for c in &usage.plan.demand_contributions { println!("{}: per usage={:?}, multiplier={}", c.product.id, c.quantity, usage.amount); }
     }
+    assert!(solution.produce.unmet_demands.is_empty(), "Demand is not fully covered");
+    // #endregion result
 }

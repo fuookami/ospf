@@ -17,7 +17,15 @@ pub fn run_example<S: LinearSolver>(solver: S) -> Result<(), String> {
     let report = FlowApplicationService::new(solver).solve(&problem).map_err(|e| format!("{e:?}"))?;
     println!("report={report:?}");
     match report.solution.and_then(|solution| solution.value) {
-        Some(flow) => println!("flow={flow:?}"),
+        Some(flow) => {
+            // #region result
+            for ((commodity, arc), amount) in &flow.flows { println!("commodity={commodity:?}, arc={arc:?}, amount={amount:?}"); }
+            println!("resource usage={:?}", flow.resources);
+            println!("unused supply={:?}, unmet demand={:?}", flow.spills, flow.shortages);
+            println!("operating={:?}, penalties=({:?}, {:?}), total={:?}", flow.operating_cost, flow.spill_cost, flow.shortage_cost, flow.total_cost);
+            assert_eq!(flow.flows.values().next().map(|q| q.value), Some(2.0));
+            // #endregion result
+        },
         None => println!("No flow; retain the report and its termination reason"),
     }
     Ok(())

@@ -1,6 +1,6 @@
 # Your First Network Flow: Balances, Capacity and Cost
 
-Write an application example directly; running repository tests is not a prerequisite. Prepare dependencies and backends using [Setup](../setup).
+Work through business input, solving and result extraction with this example. Prepare dependencies and backends using [Setup](../setup).
 
 ## 1. Business Scenario
 
@@ -10,9 +10,11 @@ Write supply as +2 and demand as -2 so total balance is zero. Hand calculation g
 
 ## 2. Construct Input and Call the Framework
 
-Kotlin constructors for nodes, arcs, bounds and commodities return `Ret`; the example handles failures before calling `NetworkFlowApplicationService`. Rust uses `FlowProblem::new` and `FlowApplicationService` with an actual `LinearSolver`. Neither fills in a witness vector or copies model-building internals from a test.
+::: info Kotlin and Rust Entry Points
+Kotlin constructors for nodes, arcs, bounds and commodities return `Ret`; the example handles failures before calling `NetworkFlowApplicationService`. Rust uses `FlowProblem::new` and `FlowApplicationService` with an actual `LinearSolver`. Read the returned report for status before extracting business flows.
+:::
 
-The following example functions include their imports and contain no test harness. The application injects a real Kotlin `ColumnGenerationSolver`; the next section shows the launcher.
+The examples include imports and error handling. The application supplies Kotlin `ColumnGenerationSolver` to `runExample`; the next section shows the launcher.
 
 ::: code-group
 
@@ -24,7 +26,7 @@ The following example functions include their imports and contain no test harnes
 
 ## 3. Launch from Your Application
 
-Place the Kotlin example in application sources, retaining its package. This standalone launcher calls the lesson function. Add the domain starter, Gurobi plugin and coroutines, and configure matching native libraries and a license. This is the production plugin, not a test-only delegating wrapper.
+Place the Kotlin example in application sources, retaining its package. This standalone launcher calls the lesson function. Add the domain starter, Gurobi plugin and coroutines, and configure matching native libraries and a license.
 
 ```kotlin
 import docs.examples.network.runExample
@@ -47,9 +49,20 @@ fn main() -> Result<(), String> {
 }
 ```
 
-At the CLI boundary these examples throw or return errors. A server should translate them at its request boundary and retain diagnostics. Preserve normal no-incumbent reports rather than inventing a technical failure or an empty successful plan.
+At the CLI boundary these examples throw or return errors. A server should translate them at its request boundary and retain diagnostics. Preserve reports when no feasible solution was found rather than inventing a technical failure or an empty successful plan.
 
 ## 4. Read and Validate the Result
+
+| Read | Kotlin | Rust |
+| --- | --- | --- |
+| Actual commodity flows | `solution.flows: FlowKey(commodity, arc) → Quantity` | `flow.flows: (CommodityId, NetworkArcId) → Quantity` |
+| Shared-resource usage | `capacityUsage` | `resources` |
+| Spills and shortages | `unusedSupply / unmetDemand` | `spills / shortages` |
+| Cost decomposition and status | `cost / commodityCosts / relaxationCost`, `outcome.report` | `operating_cost / spill_cost / shortage_cost / total_cost`, `report` |
+
+::: info Result Semantics
+The solution may be absent; use the report for infeasibility or termination without a feasible solution. This entry has no candidate-pool `complete`. Bounded shortages may be valid model output, while delivery acceptance remains a business decision.
+:::
 
 Read the report and optional business solution. Verify outflow 2 at source, inflow 2 at sink, arc flow within 0–3, and cost 2 × 3 = 6. Solver steps are not physical quantities, and outer success is not demand fulfillment.
 
@@ -57,4 +70,4 @@ Read the report and optional business solution. Verify outflow 2 at source, infl
 
 Reduce capacity from three to one. Hard balances should yield no complete feasible flow, not silently discard an order unit. Restore capacity and add a second service with a distinct ID and cost. Shortage requires an explicit bounded and costed relaxation.
 
-Continue to the [next business scenario](./business-scenario) and [integration checks](../integration). Consult [repository verification](../verification) when checking source behavior; test commands are not the application entry point.
+Continue to the [next business scenario](./business-scenario) and [integration checks](../integration). Consult [repository verification](../verification) when checking source behavior.

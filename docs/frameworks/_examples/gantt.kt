@@ -44,8 +44,15 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
             if (schedule == null) {
                 println("No schedule; retain the report instead of inventing a plan")
             } else {
-                println("cost=${schedule.cost}")
-                schedule.placements.forEach { println("${it.key}: ${it.time}") }
+                // #region result
+                println("cost=${schedule.cost}, cancelled=${schedule.cancelled}, candidates=${schedule.candidateScope.size}")
+                for (p in schedule.placements) {
+                    println("task=${p.key.task}, mode=${p.key.mode}, start=${p.time.start}, end=${p.time.end}")
+                    p.reservations.forEach { println("resource=${it.resource}, time=${it.time}, quantity=${it.quantity}") }
+                }
+                println("executions=${schedule.executions}, inventory=${schedule.materialInventory}")
+                check(schedule.placements.size == 2 && schedule.cancelled.isEmpty())
+                // #endregion result
             }
         }
         is Failed -> error("${result.error.code}: ${result.error.message}")

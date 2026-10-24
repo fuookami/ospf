@@ -70,7 +70,7 @@ rustc +nightly-2026-08-01 --version
 cargo +nightly-2026-08-01 --version
 ```
 
-Place the example function in `src/<framework>.rs` and its launcher in `src/main.rs`. Run `cargo +nightly-2026-08-01 run` from the application directory: it executes your main, not repository test filters.
+Place the example function in `src/<framework>.rs` and its launcher in `src/main.rs`. Run `cargo +nightly-2026-08-01 run` from the application directory to execute your application main.
 
 Standalone applications add a domain crate such as `ospf-rust-framework-bpp1d`. A source checkout can use Cargo path dependencies. Native backends require explicit features; consult that crate's `Cargo.toml` for the actual names.
 
@@ -92,7 +92,7 @@ ospf-rust-quantities = { path = "../ospf/ospf-rust/ospf-rust-quantities" }
 
 For other scenarios replace the domain crate and declare imported crates as direct dependencies. BPP1D also needs Core and Framework BPP; Gantt needs Framework, Core and `time = "0.3"`; Network needs Core; BPP3D needs Framework, Core and domain feature `serde`.
 
-For SCIP launchers enable `scip-bundled` on `ospf-rust-core`. BPP3D/Gantt using `ScipColumnGenerationSolver` also need `scip` on `ospf-rust-framework`. Set these in application dependency declarations, not test filters. BPP2D still requires the two adapters described by its lesson; features alone do not implement them.
+For SCIP launchers enable `scip-bundled` on `ospf-rust-core`. BPP3D/Gantt using `ScipColumnGenerationSolver` also need `scip` on `ospf-rust-framework`. Set these in application dependency declarations. BPP2D still requires the two adapters described by its lesson; features alone do not implement them.
 
 ## 4. Identify the Actual Execution Path
 
@@ -100,7 +100,7 @@ For SCIP launchers enable `scip-bundled` on `ospf-rust-core`. BPP3D/Gantt using 
 | --- | --- | --- |
 | Default heuristic (Rust CSP1D/CSP2D examples) | Real domain flow with heuristic selection | Native optimization or global optimality |
 | Native solve (other examples with real adapters connected) | Actual models sent to SCIP/Gurobi | Delivery or proof scope without report/domain checks |
-| Optional repository verification | Geometry, registration, orchestration, witness or oracle checks | A real application solve |
+| Optional repository verification | Geometry, registration, orchestration, known-solution or enumeration checks | A real application solve |
 
 ### Kotlin Native Backends
 
@@ -127,7 +127,7 @@ See [Rust backend setup](https://github.com/fuookami/ospf-rust/blob/main/ospf-ru
 | Zero or skipped tests | Filter, profile, feature and runtime probes; a skip is not a pass |
 | Native library loading fails | Binding version, architecture, loader paths and transitive native dependencies |
 | Business input is rejected | Unique IDs, counts/dimensions, units, inventory and configuration |
-| Normal termination without a plan | Distinguish infeasibility, limits without an incumbent and technical errors |
+| Normal termination without a plan | Distinguish infeasibility, limits without a feasible solution and technical errors |
 | A solution without an optimality proof | Candidate truncation, heuristic pricing or early termination; do not upgrade the status |
 
 Write build logs to a temporary directory and inspect the same complete log after a failure instead of rerunning the build to capture a few lines. Return to [framework selection](./) to start a lesson; after a successful baseline, continue to [business integration](./integration).

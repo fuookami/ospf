@@ -16,6 +16,18 @@ Do not silently use an indivisible plan 1.5 times. With modeled overproduction, 
 
 ## 2. Express Orders with Actual Demand Types
 
+### Construct the Roll-Demand Example
+
+This implements the six-roll row: product A is 0.8 m wide, stock is up to 1.6 m wide, and M1 has three batches. M2 is quarantined stock. Two A strips fit each batch. The weight rows are separate exercises requiring per-product weight data; changing 6 to 60 is insufficient.
+
+::: code-group
+
+<<< ../_examples/csp1d-business.kt#input [Kotlin]
+
+<<< ../_examples/csp1d-business.rs#input [Rust]
+
+:::
+
 | Demand | Kotlin entry | Rust entry |
 | --- | --- | --- |
 | Legacy roll count | `ProductDemand.legacyRoll` | `ProductDemand::legacy_roll` |
@@ -35,7 +47,41 @@ Use the first-lesson input and solve entry and read contributions in the actual 
 
 Whether two measurement requirements for the same product must both hold is a business decision. An adapter must not overwrite an order merely because the product ID matches.
 
+### Switch Entry and Bound Plans {#entry-budget}
+
+Keep the problem and policies, then switch from `Csp1dMilp` to `Csp1dColumnGeneration`. Bound initial plans, plans per round and iterations in solve configuration, and inspect trace termination and final status.
+
+::: code-group
+
+<<< ../_examples/csp1d-business.kt#entry [Kotlin]
+
+<<< ../_examples/csp1d-business.rs#entry [Rust]
+
+:::
+
+::: info Rust Execution Semantics
+This Rust example uses default heuristic master solving with estimated prices for candidate search. MILP method names and final trace statuses do not establish native optimization. Configure a `Csp1dLpSolver` adapter for real LP/dual extraction and retain status, shortfalls and trace for delivery.
+:::
+
 ## 4. Put Machine Rules in the Right Layer
+
+### Minimal Extension: Quarantine Material M2
+
+Implement `Csp1dDomainPolicy.isFeasible` and inject it through `extensionSet.domainPolicies` / `extension_set.domain_policies`. The policy excludes M2 while preserving default width feasibility. Reuse the configuration for ordinary and column-generation solving.
+
+This scenario also injects `NSameGenerator` to produce two A strips per execution. The default simple generator supplies only one strip, insufficient for six rolls from three batches. The complete Kotlin helper resolves quantity arithmetic before creating N-Same.
+
+::: code-group
+
+<<< ../_examples/csp1d-business.kt#rule [Kotlin]
+
+<<< ../_examples/csp1d-business.rs#rule [Rust]
+
+:::
+
+Rust instance injection:
+
+<<< ../_examples/csp1d-business.rs#injection [Rust]
 
 “Material M cannot run on machine X” can be checked per plan. “Machine X can process at most 100 m this shift” needs a sum across plans; checking each plan separately against 100 is insufficient.
 
@@ -50,3 +96,20 @@ Cross-plan rules belong in the relevant context/modeling pipelines. With column 
 Use the [integration guide](../integration) to distinguish normal no-solution outcomes, technical failure and native reports. Feasibility recovery or heuristic fallback retains its real status, not an automatic upgrade to optimality.
 
 Repository regression commands live in [Verification](../verification). Complete the business input, call and result checks before using them.
+
+
+## Complete Application Sources
+
+The snippets come from the same source files. Keep imports and helpers, then call `runBusiness` / `run_business` from your application. Constructors can also be used independently for input validation. Reuse first-lesson backend dependencies; these functions do not create an implicit backend.
+
+:::: details Full Kotlin / Rust sources
+
+::: code-group
+
+<<< ../_examples/csp1d-business.kt [Kotlin]
+
+<<< ../_examples/csp1d-business.rs [Rust]
+
+:::
+
+::::

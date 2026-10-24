@@ -34,7 +34,18 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
     val packing = response.packing ?: error("No deliverable packing; inspect the solve result")
     val bins = packing.aggregation.bins
     val counts = bins.flatMap { it.items }.groupingBy { it.placement.itemId }.eachCount()
-    println("sheets=${bins.size}, placed=$counts")
+    // #region result
+    println("final=${response.result.finalSolved}, limited=${response.result.terminatedByIterationLimit}")
+    println("kpi=${response.kpi}, placed=$counts")
+    for (bin in bins) {
+        println("sheet=${bin.name}, type=${bin.type.typeCode}")
+        for (item in bin.items) {
+            val p = item.placement
+            println("${p.itemId}: (${p.x}, ${p.y}) -> (${p.maxX().getOrThrow()}, ${p.maxY().getOrThrow()}), rotated=${p.rotated}")
+        }
+    }
+    packing.remnants.forEach { println("${it.sheetName}: free=${it.rectangle}, area=${it.area}") }
+    // #endregion result
     for ((item, demand) in items) {
         check(UInt64(counts[item.id.value] ?: 0) == demand) { "Demand mismatch: ${item.id}" }
     }

@@ -16,6 +16,18 @@ Reuse the first-lesson at/q helpers and resource IDs, passing downtime and capac
 
 ## 2. Attach Calendars to Resources
 
+### Build the Activity and Its Calendar
+
+The full function defines `at` relative to one time origin and `q` as dimensionless capacity. Resource availability, reservation quantity and allowed starts are constructed together, matching all three rows in the table.
+
+::: code-group
+
+<<< ../_examples/gantt-business.kt#input [Kotlin]
+
+<<< ../_examples/gantt-business.rs#input [Rust]
+
+:::
+
 | Meaning | Kotlin | Rust |
 | --- | --- | --- |
 | Downtime | `ActivityResource.unavailableTimes` | `ActivityResource.unavailable_times` |
@@ -46,7 +58,31 @@ Let now be 0 h. A running activity started at -1 h, finishes at 2 h and occupies
 
 Pass actual execution records through `executions` and committed or adjustable choices through `baselines`, retaining consistent task IDs in dependencies. Do not put completed work back into pending activities or charge full running occupancy again in the future window.
 
+### Keep the Entry, Separate Domain from Budget {#entry-budget}
+
+Pass this problem to the activity service from the first lesson. No column-generation switch is involved. `starts` defines allowed business choices, not search truncation. Configure native time/node limits on the actual backend and retain time limits and feasible solutions.
+
+::: code-group
+
+<<< ../_examples/gantt-business.kt#entry [Kotlin]
+
+<<< ../_examples/gantt-business.rs#entry [Rust]
+
+:::
+
 ## 4. Make Two Controlled Changes
+
+### Minimal Extension: A Late-Start Surcharge
+
+Add a fee of 2 for starts at or after 4 h. Kotlin injects `additionalCost` into the problem; the Rust closure implements `ActivityCostPolicy` and is supplied when creating the context. Capacity remains hard; the surcharge only ranks legal choices.
+
+::: code-group
+
+<<< ../_examples/gantt-business.kt#rule [Kotlin]
+
+<<< ../_examples/gantt-business.rs#rule [Rust]
+
+:::
 
 1. Remove the 4 h start from the calendar example. A mandatory non-cancellable activity has no feasible candidate; do not invent a 6 h start or automatic pause/resume.
 2. Restore starts, add a frozen choice, then overlap it with downtime. Keep normal infeasibility distinct from technical input failure, and establish who may authorize unfreezing.
@@ -55,8 +91,25 @@ New starts, alternative resources and cancellation are different business decisi
 
 ## 5. Validate Recovery Before Delivery
 
-Retain completed facts, original running times and remaining occupancy. Preserve frozen choices, restrict adjustable activities to allowed candidates, validate resources/dependencies/inventory throughout, and recompute adjustment costs. A time-limited incumbent retains its real status.
+Retain completed facts, original running times and remaining occupancy. Preserve frozen choices, restrict adjustable activities to allowed candidates, validate resources/dependencies/inventory throughout, and recompute adjustment costs. A feasible solution found before a time limit retains its real status.
 
 Use input revisions/request IDs so old results cannot overwrite newer facts. Continue with [rolling optimization](/guide/rolling-optimization) and the [integration guide](../integration).
 
 Repository regression commands live in [Verification](../verification). Complete the business input, call and result checks before using them.
+
+
+## Complete Application Sources
+
+The snippets come from the same source files. Keep imports and helpers, then call `runBusiness` / `run_business` from your application. Constructors can also be used independently for input validation. Reuse first-lesson backend dependencies; these functions do not create an implicit backend.
+
+:::: details Full Kotlin / Rust sources
+
+::: code-group
+
+<<< ../_examples/gantt-business.kt [Kotlin]
+
+<<< ../_examples/gantt-business.rs [Rust]
+
+:::
+
+::::

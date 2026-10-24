@@ -40,6 +40,14 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
     if (solution == null) {
         println("No flow; inspect infeasibility or the no-incumbent termination")
     } else {
-        println("flows=${solution.flows}, cost=${solution.cost}")
+        // #region result
+        for ((key, amount) in solution.flows) {
+            println("commodity=${key.commodity}, arc=${key.arc}, amount=$amount")
+        }
+        println("resource usage=${solution.capacityUsage}")
+        println("unused supply=${solution.unusedSupply}, unmet demand=${solution.unmetDemand}")
+        println("cost=${solution.cost}, commodity costs=${solution.commodityCosts}, penalty=${solution.relaxationCost}")
+        check(solution.flows[FlowKey("goods", arc.id)] == q(2.0))
+        // #endregion result
     }
 }

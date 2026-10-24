@@ -2,7 +2,7 @@
 
 This reference is for source verification and framework maintenance, not a required onboarding step. Start with the application examples from [Choose a Framework](./). These commands run repository checks; they are not application examples.
 
-Configure toolchains and native backends using [Setup](./setup). Offline contracts, fixture reports, enumeration oracles and native optimization are different. Zero tests or skipped tests do not establish success.
+Configure toolchains and native backends using [Setup](./setup). Offline contracts, preset reports, exhaustive enumeration checks and native optimization are different. Zero tests or skipped tests do not establish success.
 
 ## BPP1D
 
@@ -62,7 +62,7 @@ Application usage: [BPP2D first lesson](./bpp2d/first-layout).
 
 ## BPP3D
 
-### Kotlin: orchestration contract
+### Kotlin: solving workflow test
 
 ```powershell
 # Working directory: ospf-kotlin
@@ -71,7 +71,7 @@ mvn -B -ntp -pl ospf-kotlin-framework-bpp3d/bpp3d-application -am test -T 0.75C 
     "-Dsurefire.failIfNoSpecifiedTests=false"
 ```
 
-### Rust: materialization and trace replay
+### Rust: input conversion and placement record reading
 
 ```powershell
 # Working directory: ospf-rust
@@ -87,7 +87,7 @@ mvn -B -ntp -pl ospf-kotlin-framework-bpp3d/bpp3d-application -am test -T 0.75C 
     "-Dsurefire.failIfNoSpecifiedTests=false"
 ```
 
-### Rust: SCIP CSV smoke
+### Rust: SCIP CSV integration check
 
 ```powershell
 # Working directory: ospf-rust; requires SCIP integration, without async
@@ -98,7 +98,7 @@ Application usage: [BPP3D first lesson](./bpp3d/first-loading).
 
 ## CSP1D
 
-### Kotlin: fake application contract
+### Kotlin: application test with a simulated solver
 
 ```powershell
 # Working directory: ospf-kotlin
@@ -208,7 +208,7 @@ Application usage: [GANTT first lesson](./gantt/first-schedule).
 
 ## NETWORK
 
-### Kotlin: register and extract a witness
+### Kotlin: register and extract a known solution
 
 ```powershell
 # Working directory: ospf-kotlin
@@ -217,7 +217,7 @@ mvn -B -ntp -pl ospf-kotlin-framework-network-scheduling/network-scheduling-doma
     "-Dsurefire.failIfNoSpecifiedTests=false"
 ```
 
-### Rust: bounded integer-flow oracle
+### Rust: bounded integer-flow enumeration check
 
 ```powershell
 # Working directory: ospf-rust
@@ -241,7 +241,7 @@ cargo +nightly-2026-08-01 test -p ospf-rust-framework-network-scheduling --featu
 ```
 
 ```powershell
-# Working directory: ospf-rust; finite integer oracle and extraction checks, not native solving
+# Working directory: ospf-rust; finite integer enumeration and result checks, not native solving
 cargo +nightly-2026-08-01 test -p ospf-rust-framework-network-scheduling --lib shared_resource_can_make_an_otherwise_feasible_flow_infeasible -- --nocapture
 ```
 
@@ -249,7 +249,7 @@ Application usage: [NETWORK first lesson](./network/first-flow).
 
 ## Additional Source Reading
 
-These links check local contracts and compatibility, not application usage.
+These links check individual API behavior and compatibility, not application usage.
 
 ### BPP1D
 
@@ -267,24 +267,24 @@ See [Kotlin MixedBinObjectivesTest](https://github.com/fuookami/ospf-kotlin/blob
 
 ### CSP1D
 
-See [Kotlin ProductDemandModelTest](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-csp1d/csp1d-domain-material-context/src/test/kotlin/fuookami/ospf/kotlin/framework/csp1d/domain/material/model/ProductDemandModelTest.kt) and [Rust migration tests](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-csp1d/tests/csp1d_migration.rs). Read `demandDomainShouldBeDrivenByQuantityUnitInsteadOfMode` and Rust's helper contract before contribution calculations. Compatibility fixtures may simplify units; do not copy such simplifications into production density data.
+See [Kotlin ProductDemandModelTest](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-csp1d/csp1d-domain-material-context/src/test/kotlin/fuookami/ospf/kotlin/framework/csp1d/domain/material/model/ProductDemandModelTest.kt) and [Rust migration tests](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-csp1d/tests/csp1d_migration.rs). Read `demandDomainShouldBeDrivenByQuantityUnitInsteadOfMode` and Rust's helper contract before contribution calculations. Compatibility test datasets may simplify units; do not copy such simplifications into production density data.
 
-Kotlin's [Csp1dDomainPolicyTest](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-csp1d/csp1d-application/src/test/kotlin/fuookami/ospf/kotlin/framework/csp1d/application/service/Csp1dDomainPolicyTest.kt) demonstrates material/machine policies with fake rules, not a complete capacity solve. Rust's `domain_policy_context_exposes_kotlin_contribution_for_helper` in the migration tests shows the plan context received by policies.
+Kotlin's [Csp1dDomainPolicyTest](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-csp1d/csp1d-application/src/test/kotlin/fuookami/ospf/kotlin/framework/csp1d/application/service/Csp1dDomainPolicyTest.kt) demonstrates material/machine policies with simulated rules, not a complete capacity solve. Rust's `domain_policy_context_exposes_kotlin_contribution_for_helper` in the migration tests shows the plan context received by policies.
 
 ### CSP2D
 
 These are actual inputs/assertions in the [Rust cutting geometry test](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-csp2d/tests/cutting_geometry_contract.rs), not an optimization run.
 
-The [Rust assignment test](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-csp2d/tests/sheet_assignment_contract.rs) asserts three coil segments, zero sheets and total length 12. Kotlin's separate [coilProblemRecoversConsumedLength](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-csp2d/csp2d-application/src/test/fuookami/ospf/kotlin/framework/csp2d/application/service/Csp2dApplicationContractTest.kt) checks positive `consumedLength` and counts `sheetCount` as 1 in its fixture. **Do not translate these count fields directly across languages.** Define sheets, coil segments, pattern types and consumed length before normalizing business output.
+The [Rust assignment test](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-csp2d/tests/sheet_assignment_contract.rs) asserts three coil segments, zero sheets and total length 12. Kotlin's separate [coilProblemRecoversConsumedLength](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-csp2d/csp2d-application/src/test/fuookami/ospf/kotlin/framework/csp2d/application/service/Csp2dApplicationContractTest.kt) checks positive `consumedLength` and counts `sheetCount` as 1 in its test dataset. **Do not translate these count fields directly across languages.** Define sheets, coil segments, pattern types and consumed length before normalizing business output.
 
 ### GANTT
 
 This is Kotlin's `resourceCalendarAndMidActivityCapacityDropAreNotMissed` in [ActivitySchedulingContextTest](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-gantt-scheduling/gantt-scheduling-domain-activity-context/src/test/kotlin/fuookami/ospf/kotlin/framework/gantt_scheduling/domain/activity/ActivitySchedulingContextTest.kt). Half-open intervals matter: a 4 h start does not occupy `[3,4)`.
 
-Rust's [scheduling contracts](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-gantt-scheduling/src/domain/activity/tests/scheduling.rs) use a different joint-resource fixture:
+Rust's [scheduling contracts](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-gantt-scheduling/src/domain/activity/tests/scheduling.rs) use a different joint-resource test dataset:
 
 ### NETWORK
 
 The [Rust flow contracts](https://github.com/fuookami/ospf-rust/blob/main/ospf-rust-framework-network-scheduling/src/domain/flow/tests.rs) contain the complete input and reject a supplied vector that violates the resource.
 
-Kotlin's [commodityServiceCostsAvailabilityAndCrossArcResourceAreJointlyEnforced](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-network-scheduling/network-scheduling-domain-flow-context/src/test/kotlin/fuookami/ospf/kotlin/framework/network_scheduling/domain/flow/FlowContextTest.kt) uses bulk=2 and parcel=1, total shared usage 3 and cost 8. It is a different registration/preset-vector extraction fixture, not native optimization of the first scenario.
+Kotlin's [commodityServiceCostsAvailabilityAndCrossArcResourceAreJointlyEnforced](https://github.com/fuookami/ospf-kotlin/blob/main/ospf-kotlin-framework-network-scheduling/network-scheduling-domain-flow-context/src/test/kotlin/fuookami/ospf/kotlin/framework/network_scheduling/domain/flow/FlowContextTest.kt) uses bulk=2 and parcel=1, total shared usage 3 and cost 8. It is a different registration/preset-vector extraction test dataset, not native optimization of the first scenario.

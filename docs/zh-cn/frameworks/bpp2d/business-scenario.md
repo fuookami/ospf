@@ -16,12 +16,41 @@
 
 ## 2. 把所有板型传入生成请求
 
+### 构造本课的请求
+
+`makeRequest` / `make_input` 创建 R×4 和 S、L 板型，并显式绑定米；Kotlin 另将承重绑定千克。`spacing` 传给 `kerf`，改为 0.2 后重新调用。
+
+::: code-group
+
+<<< ../../../frameworks/_examples/bpp2d-business.kt#input [Kotlin]
+
+<<< ../../../frameworks/_examples/bpp2d-business.rs#input [Rust]
+
+:::
+
+::: warning Rust 单位边界
+Rust 当前应用接口的重量与长度共享同一单位类型，故本例只演示几何：重量和承重均为 0，不代表 0 kg 已获得类型安全。真实承重业务需在适配层补齐量纲归一化与独立校验。
+:::
+
+### 把费用写入目标配置
+
+
+::: code-group
+
+<<< ../../../frameworks/_examples/bpp2d-business.kt#objective [Kotlin]
+
+<<< ../../../frameworks/_examples/bpp2d-business.rs#objective [Rust]
+
+:::
+
+Kotlin 的配置随 `request.executorConfig` 进入标准执行器。Rust 的 `cost_config()` 交给调用方实现的标准执行器适配器；`run_business` 接收这些已配置好的受限主问题与最终整数求解适配器，而不在内部创建后端。
+
 | 责任 | Kotlin | Rust |
 | --- | --- | --- |
 | 多板型请求 | `Bpp2dLayerGenerationRequest.sheets` | `Bpp2dLayerGenerationRequest` 的板型集合 |
 | 候选身份 | `Layer.sheet` 保留类型 | 每个候选保留实际板型 |
 | 间距 | 生成请求的 `kerf` | 请求的 `with_kerf(...)` |
-| 目标 | 面积、数量、按板型费用的建模管线 | 对应面积、数量、板型费用管线 |
+| 目标 | 面积、数量、按板型费用的建模步骤 | 对应面积、数量、板型费用建模步骤 |
 
 `sheet` 的默认/主板型不替代 `sheets` 的完整集合。同一物品坐标放到 S、L 上是两种列，不能只按坐标去重。
 
@@ -31,7 +60,43 @@
 
 改变间距后重新生成候选并求解，再逐件计算实际边界间距；只看到候选数量下降，不能证明所有放置间距都合法。
 
-## 4. 再做一个旋转对照
+### 入口与生成预算 {#entry-budget}
+
+本服务已经是列生成入口，使用每轮列数与迭代上限控制搜索。它们不是候选集合完整枚举的证明，也不是后端节点数上限。
+
+::: code-group
+
+<<< ../../../frameworks/_examples/bpp2d-business.kt#entry [Kotlin]
+
+<<< ../../../frameworks/_examples/bpp2d-business.rs#entry [Rust]
+
+:::
+
+## 4. 增加审批规则，再做旋转对照
+
+### 最小扩展：只允许已审批板型
+
+假设 L 暂未通过采购审批，用生成器包装层过滤 L。Kotlin 把包装器传给 `algorithmFactory`；初始候选和后续生成使用同一个包装器，避免历史/初始候选列绕过规则。
+
+::: code-group
+
+<<< ../../../frameworks/_examples/bpp2d-business.kt#rule [Kotlin]
+
+<<< ../../../frameworks/_examples/bpp2d-business.rs#rule [Rust]
+
+:::
+
+接入位置：
+
+::: code-group
+
+<<< ../../../frameworks/_examples/bpp2d-business.kt#injection [Kotlin]
+
+<<< ../../../frameworks/_examples/bpp2d-business.rs#injection [Rust]
+
+:::
+
+Rust 在较低层的 `ColumnGenerationAlgorithm` 注入生成器，再显式调用装箱结果分析器；最终后端仍需按板型维持列与实物的对应关系。这里的单个候选方案审批规则不替代跨板材采购总额约束。
 
 把问题单独改为一张 `3 × 2 m` 板和一件 `2 × 3 m` 零件，间距为零。允许 90° 旋转时可放，禁止时不可放。这样可以隔离测试 `allowRotate`，避免使用正方形却误以为自己验证了旋转。
 
@@ -45,3 +110,20 @@
 需要断头台裁切树时继续 [CSP2D 工艺场景](../csp2d/business-scenario)，不是给 BPP2D 排布改一个名字。将结果接入业务前完成[公共接入检查](../integration)。
 
 源码回归命令统一放在[仓库验证参考](../verification)；先完成业务输入、调用与结果复核，再按需验证。
+
+
+## 完整应用源码
+
+片段来自同一个源码文件；保留导入声明和辅助函数后，从应用调用 `runBusiness` / `run_business`。构造函数也可独立用于输入校验。后端依赖沿用第一课；这些入口不创建隐式求解后端。
+
+:::: details 展开完整 Kotlin / Rust 源码
+
+::: code-group
+
+<<< ../../../frameworks/_examples/bpp2d-business.kt [Kotlin]
+
+<<< ../../../frameworks/_examples/bpp2d-business.rs [Rust]
+
+:::
+
+::::

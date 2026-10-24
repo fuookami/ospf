@@ -28,11 +28,17 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
     when (val result = Csp2dMilp(solver).solve(problem)) {
         is Ok -> {
             val solution = result.value
-            println("covered=${solution.covers(problem)}, sheets=${solution.sheetCount}")
+            // #region result
+            println("covered=${solution.covers(problem)}, sheets=${solution.sheetCount}, length=${solution.consumedLength}")
+            println("coverage=${solution.coverage}, used=${solution.usedArea}, waste=${solution.wasteArea}, utilization=${solution.utilization}")
             for (usage in solution.usages) {
                 check(usage.plan.validate(problem.kerf) is Ok) { "Invalid cutting pattern" }
-                println(usage)
+                println("plan=${usage.plan.id}, material=${usage.plan.pattern.material.id}, usages=${usage.usage}")
+                usage.plan.pattern.placements.forEach { println("${it.itemId}: (${it.x}, ${it.y}), width=${it.width}, height=${it.height}") }
+                println("cut tree=${usage.plan.pattern.cutTree}")
             }
+            check(solution.covers(problem)) { "Demand is not fully covered" }
+            // #endregion result
         }
         is Failed -> error("${result.error.code}: ${result.error.message}")
         is Fatal -> error(result.errors.joinToString { "${it.code}: ${it.message}" })

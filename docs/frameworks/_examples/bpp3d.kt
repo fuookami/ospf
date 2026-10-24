@@ -17,16 +17,16 @@ private fun <T> Ret<T>.getOrThrow(): T = when (this) {
     is Fatal -> error(errors.joinToString { "${it.code}: ${it.message}" })
 }
 
-suspend fun runExample(solver: ColumnGenerationSolver) {
+fun makeItem(edge: Double = 1.0): ActualItem {
     val material = Material(
         no = MaterialNo("M1"), type = MaterialType.RawMaterial,
         cargo = Cargo, name = "goods", weight = FltX.one * Kilogram
     )
-    val item = ActualItem(
+    return ActualItem(
         id = itemIdOf("I1"), name = "carton",
         pack = Package.innerPackage(
             shape = PackageShape(
-                width = FltX.one * Meter, height = FltX.one * Meter, depth = FltX.one * Meter,
+                width = FltX(edge) * Meter, height = FltX(edge) * Meter, depth = FltX(edge) * Meter,
                 weight = FltX.one * Kilogram, packageType = PackageType.CartonContainer
             ),
             materials = mapOf(material to UInt64.one)
@@ -38,6 +38,10 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
             hangingPolicy = AbsoluteHangingPolicy(FltX.zero), stackingOnPolicy = FilterStackingOnPolicy()
         )
     )
+}
+
+suspend fun runExample(solver: ColumnGenerationSolver) {
+    val item = makeItem()
     val binType = BinType(
         width = FltX(3.0) * Meter, height = FltX(3.0) * Meter, depth = FltX(3.0) * Meter,
         capacity = FltX(100.0) * Kilogram, longitudinalBalance = null, lateralBalance = null,
@@ -63,6 +67,16 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
     ).getOrThrow()
     println("finalSolved=${response.result.finalSolved}")
     val packing = response.packingSnapshot ?: error("No deliverable loading plan")
-    println("bins=${packing.bins.size}")
-    println(packing.schema)
+    // #region result
+    val bins = packing.packingResult.aggregation.bins
+    println("bins=${bins.size}, objective=${response.result.finalObjective}")
+    for (bin in bins) {
+        println("bin=${bin.name}, type=${bin.type.typeCode}")
+        for (packed in bin.items) {
+            val p = packed.placement
+            println("${(p.unit as? ActualItem)?.id}: (${p.x}, ${p.y}, ${p.z}), orientation=${p.orientation}, order=${packed.loadingOrder}")
+        }
+    }
+    check(bins.flatMap { it.items }.size == 1) { "Expected exactly one carton" }
+    // #endregion result
 }

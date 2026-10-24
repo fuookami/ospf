@@ -1,6 +1,6 @@
 # Your First Activity Schedule: Modes, Dependencies and Resources
 
-Write an application example directly; running repository tests is not a prerequisite. Prepare dependencies and backends using [Setup](../setup).
+Work through business input, solving and result extraction with this example. Prepare dependencies and backends using [Setup](../setup).
 
 ## 1. Business Scenario
 
@@ -10,9 +10,11 @@ Slow finishes no earlier than hour 3, but b has no start at or after 3. A feasib
 
 ## 2. Construct Input and Call the Framework
 
+::: info Kotlin and Rust Entry Points
 Use the finite-choice single-MILP service without implementing task-bunch column generation. Resource capacities/usages and costs are dimensionless teaching values here; declare business units for production. Kotlin returns an outer `Ret` and a scheduling report; Rust retains a report with an optional business solution.
+:::
 
-The following example functions include their imports and contain no test harness. The application injects a real Kotlin `ColumnGenerationSolver`; the next section shows the launcher.
+The examples include imports and error handling. The application supplies Kotlin `ColumnGenerationSolver` to `runExample`; the next section shows the launcher.
 
 ::: code-group
 
@@ -24,7 +26,7 @@ The following example functions include their imports and contain no test harnes
 
 ## 3. Launch from Your Application
 
-Place the Kotlin example in application sources, retaining its package. This standalone launcher calls the lesson function. Add the domain starter, Gurobi plugin and coroutines, and configure matching native libraries and a license. This is the production plugin, not a test-only delegating wrapper.
+Place the Kotlin example in application sources, retaining its package. This standalone launcher calls the lesson function. Add the domain starter, Gurobi plugin and coroutines, and configure matching native libraries and a license.
 
 ```kotlin
 import docs.examples.gantt.runExample
@@ -47,9 +49,20 @@ fn main() -> Result<(), String> {
 }
 ```
 
-At the CLI boundary these examples throw or return errors. A server should translate them at its request boundary and retain diagnostics. Preserve normal no-incumbent reports rather than inventing a technical failure or an empty successful plan.
+At the CLI boundary these examples throw or return errors. A server should translate them at its request boundary and retain diagnostics. Preserve reports when no feasible solution was found rather than inventing a technical failure or an empty successful plan.
 
 ## 4. Read and Validate the Result
+
+| Read | Kotlin | Rust |
+| --- | --- | --- |
+| Task, mode and time | `schedule.placements → key.task / key.mode / time.start / time.end` | `schedule.placements → key.task / key.mode / time.start / time.end` |
+| Actual reservations | `placement.reservations → resource / time / quantity` | `placement.reservations → resource / time / quantity` |
+| Cost and retained facts | `cost / cancelled / executions / materialInventory` | `cost / cancelled / executions / material_inventory` |
+| Solve status and candidate scope | `outcome.report`, `schedule.candidateScope` | `report`, `schedule.candidate_scope` |
+
+::: info Result Semantics
+Candidate scope records declared allowed choices; it is not `complete` or an optimality flag. Retain the solve report when no schedule exists. A returned schedule still needs cancellation, dependency and whole-interval resource checks.
+:::
 
 Outer success does not ensure a schedule. Read the report before the optional business solution. Verify a mode, start/end times, precedence, resource usage and recomputed cost. Allowed starts define feasibility; a longer solve budget does not create a start at hour 3.
 
@@ -57,4 +70,4 @@ Outer success does not ensure a schedule. Read the report before the optional bu
 
 Add hour 3 to b allowed starts only. You can now examine a/slow at 0 and b at 3, costing 1. Add machine downtime next, leaving freezing and rolling recovery for a later step.
 
-Continue to the [next business scenario](./business-scenario) and [integration checks](../integration). Consult [repository verification](../verification) when checking source behavior; test commands are not the application entry point.
+Continue to the [next business scenario](./business-scenario) and [integration checks](../integration). Consult [repository verification](../verification) when checking source behavior.

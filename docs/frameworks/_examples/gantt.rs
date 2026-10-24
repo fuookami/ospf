@@ -41,7 +41,17 @@ pub fn run_example<S: ColumnGenerationSolver>(solver: S) -> Result<(), String> {
     ).map_err(|e| format!("{e:?}"))?;
     println!("report={report:?}");
     match report.solution.and_then(|solution| solution.value) {
-        Some(schedule) => println!("cost={:?}, placements={:?}", schedule.cost, schedule.placements),
+        Some(schedule) => {
+            // #region result
+            println!("cost={:?}, cancelled={:?}, candidates={}", schedule.cost, schedule.cancelled, schedule.candidate_scope.len());
+            for p in &schedule.placements {
+                println!("task={:?}, mode={}, start={}, end={}", p.key.task, p.key.mode, p.time.start, p.time.end);
+                for r in &p.reservations { println!("resource={:?}, time={:?}, quantity={:?}", r.resource, r.time, r.quantity); }
+            }
+            println!("executions={:?}, inventory={:?}", schedule.executions, schedule.material_inventory);
+            assert!(schedule.placements.len() == 2 && schedule.cancelled.is_empty());
+            // #endregion result
+        },
         None => println!("No schedule; inspect the report before returning a business result"),
     }
     Ok(())

@@ -9,10 +9,10 @@ const frameworks = [
 ] as const
 
 const nextLessons = {
-  bpp1d: ['多箱型、库存与成本', 'Container Types, Stock and Cost'],
+  bpp1d: ['多容器类型、库存与费用', 'Container Types, Stock and Cost'],
   bpp2d: ['多板型、旋转与间距', 'Sheet Types, Rotation and Spacing'],
   bpp3d: ['多箱型与目标配置', 'Bin Types and Objectives'],
-  csp1d: ['需求口径与业务规则', 'Demand Units and Business Rules'],
+  csp1d: ['需求计量与业务规则', 'Demand Units and Business Rules'],
   csp2d: ['刀缝、工艺与卷材', 'Kerf, Cutting Process and Coils'],
   gantt: ['停机日历与滚动重排', 'Calendars and Rolling Recovery'],
   network: ['共享资源、缺货与联合模型', 'Shared Resources, Shortage and Embedding']

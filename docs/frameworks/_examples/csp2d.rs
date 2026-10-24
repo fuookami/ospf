@@ -18,8 +18,17 @@ pub fn run_example() -> Ret<()> {
     let problem = Csp2dProblem::single(material, product, 20, meters(0.0));
     // The default service uses a heuristic master solver, not a native optimizer.
     let solution = Csp2dSolvers::new().solve_milp(problem)?;
-    println!("covered: {}", solution.fully_covered);
+    // #region result
+    println!("covered={}, coverage={:?}, termination={:?}", solution.fully_covered, solution.coverage, solution.termination);
+    for (plan, count) in &solution.usage {
+        plan.validate(&meters(0.0))?;
+        println!("plan={}, material={}, usages={}, per usage={:?}", plan.id, plan.pattern.material.id, count, plan.product_amounts());
+        for p in &plan.pattern.placements { println!("{:?}: ({:?}, {:?}), size=({:?}, {:?})", p.item_id, p.x(), p.y(), p.width(), p.height()); }
+        println!("cut tree={:?}", plan.pattern.cut_tree);
+    }
     println!("material usage: {}", solution.total_material_usage());
     println!("waste area: {}", solution.total_waste_area());
+    assert!(solution.fully_covered, "Demand is not fully covered");
+    // #endregion result
     Ok(())
 }

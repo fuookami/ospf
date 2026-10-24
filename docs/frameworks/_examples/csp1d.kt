@@ -26,7 +26,15 @@ suspend fun runExample(solver: ColumnGenerationSolver) {
     )
     // This API returns a structured solution, not Ret<Csp1dSolution>.
     val solution = Csp1dMilp<Flt64>(solver).solve(problem)
-    println("status=${solution.status}")
+    // #region result
+    println("status=${solution.status}, failure=${solution.failureMessage}, kpi=${solution.kpi}")
     println("unmet=${solution.produce.unmetDemands}")
-    solution.produce.cuttingPlans.forEach { println("plan=${it.plan.id}, usages=${it.amount}") }
+    for (usage in solution.produce.cuttingPlans) {
+        val plan = usage.plan
+        println("plan=${plan.id}, material=${plan.material.id}, usages=${usage.amount}, rest=${plan.restWidth}")
+        plan.slices.forEach { println("width=${it.width}, pieces per usage=${it.amount}") }
+        plan.demandContributions.forEach { println("${it.product.id}: per usage=${it.quantity}, multiplier=${usage.amount}") }
+    }
+    check(solution.produce.unmetDemands.isEmpty()) { "Demand is not fully covered" }
+    // #endregion result
 }

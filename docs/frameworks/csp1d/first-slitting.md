@@ -1,6 +1,6 @@
 # Your First Slitting Plan: Demand and Plan Usage
 
-Write an application example directly; running repository tests is not a prerequisite. Prepare dependencies and backends using [Setup](../setup).
+Work through business input, solving and result extraction with this example. Prepare dependencies and backends using [Setup](../setup).
 
 ## 1. Business Scenario
 
@@ -10,9 +10,11 @@ Declare roll demand explicitly with `ProductDemand.legacyRoll` / `legacy_roll`. 
 
 ## 2. Construct Input and Call the Framework
 
+::: info Kotlin and Rust Entry Points
 Kotlin uses an actual injected solver and returns a structured `Csp1dSolution` directly, not `Ret`. The Rust default entry needs no native optimizer but is heuristic. The name `Milp` does not establish native MILP execution; configure the master-solver interface separately when needed.
+:::
 
-The following example functions include their imports and contain no test harness. The application injects a real Kotlin `ColumnGenerationSolver`; the next section shows the launcher.
+The examples include imports and error handling. The application supplies Kotlin `ColumnGenerationSolver` to `runExample`; the next section shows the launcher.
 
 ::: code-group
 
@@ -24,7 +26,7 @@ The following example functions include their imports and contain no test harnes
 
 ## 3. Launch from Your Application
 
-Place the Kotlin example in application sources, retaining its package. This standalone launcher calls the lesson function. Add the domain starter, Gurobi plugin and coroutines, and configure matching native libraries and a license. This is the production plugin, not a test-only delegating wrapper.
+Place the Kotlin example in application sources, retaining its package. This standalone launcher calls the lesson function. Add the domain starter, Gurobi plugin and coroutines, and configure matching native libraries and a license.
 
 ```kotlin
 import docs.examples.csp1d.runExample
@@ -46,9 +48,20 @@ fn main() {
 }
 ```
 
-At the CLI boundary these examples throw or return errors. A server should translate them at its request boundary and retain diagnostics. Preserve normal no-incumbent reports rather than inventing a technical failure or an empty successful plan.
+At the CLI boundary these examples throw or return errors. A server should translate them at its request boundary and retain diagnostics. Preserve reports when no feasible solution was found rather than inventing a technical failure or an empty successful plan.
 
 ## 4. Read and Validate the Result
+
+| Read | Kotlin | Rust |
+| --- | --- | --- |
+| Plans and usage counts | `solution.produce.cuttingPlans → plan / amount` | `solution.produce.cutting_plans → plan / amount` |
+| Material and remaining width | `plan.material.id / slices / restWidth` | `plan.material.id / slices / rest_width()` |
+| Contribution per execution | `plan.demandContributions → product.id / quantity` | `plan.demand_contributions → product.id / quantity` |
+| Shortfall and status | `produce.unmetDemands`, `status / failureMessage / kpi` | `produce.unmet_demands`, `status / failure_message / kpi` |
+
+::: info Result Semantics
+Aggregate production as `Σ contribution per execution × usage`. Plan count is not production. Remaining-width helpers report width, not placement intervals. There is no pool `complete`; inspect status, shortfalls and column-generation traces.
+:::
 
 Read status, failure and unmet demand before selected plans and usages. Recalculate P1 production in rolls and verify pattern widths and available batches. A nonempty candidate pool does not establish coverage; partial output is not a complete delivery.
 
@@ -56,4 +69,4 @@ Read status, failure and unmet demand before selected plans and usages. Recalcul
 
 Change demand from three rolls to four and check stock and contributions. Next try weight demand: changing a label to kg is insufficient; supply unit weight, roll length and conversion data, then update acceptance criteria.
 
-Continue to the [next business scenario](./business-scenario) and [integration checks](../integration). Consult [repository verification](../verification) when checking source behavior; test commands are not the application entry point.
+Continue to the [next business scenario](./business-scenario) and [integration checks](../integration). Consult [repository verification](../verification) when checking source behavior.
