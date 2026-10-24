@@ -1,6 +1,6 @@
 //! Branch-aware ESPPRC 定价图 / Branch-aware ESPPRC pricing graph.
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use time::Duration;
@@ -10,10 +10,10 @@ use ospf_rust_quantities::unit::UnitConversionValue;
 
 use crate::domain::vrp::{
     ArcCostCalculator, ArcFeasibilityPolicy, BranchMask, DistanceCalculator, PricingDuals,
-    RouteCostPolicy, TravelTimeCalculator, VehicleTypeId, VrpNode, VrptwInstance, default_arc_id,
+    RouteCostPolicy, RoutePricingArc, RoutePricingRows, TravelTimeCalculator, VehicleTypeId, VrpNode, VrptwInstance, default_arc_id,
 };
 use crate::error::{NetworkSchedulingError, Result};
-use crate::infrastructure::NetworkNodeId;
+use crate::infrastructure::{NetworkNodeId, NetworkSchedulingSolverValueAdapter};
 
 /// 定价图节点 / Pricing-graph node.
 #[derive(Debug, Clone)]
@@ -55,6 +55,8 @@ pub struct PricingArc {
     pub route_cost: f64,
     /// 当前阶段 reduced-cost 增量 / Current-phase reduced-cost increment.
     pub reduced_cost: f64,
+    /// 声明行单位下的增量系数 / Incremental coefficients in declared row units.
+    pub row_coefficients: BTreeMap<String, f64>,
 }
 
 /// 定价图快照 / Pricing graph snapshot.
@@ -147,6 +149,8 @@ pub struct RouteGraphBuilder<
     pub route_cost_policy: C,
     /// 静态弧可行性策略 / Static arc-feasibility policy.
     pub arc_feasibility_policy: Arc<dyn ArcFeasibilityPolicy<V>>,
+    /// 主问题与定价共用的声明行提供器 / Declared-row providers shared by masters and pricing.
+    pub pricing_rows: Arc<RoutePricingRows<V>>,
 }
 
 impl<V, D, T, A, C> RouteGraphBuilder<V, D, T, A, C>
@@ -172,7 +176,14 @@ where
             arc_cost_calculator,
             route_cost_policy,
             arc_feasibility_policy: Arc::new(crate::domain::vrp::DefaultArcFeasibilityPolicy),
+            pricing_rows: Arc::new(RoutePricingRows::default()),
         }
+    }
+
+    /// 设置共享声明行目录 / Set the shared declared-row catalog.
+    pub fn with_pricing_rows(mut self, rows: Arc<RoutePricingRows<V>>) -> Self {
+        self.pricing_rows = rows;
+        self
     }
 
     /// 设置静态弧可行性策略 / Set the static arc-feasibility policy.
@@ -188,6 +199,10 @@ where
         duals: &PricingDuals,
         branch_mask: Option<&BranchMask<VehicleTypeId>>,
     ) -> Result<PricingGraph> {
+        self.pricing_rows.validate_dual_keys(&duals.extension)?;
+        if duals.customer.values().chain(duals.fleet.values()).chain(duals.extension.values()).any(|value| !value.is_finite()) {
+            return Err(NetworkSchedulingError::pricing("定价对偶必须有限 / pricing duals must be finite"));
+        }
         let vehicle_type = self.instance.vehicle_type(vehicle_type_id).ok_or_else(|| {
             NetworkSchedulingError::validation(format!(
                 "车辆类型不存在：{} / vehicle type does not exist: {}",
@@ -436,6 +451,16 @@ where
                 crate::domain::vrp::PricingPhase::PhaseTwo => route_cost,
             };
             let index = arcs.len();
+            let adapter = NetworkSchedulingSolverValueAdapter::<V>::default();
+            let row_coefficients: BTreeMap<_, _> = self.pricing_rows.arc_coefficients(&RoutePricingArc {
+                instance: &self.instance, vehicle_type: vehicle_type_id, arc: &arc_id,
+                from: &nodes[from_index].node_id, to: &nodes[to_index].node_id,
+            })?.into_iter().map(|(id, value)| Ok((id, adapter.to_solver(&value)?))).collect::<Result<_>>()?;
+            let row_price: f64 = row_coefficients.iter().map(|(id, value)| value * duals.extension[id]).sum();
+            let reduced_cost = phase_cost - customer_dual - fleet_dual - row_price;
+            if !reduced_cost.is_finite() {
+                return Err(NetworkSchedulingError::pricing("逐弧 reduced cost 必须有限 / arc reduced cost must be finite"));
+            }
             arcs.push(PricingArc {
                 arc_id,
                 from: from_index,
@@ -444,7 +469,8 @@ where
                 travel_time,
                 arc_cost,
                 route_cost,
-                reduced_cost: phase_cost - customer_dual - fleet_dual,
+                reduced_cost,
+                row_coefficients,
             });
             outgoing[from_index].push(index);
         }

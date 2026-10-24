@@ -573,8 +573,7 @@ mod tests {
         assert!(ConflictExtractionTier::select(&native).is_native());
 
         // A satisfaction-only backend falls back to repeated solving.
-        let mut fallback = CapabilityMatrix::default();
-        fallback.fallback_satisfaction_only = true;
+        let mut fallback = CapabilityMatrix { fallback_satisfaction_only: true, ..Default::default() };
         fallback
             .analysis_capabilities
             .insert(AnalysisCapability::Conflict, CapabilitySupport::Conditional);

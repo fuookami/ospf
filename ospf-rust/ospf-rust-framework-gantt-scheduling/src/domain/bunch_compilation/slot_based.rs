@@ -16,7 +16,7 @@ use crate::domain::bunch_compilation::model::{BunchEntry, SlotBasedBunchEntry};
 use crate::domain::bunch_generation::{CapacityIntermediateValues, SlotConstraints};
 use crate::domain::common::{
     ConstraintIndexKey, ConstraintIndexMap, ExecutorId, ExecutorIdTrait,
-    GanttDynamicModelLifecycle, GanttModelStateFacade,
+    GanttModelStateFacade,
 };
 use crate::infrastructure::TimeSlot;
 use crate::{GanttError, GanttResult};
@@ -205,6 +205,17 @@ where
 {
     type ExecutorId = I;
 
+    fn pricing_domain(&self) -> Option<HashSet<(I, Option<usize>)>> {
+        Some(self.base.compilation.base.executor_ids.iter().flat_map(|executor| {
+            (0..self.slots.len()).map(move |slot| (executor.clone(), Some(slot)))
+        }).collect())
+    }
+
+    fn pricing_revision(&self) -> Option<String> {
+        self.base.pricing_revision().map(|revision| format!("{revision};slots={:?};capacity={:?};constraints={:?}",
+            self.slots, self.intermediate_values, self.slot_constraints))
+    }
+
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.base.register(model)
     }
@@ -241,12 +252,12 @@ where
             .collect())
     }
 
-    fn remove_columns(&mut self, bunch_indices: &[usize]) {
+    fn remove_columns(&mut self, bunch_indices: &[usize], model: &mut MetaModel<f64>) -> GanttResult<()> {
         let removed_model_indices = bunch_indices
             .iter()
             .filter_map(|bunch_index| self.base.compilation.bunch_x_map.get(bunch_index).copied())
             .collect::<HashSet<_>>();
-        self.base.remove_columns(bunch_indices);
+        self.base.remove_columns(bunch_indices, model)?;
         let removed = bunch_indices.iter().copied().collect::<HashSet<_>>();
         for bunches in self.slot_bunches.values_mut() {
             bunches.retain(|entry| !removed.contains(&entry.bunch.index));
@@ -257,6 +268,11 @@ where
         for model_indices in self.x_by_executor_slot.values_mut() {
             model_indices.retain(|model_index| !removed_model_indices.contains(model_index));
         }
+        Ok(())
+    }
+
+    fn next_column_index(&self) -> GanttResult<usize> {
+        self.base.next_column_index()
     }
 
     fn hide_bunches_in_model(
@@ -296,10 +312,6 @@ where
 
     fn flush(&mut self) {
         self.base.flush();
-    }
-
-    fn apply_lifecycle(&mut self, lifecycle: &mut GanttDynamicModelLifecycle) {
-        self.base.apply_lifecycle(lifecycle);
     }
 
     fn extract_shadow_price(
@@ -369,6 +381,10 @@ where
         solution: &[f64],
     ) -> crate::domain::bunch_compilation::BunchSolution {
         self.base.analyze_solution(solution)
+    }
+
+    fn analyze_solution_checked(&self, model: &MetaModel<f64>, solution: &[f64]) -> GanttResult<crate::domain::bunch_compilation::BunchSolution> {
+        self.base.analyze_solution_checked(model, solution)
     }
 
     fn analyze_solution_with_state(
@@ -448,23 +464,28 @@ where
     ) -> GanttResult<HashMap<usize, Vec<usize>>> {
         let mut grouped: BTreeMap<usize, Vec<SlotBasedBunchEntry<I>>> = BTreeMap::new();
         for mut entry in new_bunches {
+            if entry.slot_index >= self.slots.len()
+                || entry.bunch.slot_index.is_some_and(|slot| slot != entry.slot_index)
+            {
+                return Err(GanttError::Calculation { message: "任务束时隙未知或冲突 / unknown or conflicting bunch slot".into() });
+            }
             entry.bunch.iteration = iteration;
             entry.bunch.slot_index = Some(entry.slot_index);
             grouped.entry(entry.slot_index).or_default().push(entry);
         }
 
+        // 一次提交跨时隙批次，避免后一个时隙失败后留下前一时隙的列。 / Commit all slots together so failure in a later slot cannot leave partial columns.
+        let bunches = grouped.values().flatten().map(|entry| entry.bunch.clone()).collect();
+        let added = self.base.add_columns(iteration, bunches, model)?;
+        let added_set = added.into_iter().collect::<HashSet<_>>();
         let mut added_by_slot = HashMap::new();
         for (slot_index, entries) in grouped {
-            let bunches: Vec<BunchEntry<I>> =
-                entries.iter().map(|entry| entry.bunch.clone()).collect();
-            let added = self.base.add_columns(iteration, bunches, model)?;
-            let added_set = added
-                .iter()
-                .copied()
-                .collect::<std::collections::HashSet<_>>();
+            let mut added = Vec::new();
+            let mut seen = HashSet::new();
             let added_entries = entries
                 .into_iter()
-                .filter(|entry| added_set.contains(&entry.bunch.index));
+                .filter(|entry| added_set.contains(&entry.bunch.index) && seen.insert(entry.bunch.index))
+                .inspect(|entry| added.push(entry.bunch.index));
             self.slot_bunches
                 .entry(slot_index)
                 .or_default()
@@ -650,6 +671,7 @@ mod tests {
             0,
             vec![
                 BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: "exec_1".into(),
                     task_indices: vec![0],
@@ -658,6 +680,7 @@ mod tests {
                     slot_index: Some(0),
                 },
                 BunchEntry {
+                    id: "bunch-1".into(),
                     index: 1,
                     executor_id: "exec_1".into(),
                     task_indices: vec![1],
@@ -666,6 +689,7 @@ mod tests {
                     slot_index: Some(0),
                 },
                 BunchEntry {
+                    id: "bunch-2".into(),
                     index: 2,
                     executor_id: "exec_1".into(),
                     task_indices: vec![1],
@@ -709,6 +733,7 @@ mod tests {
             &mut ctx,
             0,
             vec![BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0],
@@ -721,5 +746,77 @@ mod tests {
         .unwrap_err();
 
         assert!(format!("{error}").contains("slot index is required"));
+    }
+
+    fn lifecycle_fixture() -> (MetaModel<f64>, BasicSlotBasedBunchCompilationContext<TestSlot>) {
+        let slots = vec![slot(8, 12), slot(12, 18)];
+        let values = CapacityIntermediateValues::new(slots.clone(), HashMap::new());
+        let base = BasicBunchCompilationContext::new(1, vec!["exec_1"], false);
+        let mut context = BasicSlotBasedBunchCompilationContext::new(base, slots, Box::new(StaticSolver { values }));
+        let mut model = MetaModel::new("slot-lifecycle");
+        context.register(&mut model).unwrap();
+        (model, context)
+    }
+
+    fn slot_candidate(index: usize, slot_index: usize) -> SlotBasedBunchEntry {
+        SlotBasedBunchEntry {
+            bunch: BunchEntry { id: format!("candidate-{index}").into(), index, executor_id: "exec_1".into(), task_indices: vec![0], cost: 1.0, iteration: 0, slot_index: Some(slot_index) },
+            slot_index,
+        }
+    }
+
+    #[test]
+    fn cross_slot_batch_failure_leaves_no_partial_columns_or_maps() {
+        let (mut model, mut context) = lifecycle_fixture();
+        let before = ospf_rust_core::solver::linear_model_fingerprint(&model.try_to_linear_triad_model().unwrap()).unwrap();
+        let symbols = model.as_basic().symbols().len();
+        let mut invalid = slot_candidate(90, 1);
+        invalid.bunch.task_indices = vec![1];
+        assert!(context.add_columns_by_slot(0, vec![slot_candidate(40, 0), invalid], &mut model).is_err());
+        assert_eq!(context.column_count(), 0);
+        assert!(context.bunches_in_slot(0).is_empty());
+        assert!(context.bunches_in_slot(1).is_empty());
+        assert!(context.x_by_slot().is_empty());
+        assert!(context.x_by_executor_slot().values().all(Vec::is_empty));
+        assert_eq!(ospf_rust_core::solver::linear_model_fingerprint(&model.try_to_linear_triad_model().unwrap()).unwrap(), before);
+        assert_eq!(model.as_basic().symbols().len(), symbols);
+        assert_eq!(context.next_column_index().unwrap(), 0);
+    }
+
+    #[test]
+    fn unknown_and_conflicting_slot_indices_are_rejected_before_mutation() {
+        for invalid in [
+            slot_candidate(90, 2),
+            SlotBasedBunchEntry { slot_index: 1, ..slot_candidate(90, 0) },
+        ] {
+            let (mut model, mut context) = lifecycle_fixture();
+            assert!(context.add_columns_by_slot(0, vec![slot_candidate(40, 0), invalid], &mut model).is_err());
+            assert_eq!(model.as_basic().num_tokens(), 1);
+            assert_eq!(context.column_count(), 0);
+        }
+    }
+
+    #[test]
+    fn duplicate_slot_candidates_are_idempotent_and_lifecycle_clears_all_maps() {
+        use crate::domain::common::GanttDynamicModelLifecycle;
+
+        let (mut model, mut context) = lifecycle_fixture();
+        let candidate = slot_candidate(40, 0);
+        assert_eq!(context.add_columns_by_slot(0, vec![candidate.clone(), candidate.clone()], &mut model).unwrap()[&0], vec![40]);
+        assert_eq!(context.bunches_in_slot(0).len(), 1);
+        assert_eq!(context.x_by_slot()[&0].len(), 1);
+        assert_eq!(context.x_by_executor_slot()[&("exec_1".into(), 0)].len(), 1);
+        let variable = context.base.compilation.bunch_x_map[&40];
+        let mut lifecycle = GanttDynamicModelLifecycle::new();
+        lifecycle.remove_columns([40]);
+        context.apply_lifecycle(&mut lifecycle, &mut model).unwrap();
+        assert!(context.bunches_in_slot(0).is_empty());
+        assert!(context.x_by_slot()[&0].is_empty());
+        assert!(context.x_by_executor_slot()[&("exec_1".into(), 0)].is_empty());
+        context.restore_non_removed_ranges_in_model(&mut model).unwrap();
+        assert_eq!(model.variable_range_by_index(variable), Some(ospf_rust_core::variable::VariableRange::bounded(0.0, 0.0)));
+        assert_eq!(context.next_column_index().unwrap(), 41);
+        context.add_columns_by_slot(1, vec![SlotBasedBunchEntry { bunch: BunchEntry { index: 41, ..candidate.bunch }, slot_index: 0 }], &mut model).unwrap();
+        assert_ne!(context.base.compilation.bunch_x_map[&41], variable);
     }
 }

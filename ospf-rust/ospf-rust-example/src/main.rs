@@ -92,10 +92,13 @@ fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(all(
     not(feature = "backend-gurobi"),
-    any(feature = "demo5-gurobi-bp", feature = "demo5-scip-bp")
+    any(feature = "demo4-offline", feature = "demo5-gurobi-bp", feature = "demo5-scip-bp")
 ))]
 fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     match command {
+        #[cfg(feature = "demo4-offline")]
+        "framework:demo4" => ospf_rust_example::framework::run_demo4(),
+        #[cfg(any(feature = "demo5-gurobi-bp", feature = "demo5-scip-bp"))]
         "framework:demo5" => framework::run_demo5(),
         _ => {
             print_usage();
@@ -106,7 +109,7 @@ fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(all(
     not(feature = "backend-gurobi"),
-    not(any(feature = "demo5-gurobi-bp", feature = "demo5-scip-bp"))
+    not(any(feature = "demo4-offline", feature = "demo5-gurobi-bp", feature = "demo5-scip-bp"))
 ))]
 fn run_command(command: &str) -> Result<(), Box<dyn std::error::Error>> {
     let _ = command;

@@ -7,3 +7,4 @@ pub mod semantic_parameter;
 pub mod solver;
 pub mod stowage_mode;
 pub mod try_helpers;
+pub mod application_service;

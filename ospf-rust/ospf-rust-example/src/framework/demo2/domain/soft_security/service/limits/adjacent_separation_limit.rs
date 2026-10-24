@@ -21,11 +21,13 @@ pub fn apply_adjacent_separation_limits(
         for j in (i + 1)..aggregation.separated.len() {
             let left_cargo = aggregation.separated[i];
             let right_cargo = aggregation.separated[j];
-            for p in 0..(context.request.positions.len() - 1) {
+            for pair in &context.request.adjacent_positions {
+                let p = pair.first;
+                let next = pair.second;
                 model.add_linear_constraint(
                     &[
                         (context.x_idx[left_cargo][p], 1.0),
-                        (context.x_idx[right_cargo][p + 1], 1.0),
+                        (context.x_idx[right_cargo][next], 1.0),
                     ],
                     ConstraintRelation::LessEqual,
                     1.0,
@@ -40,7 +42,7 @@ pub fn apply_adjacent_separation_limits(
                 model.add_linear_constraint(
                     &[
                         (context.x_idx[right_cargo][p], 1.0),
-                        (context.x_idx[left_cargo][p + 1], 1.0),
+                        (context.x_idx[left_cargo][next], 1.0),
                     ],
                     ConstraintRelation::LessEqual,
                     1.0,

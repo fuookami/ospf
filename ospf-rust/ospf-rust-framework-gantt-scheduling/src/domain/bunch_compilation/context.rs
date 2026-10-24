@@ -34,6 +34,16 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
     /// 执行者 ID 类型 / Executor id type
     type ExecutorId: ExecutorIdTrait;
 
+    /// 声明完整执行器/时隙域；None 不允许全域认证。 / Declare the complete executor-slot domain; None disables global certification.
+    fn pricing_domain(&self) -> Option<HashSet<(Self::ExecutorId, Option<usize>)>> {
+        None
+    }
+
+    /// 当前业务注册修订，不代替实际 LP 来源验证。 / Current business-registration revision, not a substitute for actual LP provenance validation.
+    fn pricing_revision(&self) -> Option<String> {
+        None
+    }
+
     /// 注册到模型 / Register to model
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()>;
 
@@ -45,8 +55,11 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>>;
 
-    /// 移除列 / Remove columns
-    fn remove_columns(&mut self, bunch_indices: &[usize]);
+    /// 退休列并原子更新模型。 / Retire columns and atomically update the model.
+    fn remove_columns(&mut self, bunch_indices: &[usize], model: &mut MetaModel<f64>) -> GanttResult<()>;
+
+    /// 未使用过的下一个列索引，必须覆盖退休历史。 / Next unused column index, accounting for retired history.
+    fn next_column_index(&self) -> GanttResult<usize>;
 
     /// 隐藏束并同步模型 / Hide bunches and sync model
     fn hide_bunches_in_model(
@@ -94,11 +107,16 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
     fn flush(&mut self) {}
 
     /// 应用动态生命周期 / Apply dynamic lifecycle
-    fn apply_lifecycle(&mut self, lifecycle: &mut GanttDynamicModelLifecycle) {
+    fn apply_lifecycle(
+        &mut self,
+        lifecycle: &mut GanttDynamicModelLifecycle,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<()> {
         let removed = lifecycle.state().removed_columns();
         if !removed.is_empty() {
-            self.remove_columns(&removed);
+            self.remove_columns(&removed, model)?;
         }
+        Ok(())
     }
 
     /// 提取影子价格 / Extract shadow price
@@ -171,6 +189,25 @@ pub trait IterativeBunchCompilationContext: Send + Sync {
 
     /// 分析解 / Analyze solution
     fn analyze_solution(&self, solution: &[f64]) -> BunchSolution;
+
+    /// 校验当前模型后提取，不把缺失、非有限或分数 incumbent 转成业务结果。 / Extract only after validating the current model, rejecting missing, non-finite or fractional incumbents.
+    fn analyze_solution_checked(&self, model: &MetaModel<f64>, solution: &[f64]) -> GanttResult<BunchSolution>;
+
+    /// 校验生命周期选择，不通过强行插入固定列来修补非法结果。 / Validate lifecycle selection without repairing an invalid result by forcibly inserting fixed columns.
+    fn analyze_solution_with_lifecycle_checked(
+        &self,
+        model: &MetaModel<f64>,
+        solution: &[f64],
+        lifecycle: &GanttDynamicModelLifecycle,
+    ) -> GanttResult<BunchSolution> {
+        let result = self.analyze_solution_checked(model, solution)?;
+        if result.selected_bunches.iter().any(|index| !lifecycle.state().is_selectable(*index))
+            || lifecycle.state().fixed_columns().iter().any(|index| !result.selected_bunches.contains(index))
+        {
+            return Err(crate::GanttError::Calculation { message: "任务束结果违反列生命周期 / bunch incumbent violates column lifecycle".into() });
+        }
+        Ok(result)
+    }
 
     /// 基于模型状态分析解 / Analyze solution with model state
     fn analyze_solution_with_state(
@@ -260,6 +297,23 @@ where
 {
     type ExecutorId = I;
 
+    fn pricing_domain(&self) -> Option<HashSet<(I, Option<usize>)>> {
+        Some(self.compilation.base.executor_ids.iter().cloned().map(|executor| (executor, None)).collect())
+    }
+
+    fn pricing_revision(&self) -> Option<String> {
+        let mut fixed: Vec<_> = self.compilation.fixed_bunches.iter().copied().collect();
+        fixed.sort_unstable();
+        let x_map: std::collections::BTreeMap<_, _> = self.compilation.bunch_x_map.iter().collect();
+        let aggregation = &self.compilation.base.aggregation;
+        let active: Vec<_> = aggregation.bunches().iter().map(|bunch| bunch.index).collect();
+        Some(format!("{:?}:{:?}:{:?}:{active:?}:{fixed:?}:{x_map:?}:{:?}:{:?}:{:?}:{:?}:{:?}:{:?}:{}",
+            self.compilation.base.n_tasks, self.compilation.base.executor_ids, aggregation.all_bunches(),
+            self.compilation.cost_terms, self.compilation.task_compilation_terms, self.compilation.executor_compilation_terms,
+            self.compilation.base.y_indices, self.compilation.base.z_indices, self.compilation.base.x_indices,
+            self.compilation.base.with_executor_leisure))
+    }
+
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.compilation.register(model)
     }
@@ -273,8 +327,15 @@ where
         self.compilation.add_columns(iteration, new_bunches, model)
     }
 
-    fn remove_columns(&mut self, bunch_indices: &[usize]) {
-        self.compilation.remove_columns(bunch_indices);
+    fn remove_columns(&mut self, bunch_indices: &[usize], model: &mut MetaModel<f64>) -> GanttResult<()> {
+        self.compilation.remove_columns(bunch_indices, model)
+    }
+
+    fn next_column_index(&self) -> GanttResult<usize> {
+        self.compilation.base.aggregation.all_bunches().iter().map(|bunch| bunch.index).max()
+            .map_or(Ok(0), |index| index.checked_add(1).ok_or_else(|| crate::GanttError::Calculation {
+                message: "任务束索引耗尽 / bunch index exhausted".into(),
+            }))
     }
 
     fn hide_bunches_in_model(
@@ -315,13 +376,6 @@ where
 
     fn flush(&mut self) {
         self.compilation.flush();
-    }
-
-    fn apply_lifecycle(&mut self, lifecycle: &mut GanttDynamicModelLifecycle) {
-        let removed = lifecycle.state().removed_columns();
-        if !removed.is_empty() {
-            self.compilation.remove_columns(&removed);
-        }
     }
 
     fn extract_shadow_price(
@@ -366,6 +420,10 @@ where
 
     fn analyze_solution(&self, solution: &[f64]) -> BunchSolution {
         self.compilation.extract_solution(solution)
+    }
+
+    fn analyze_solution_checked(&self, model: &MetaModel<f64>, solution: &[f64]) -> GanttResult<BunchSolution> {
+        self.compilation.extract_solution_checked(model, solution)
     }
 
     fn column_count(&self) -> usize {
@@ -473,6 +531,7 @@ mod tests {
         ctx.register(&mut model).unwrap();
 
         let bunches = vec![BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
@@ -550,6 +609,7 @@ mod tests {
             0,
             vec![
                 BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: "exec_1".into(),
                     task_indices: vec![0],
@@ -558,6 +618,7 @@ mod tests {
                     slot_index: None,
                 },
                 BunchEntry {
+                    id: "bunch-1".into(),
                     index: 1,
                     executor_id: "exec_1".into(),
                     task_indices: vec![1],
@@ -592,6 +653,7 @@ mod tests {
             0,
             vec![
                 BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: "exec_1".into(),
                     task_indices: vec![0],
@@ -600,6 +662,7 @@ mod tests {
                     slot_index: None,
                 },
                 BunchEntry {
+                    id: "bunch-1".into(),
                     index: 1,
                     executor_id: "exec_1".into(),
                     task_indices: vec![1],
@@ -631,6 +694,7 @@ mod tests {
         ctx.add_columns(
             0,
             vec![BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0],
@@ -663,6 +727,7 @@ mod tests {
             0,
             vec![
                 BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: "exec_1".into(),
                     task_indices: vec![0],
@@ -671,6 +736,7 @@ mod tests {
                     slot_index: None,
                 },
                 BunchEntry {
+                    id: "bunch-1".into(),
                     index: 1,
                     executor_id: "exec_1".into(),
                     task_indices: vec![1],

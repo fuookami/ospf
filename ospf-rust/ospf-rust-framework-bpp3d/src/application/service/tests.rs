@@ -9,7 +9,9 @@ mod tests {
     use ospf_rust_quantities::quantity::Quantity;
     use ospf_rust_quantities::unit::derived::Meter;
     #[cfg(not(feature = "async"))]
-    use ospf_rust_framework::solver::{FeasibleSolution, LinearDualSolution, LPResult};
+    use ospf_rust_framework::solver::{
+        ColumnGenerationSolver, FeasibleSolution, FrameworkSolveOptions, LinearDualSolution, LPResult,
+    };
 
     use crate::domain::item::PackageShapeSpec;
     use crate::domain::packing::{KnownCoordinatePlacement, LayerPlacementAdapter};
@@ -51,6 +53,7 @@ mod tests {
     include!("tests/fixture_suite.rs");
     include!("tests/packing_analysis.rs");
     include!("tests/algorithm.rs");
+    include!("tests/multi_bin.rs");
     include!("tests/meta_model_executors.rs");
     include!("tests/application_flow.rs");
     include!("tests/csv_flow.rs");

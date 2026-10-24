@@ -24,9 +24,9 @@
 | `src/example_modeling.rs` | 共享建模和 typed solve helper。 |
 | `src/core` | core 建模 demo、shortcut API、capability gate 和 backend-aware 示例。 |
 | `src/framework/demo1` | framework routing/bandwidth context 示例。 |
-| `src/framework/demo2` | Adaptive Benders / MILP fallback 行为契约示例。 |
+| [`src/framework/demo2`](src/framework/demo2/README_ch.md) | 满载、预分配、重量推荐的共享航空注册；支持 MILP、安全 Benders 及独立分区 CG。 |
 | `src/framework/demo3` | CSP1D-facing demo scaffold。 |
-| `src/framework/demo4` | Gantt-scheduling-facing scaffold 与 domain layout experiment。 |
+| `src/framework/demo4` | 无损航班恢复、Gantt 受管主问题、Network 路径定价及实际结果提取。 |
 | `src/framework/demo5` | Solomon parser/adapter 与 VRPTW Branch-and-Price solver wiring。 |
 
 ## Public API
@@ -40,9 +40,9 @@
 | `core:capability-gate` | capability 门控建模路径。 | Gurobi feature |
 | `core:shortcuts` | `MetaModel` shortcut API demo。 | Gurobi feature |
 | `framework:demo1` | framework routing/bandwidth context demo。 | Gurobi feature |
-| `framework:demo2` | Adaptive Benders 和 MILP fallback demo。 | Gurobi feature |
+| `framework:demo2` | 共享 BPP1D/BPP2D 航空配载与真实求解证据示例。 | Gurobi feature |
 | `framework:demo3` | CSP1D scaffold 入口。 | Gurobi feature |
-| `framework:demo4` | Gantt scaffold 入口。 | Gurobi feature |
+| `framework:demo4` | 航班恢复领域展示或真实 Gantt 列生成应用。 | `demo4-offline` 或 `demo4-gurobi-cg` |
 | `framework:demo5` | VRPTW Branch-and-Price demo。 | `demo5-gurobi-bp` 或 `demo5-scip-bp` |
 
 ## 条件函数迁移说明
@@ -79,7 +79,7 @@ cargo run -p ospf-rust-example --features backend-gurobi -- core:shortcuts
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo1
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo2
 cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo3
-cargo run -p ospf-rust-example --features backend-gurobi -- framework:demo4
+cargo +nightly-2026-08-01 run -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- framework:demo4
 cargo run -p ospf-rust-example --features demo5-gurobi-bp -- framework:demo5
 cargo run -p ospf-rust-example --features demo5-scip-bp -- framework:demo5
 ```
@@ -94,9 +94,20 @@ cargo check -p ospf-rust-example --features demo5-scip-bp
 
 未启用 backend feature 时，运行后端 demo 会返回提示 `rerun with --features backend-gurobi`。
 
-`framework:demo4` 当前保持为 scaffold 命令入口。Gantt-scheduling parity 明确暂缓，不标记为已完成功能。
+`framework:demo4` 在 `demo4-offline` 下运行恢复领域展示，在 `demo4-gurobi-cg` 下额外执行真实 Gantt
+应用：自动初始列、RMP、当前模型完整对偶、Network 路径定价、增列、最终 MILP 和生产校验。
+它不是私有简化列生成循环，也不从有限主问题报告推导全局整数最优。
+[Demo4 成对文档](src/framework/demo4/README_ch.md) 说明实际恢复记录、链接/旅客、机队、限制、流控、
+飞机/时刻锁定及完整快照边界。离线测试不依赖商业求解器，原生测试必须实际执行：
 
-`framework:demo5` 使用 inline Solomon fixture，验证 parser、adapter、route generation、restricted master 和 Branch-and-Price wiring。integration target 只覆盖 target 自身的夹具/parser 检查；下面的库内门禁命令才会执行 25 客户 direct-MIP 交叉验证、5 客户全路线 master oracle、100 客户 smoke、strict-proof fixture 和 SCIP 合法终态：
+```powershell
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-offline -- --list
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-offline
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- --list
+cargo +nightly-2026-08-01 test -p ospf-rust-example --no-default-features --features demo4-gurobi-cg -- --include-ignored
+```
+
+`framework:demo5` 使用 inline Solomon fixture，验证 parser、adapter、route generation、restricted master 和 Branch-and-Price wiring。对应 integration target 除夹具/parser 外，还实际执行原生求解、路线复核及小实例全路线 oracle；库内门禁另外覆盖 25 客户 direct-MIP 交叉验证、100 客户 smoke、strict-proof fixture 和 SCIP 合法终态，两者都须运行，不能互相替代：
 
 ```powershell
 cargo test -p ospf-rust-example --features demo5-gurobi-bp --lib demo17_25_branch_and_price_matches_direct_mip_objective -- --include-ignored
@@ -109,22 +120,22 @@ solver 和 pricing 失败路径由 network crate 的离线测试覆盖。缺少 
 
 ## Demo2 的 Benders 行为契约
 
-`framework::demo2` 支持自适应 Benders，并可选 MILP fallback。
+`framework::demo2` 使用共享安全固定追索 Benders 服务，并可选全新模型 MILP fallback。
 
-当 `prefer_benders=true` 时，应用层会基于问题规模（`cargo_count * position_count`）推导生效的 adaptive profile，并在 notes 中同时输出配置参数和生效参数。生效参数包含用于 cut stagnation 的 `max_stall_iterations`，以及用于 objective-improvement stagnation 的 `objective_stall_iterations`。
+当 `prefer_benders=true` 时，应用层基于实际稀疏分配数选择 Benders，并输出配置参数和生效参数。安全固定追索服务未实现的旧 cut/objective 停滞开关明确为 inactive，不会隐式改变终止或回退策略。
 
 ### 状态与路径语义
 
-1. `prefer_benders=false`：直接走 MILP；diagnostics 包含 `solver_path=milp_direct`。
-2. `prefer_benders=true` 且 Benders 成功：响应状态为 `Feasible` 或 `Optimal`；diagnostics 包含 `solver_path=benders`。
-3. `prefer_benders=true`、Benders 失败且 `benders_fallback_to_milp=true`：应用层重试 MILP；最终路径为 `solver_path=milp_fallback`；`benders_failed` 保持可观测。
-4. `prefer_benders=true`、Benders 失败且 `benders_fallback_to_milp=false`：响应状态为 `BendersFailed`；不再重试 MILP。
+1. `prefer_benders=false`：除非显式选择独立分区 CG，否则直接走 MILP；diagnostics 标明实际路径。
+2. Benders／CG 加速阶段的源方案保守为 `Feasible`，不提升 master/sub 或受限池证明；`solve_policy.source_milp_finishing` 默认 `IfUnproven`，缺少完整源终局证明时用预留时间、已验证 warm start 和全新等价源 MILP 收尾。设为 `Disabled` 则不追加源求解、不预留收尾时间，但保留完整源可行性复核。
+3. 可恢复分解失败可在 `benders_fallback_to_milp=true` 时，用剩余总预算启动全新等价 MILP；输入／建模／回调错误、取消及预算耗尽不回退。
+4. 旧回退开关独立控制加速阶段内部提前回退；要禁止 Benders 后所有普通 MILP，须同时关闭它并将收尾策略设为 `Disabled`。取消／中断或总预算耗尽不启动新求解。实际加速和收尾证据分别保留，不用合成的 `BendersFailed` 状态替换源证据。
 
-`BendersFailed` 表示请求终止在 Benders 错误路径。`milp_fallback` 表示 Benders 先失败，但请求通过 MILP 恢复。
+`milp_fallback` 仅表示已尝试全新 MILP，不表示必然恢复成功；回退无解或更差时不能丢弃更好的已验证分解方案。完整终态、独立 CG、回调与提取合同见 [Demo2 说明](src/framework/demo2/README_ch.md)。
 
-### 在线判定覆盖配置
+### 观察诊断覆盖配置
 
-`Demo2Request.benders_quality_overrides` 支持按请求覆盖在线质量守卫阈值。不传时使用默认守卫配置。
+`Demo2Request.benders_quality_overrides` 支持按请求覆盖观察诊断阈值。诊断使用实际可得的下界与割数，不虚构轨迹、不触发回退或丢弃 incumbent；未配置时使用默认诊断值。
 
 可覆盖字段：
 

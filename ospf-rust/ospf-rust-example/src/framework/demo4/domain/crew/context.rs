@@ -9,6 +9,10 @@ pub struct CrewContext {
     pub crews: Vec<Crew>,
 }
 
+impl Default for CrewContext {
+    fn default() -> Self { Self::new() }
+}
+
 impl CrewContext {
     /// 创建新的机组上下文 / Create new crew context
     pub fn new() -> Self {

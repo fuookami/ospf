@@ -138,6 +138,7 @@ where
 }
 
 /// 使用显式线性部分创建自动命名安全蕴含 / Create an auto-named safe implication from explicit linear parts.
+#[expect(clippy::too_many_arguments, reason = "保留既有公开蕴含语义接口 / Preserve the existing public implication-semantic interface")]
 pub fn imply_from_parts<V>(
     premise: Linear<V>,
     premise_relation: ConditionRelation,

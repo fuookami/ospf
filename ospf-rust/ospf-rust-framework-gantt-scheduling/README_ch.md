@@ -20,6 +20,7 @@
 
 | Rust 模块或目录 | Kotlin 边界 | 职责 |
 | --- | --- | --- |
+| [`src/domain/activity`](src/domain/activity/README_ch.md) | `3f15899` 的 `gantt-scheduling-domain-activity-context` | 有限候选、事务注册、事件库存、原域校验和完整审计的单次 MILP 服务。 |
 | [`src/infrastructure`](src/infrastructure/README_ch.md) | `gantt-scheduling-infrastructure` | Time range、window、slot、duration range、working calendar、calendar policy、local date offset 和 render DTO。 |
 | [`src/domain/task`](src/domain/task/README_ch.md) | `gantt-scheduling-domain-task-context` | Task、executor、assignment、task plan、task bunch、cost、solver value adapter、task-step graph 和 shadow-price key。 |
 | [`src/domain/task_compilation`](src/domain/task_compilation/README_ch.md) | `gantt-scheduling-domain-task-compilation-context` | task-level MILP component、CP assignment/NoOverlap component、time variable、switch、makespan、solution analysis 和 limit/objective pipeline。 |
@@ -90,6 +91,17 @@
 12. `BranchGroupTracker` 按 `(executor, slot)` 跟踪分支状态，部分 slot 固定时不会误移除整个 executor。
 13. `SlotBunchPricingRequest` 将时隙入口状态和分支限制传入时隙定价策略；`CapacityColumnSelectionConstraint` 支持产能列恰选约束及其对偶提取。
 
+## 任务束主问题生命周期
+
+`BunchEntry::id: BunchId` 区分任务覆盖相同的完整业务候选。
+`IterativeBunchCompilation::configure_master` 可启用标准覆盖、取消、执行器选择行及自有费用目标。
+注册、增列和带模型的退休操作均绑定原模型并以事务执行；真实变更刷新自有行与目标，不覆盖无关扩展。
+退休及 `apply_lifecycle` 现在需要 `&mut MetaModel`，返回 `GanttResult<()>`。
+生产提取校验完整当前后端矩阵、整数值及实际取消变量。任务束算法遵循模型目标方向，初始零费用不
+终止定价，最终 MILP 失败向上传播。保留较早 incumbent 前必须在扩展后的模型重验，并丢弃旧证明。
+API 迁移以及受管动态行与既有静态管道快照的区别见
+[任务束编译](src/domain/bunch_compilation/README_ch.md)。
+
 ## 泛型数值边界
 
 domain API 通过 `SolverValueAdapter` 使用泛型 solver-value 抽象。`F64SolverValueAdapter` 标记当前 `f64` solver 边界。solver conversion 集中在 context registration、application solver call 和 result extraction，不应散落在 domain logic 中。
@@ -126,6 +138,33 @@ optional fixed-duration interval。每个 interval 使用对应 assignment liter
 
 multi-node tree search 优先使用 `solve_branch_node_with_fresh_model`，它会恢复 application state、dynamic lifecycle 和 compilation context，并在求解后丢弃 node-local `MetaModel`。
 
+## 定价作用域与证据
+
+task 和 bunch 定价均消费 `ospf_rust_framework::model::ColumnGenerationBatch`。
+搜索完成、无改进证据、当前 RMP 最优和整数最优保持独立合同。
+旧生成器一律返回启发式批次，即使候选为空也不能据此认证。
+
+- `domain::task_generation::{TaskCGPolicy, TaskPricingRequest, TaskPricingColumn,
+  TaskPricingDomain}` 提供任务-执行器定价。当前任务编译不含时隙；时隙零表示既有任务-执行器对，
+  非零时隙直接拒绝，不会在注册时静默丢弃。
+- `TaskColumnGenerationAlgorithm::solve_rmp_lp_report` 实际执行模型松弛，保留正常不可行、限时无
+  incumbent 和取消报告。`accept_pricing_report` 接收原报告；`accept_pricing_lp` 还逐项核对旧式
+  primal、目标和对偶投影没有被篡改。两者都不从裸外部对偶重建来源。
+- task/bunch 请求从当前模型独立验证通过的 LP 证书重新计算有符号价格。等式对偶按 `le - ge`
+  折叠，大于等于行只归一化一次符号；`row_duals` 保留所有原模型扩展行及显式零。
+  未映射的隐藏编译行被拒绝。伪造的最优报告返回错误，不静默降级为启发式。
+- context 声明 `pricing_domain` 和 `pricing_revision`；task context 可通过 `task_pricing_rows`
+  适配下游 pipeline 行名。自定义 context 的修订必须覆盖所有影响定价的业务变化；缺省实现不认证
+  完整域。修订只是附加生命周期防护，不能代替实际模型绑定的 LP 来源验证。
+- 只有匹配的穷尽无改进批次与可靠当前 LP 证书同时成立，才产生 `certified_lower_bound`。
+  局部域、固定、保留列、子域组合覆盖缺失、预算及中断均不能认证完整域。每次调用生成新请求身份。
+  该界只认证完整定价域 LP，不认证全局整数最优。
+- `add_priced_columns` 复用既有 context 注册生命周期；任务索引和全部成本有限性在整批注册前检查。
+  context/model 改变使任务定价证据失效；公开价格缓存的改写不能替换证书中实际使用的价格。
+
+这些入口不新增第二套任务建模内核或私有求解循环。`TaskPricingColumn<V>` 保留领域数值类型，
+既有任务编译与定价策略边界仍使用 `f64`；其他精确数值 feature 不扩大运行时单位序列化承诺。
+
 ## 输出
 
 `BunchSolution` 及相关 bunch scheduling 输出包含 selected bunch、task assignment、canceled task、executor assignment 和 total cost。`CapacitySchedulingSolution` 包含 capacity column 和每个 time slot 的 production action。iteration 与 branch-search 输出记录 LP/IP objective、node status、branch decision、incumbent state 和 trace hook。
@@ -151,6 +190,11 @@ cargo check -p ospf-rust-framework-gantt-scheduling --features serde
 ```
 
 ## 当前边界
+
+`BunchBranchAndPriceAlgorithm::run_report` 复用同一循环，保留初始不可行、限时无 incumbent、取消和中断的
+结构化报告；后端/数值技术失败及非法 incumbent 仍返回错误。报告最多覆盖当前有限主问题，不自动成为完整定价域证明。
+Demo4 的恢复应用通过迭代 context 和不可变业务目录接入本循环，详见
+[恢复应用说明](../ospf-rust-example/src/framework/demo4/README_ch.md)。
 
 1. 普通 MILP、RMP LP 和 final MILP 共享 context 与 iterative compilation 入口，用于注册、加列、shadow-price extraction 和 solution extraction。solver conversion 仍在 application 层。
 2. multi-step task graph 作为 domain extension model 暴露；既有 single-step task compilation 保持不变。

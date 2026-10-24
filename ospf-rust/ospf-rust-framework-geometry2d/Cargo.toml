@@ -1,0 +1,25 @@
+[package]
+name = "ospf-rust-framework-geometry2d"
+version = "1.1.0"
+edition = "2024"
+description = "Shared 2D quantity geometry for OSPF packing and cutting frameworks"
+authors = ["fuookami <wfuookami@gmail.com>"]
+license.workspace = true
+homepage = "https://github.com/fuookami/ospf-rust"
+repository = "https://github.com/fuookami/ospf-rust"
+readme = "README.md"
+
+[features]
+default = []
+serde = ["dep:serde"]
+nightly = []
+big-rational = []
+big-decimal = []
+
+[dependencies]
+ospf-rust-base = { path = "../ospf-rust-base", version = "1.1.0" }
+ospf-rust-math = { path = "../ospf-rust-math", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
+
+serde = { version = "1.0.229", features = ["derive"], optional = true }
+num-traits = "0.2.19"

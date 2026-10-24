@@ -5,10 +5,12 @@
 
 pub mod constraint_index;
 pub mod id;
+mod pricing_evidence;
 
 pub use constraint_index::{ConstraintIndexEntry, ConstraintIndexKey, ConstraintIndexMap};
+pub(crate) use pricing_evidence::PricingEvidence;
 pub use id::{
-    ExecutorId, ExecutorIdTrait, GanttId, ProductionActionId, ProductionActionIdTrait,
+    BunchId, ExecutorId, ExecutorIdTrait, GanttId, ProductionActionId, ProductionActionIdTrait,
     ProductionMaterialId, ProductionMaterialIdTrait, ResourceId, ResourceIdTrait, TaskId,
     TaskIdTrait, TaskPlanId, TaskPlanIdTrait, TaskStepId, TaskStepIdTrait, executor_id,
     production_action_id, production_material_id, resource_id, task_id, task_plan_id, task_step_id,

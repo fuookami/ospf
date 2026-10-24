@@ -8,25 +8,25 @@
 //! Euclidean and `TimeWindow` policies. Solver duals are supplied as BigDecimal and
 //! the complete ESPPRC label extension stays outside f64.
 
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeMap, VecDeque};
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::Instant;
-
 use bigdecimal::{BigDecimal, ToPrimitive, Zero};
-use ospf_rust_framework_gantt_scheduling::infrastructure::DurationUnit;
-use ospf_rust_quantities::Quantity;
 use time::{Duration, OffsetDateTime};
-
+use ospf_rust_quantities::Quantity;
+use ospf_rust_framework_gantt_scheduling::infrastructure::DurationUnit;
+use crate::domain::path::{PathProblem, PathSearchBudget, PathSearchCompletion, PathSearchContext};
+use crate::domain::route_generation::path_search::{self, PricingLabel, PricingPathPolicy};
 use crate::domain::route_generation::{
     CancellationToken, ForbiddenCustomers, LabelStatistics, TruncationReason,
 };
 use crate::domain::vrp::{
     ArcFeasibilityPolicy, BranchMask, CustomerId, DefaultArcFeasibilityPolicy,
     DistanceArcCostCalculator, DistanceAsTravelTimeCalculator, EuclideanDistanceCalculator,
-    FixedPlusArcCostPolicy, PricingPhase, Route, RouteStop, RouteValidationPolicy, RouteValidator,
-    VehicleTypeId, VrptwInstance,
+    FixedPlusArcCostPolicy, PricingPhase, Route, RouteCostPolicy, RouteStop, RouteValidationPolicy, RouteValidator,
+    RoutePricingArc, RoutePricingRows, VehicleTypeId, VrptwInstance,
 };
 use crate::error::{NetworkSchedulingError, Result};
 use crate::infrastructure::{NetworkArcId, NetworkNodeId};
@@ -71,6 +71,8 @@ pub struct ExactBigDecimalPricingArc {
     pub route_cost: BigDecimal,
     /// reduced cost 增量 / Reduced-cost increment.
     pub reduced_cost: BigDecimal,
+    /// 声明行单位下的逐弧精确系数 / Exact incremental coefficients in declared row units.
+    pub row_coefficients: BTreeMap<String, BigDecimal>,
 }
 
 /// BigDecimal 精确定价图 / BigDecimal exact pricing graph.
@@ -144,6 +146,8 @@ pub struct ExactBigDecimalPricingDuals {
     pub customer: BTreeMap<CustomerId, BigDecimal>,
     /// 车辆类型上界对偶 / Fleet upper-bound duals.
     pub fleet: BTreeMap<VehicleTypeId, BigDecimal>,
+    /// 全部声明扩展行的有符号价格，零也须显式存在 / Signed prices for every declared extension row, including explicit zeros.
+    pub extension: BTreeMap<String, BigDecimal>,
 }
 
 impl ExactBigDecimalPricingDuals {
@@ -157,7 +161,14 @@ impl ExactBigDecimalPricingDuals {
             phase,
             customer: customer.into_iter().collect(),
             fleet: fleet.into_iter().collect(),
+            extension: BTreeMap::new(),
         }
+    }
+
+    /// 附加精确扩展行价格 / Attach exact extension-row prices.
+    pub fn with_extension_duals(mut self, prices: impl IntoIterator<Item = (String, BigDecimal)>) -> Self {
+        self.extension = prices.into_iter().collect();
+        self
     }
 
     fn customer_dual(&self, id: &CustomerId) -> BigDecimal {
@@ -248,15 +259,32 @@ pub struct ExactBigDecimalPricingResult {
 }
 
 /// 只基于显式基础弧的 BigDecimal 图构建器 / BigDecimal graph builder based on explicit base arcs.
-pub struct ExactBigDecimalRouteGraphBuilder {
+pub struct ExactBigDecimalRouteGraphBuilder<C = FixedPlusArcCostPolicy> {
     /// VRPTW 实例 / VRPTW instance.
     pub instance: Arc<VrptwInstance<BigDecimal>>,
+    /// 完整路线成本策略及可加性认证 / Complete route-cost policy and additive certification.
+    pub route_cost_policy: C,
+    /// 主问题与定价共用的声明行提供器 / Declared-row providers shared by masters and pricing.
+    pub pricing_rows: Arc<RoutePricingRows<BigDecimal>>,
 }
 
 impl ExactBigDecimalRouteGraphBuilder {
     /// 创建精确图构建器 / Create an exact graph builder.
     pub fn new(instance: Arc<VrptwInstance<BigDecimal>>) -> Self {
-        Self { instance }
+        Self::with_cost_policy(instance, FixedPlusArcCostPolicy)
+    }
+}
+
+impl<C: RouteCostPolicy<BigDecimal>> ExactBigDecimalRouteGraphBuilder<C> {
+    /// 指定完整费用策略；未经认证时禁用标签费用支配 / Set whole-route costs; disable label-cost dominance unless certified.
+    pub fn with_cost_policy(instance: Arc<VrptwInstance<BigDecimal>>, route_cost_policy: C) -> Self {
+        Self { instance, route_cost_policy, pricing_rows: Arc::new(RoutePricingRows::default()) }
+    }
+
+    /// 设置共享声明行目录 / Set the shared declared-row catalog.
+    pub fn with_pricing_rows(mut self, rows: Arc<RoutePricingRows<BigDecimal>>) -> Self {
+        self.pricing_rows = rows;
+        self
     }
 
     /// 构建精确定价图 / Build an exact pricing graph.
@@ -266,6 +294,7 @@ impl ExactBigDecimalRouteGraphBuilder {
         duals: &ExactBigDecimalPricingDuals,
         branch_mask: Option<&BranchMask<VehicleTypeId>>,
     ) -> Result<ExactBigDecimalPricingGraph> {
+        self.pricing_rows.validate_dual_keys(&duals.extension)?;
         if self.instance.arcs.is_empty() {
             return Err(NetworkSchedulingError::validation(
                 "BigDecimal 精确定价要求显式基础弧；隐式完全图策略可能经过 f64 / BigDecimal exact pricing requires explicit base arcs; implicit complete-graph policies may pass through f64",
@@ -388,6 +417,11 @@ impl ExactBigDecimalRouteGraphBuilder {
                 PricingPhase::PhaseTwo => route_cost.clone(),
             };
             let index = arcs.len();
+            let row_coefficients = self.pricing_rows.arc_coefficients(&RoutePricingArc {
+                instance: &self.instance, vehicle_type: vehicle_type_id, arc: &base_arc.id,
+                from: &base_arc.from, to: &base_arc.to,
+            })?;
+            let row_price: BigDecimal = row_coefficients.iter().map(|(id, value)| value * &duals.extension[id]).sum();
             arcs.push(ExactBigDecimalPricingArc {
                 arc_id: base_arc.id.clone(),
                 from,
@@ -396,7 +430,8 @@ impl ExactBigDecimalRouteGraphBuilder {
                 travel_time: base_arc.travel_time.duration,
                 arc_cost,
                 route_cost,
-                reduced_cost: phase_cost - customer_dual - fleet_dual,
+                reduced_cost: phase_cost - customer_dual - fleet_dual - row_price,
+                row_coefficients,
             });
             outgoing[from].push(index);
         }
@@ -436,14 +471,14 @@ impl ExactBigDecimalRouteGraphBuilder {
 }
 
 /// BigDecimal elementary ESPPRC 定价器 / BigDecimal elementary ESPPRC pricer.
-pub struct ExactBigDecimalEspprcPricer {
+pub struct ExactBigDecimalEspprcPricer<C = FixedPlusArcCostPolicy> {
     /// 显式弧图构建器 / Explicit-arc graph builder.
-    pub graph_builder: ExactBigDecimalRouteGraphBuilder,
+    pub graph_builder: ExactBigDecimalRouteGraphBuilder<C>,
 }
 
-impl ExactBigDecimalEspprcPricer {
+impl<C: RouteCostPolicy<BigDecimal>> ExactBigDecimalEspprcPricer<C> {
     /// 创建精确定价器 / Create an exact pricer.
-    pub fn new(graph_builder: ExactBigDecimalRouteGraphBuilder) -> Self {
+    pub fn new(graph_builder: ExactBigDecimalRouteGraphBuilder<C>) -> Self {
         Self { graph_builder }
     }
 
@@ -494,6 +529,16 @@ impl ExactBigDecimalEspprcPricer {
             ));
         }
         validate_reduced_cost_snapshot(graph, request)?;
+        self.graph_builder.pricing_rows.validate_dual_keys(&request.duals.extension)?;
+        for arc in &graph.arcs {
+            let coefficients = self.graph_builder.pricing_rows.arc_coefficients(&RoutePricingArc {
+                instance: &request.instance, vehicle_type: &request.vehicle_type_id, arc: &arc.arc_id,
+                from: &graph.nodes[arc.from].node_id, to: &graph.nodes[arc.to].node_id,
+            })?;
+            if coefficients != arc.row_coefficients {
+                return Err(NetworkSchedulingError::pricing("扩展行提供器与图快照不一致 / extension-row provider disagrees with graph snapshot"));
+            }
+        }
         let start_index = graph.start_index().ok_or_else(|| {
             NetworkSchedulingError::structure(
                 "BigDecimal 定价图缺少起点 / BigDecimal pricing graph has no start depot",
@@ -512,203 +557,91 @@ impl ExactBigDecimalEspprcPricer {
             ));
         }
 
+        let depth_limited = Cell::new(false);
+        let unreachable = Cell::new(0);
+        let minimum: RefCell<Option<BigDecimal>> = RefCell::new(None);
         let root = ExactLabel {
-            reduced_cost: BigDecimal::zero(),
-            time: graph.nodes[start_index].ready_time.clone(),
-            load: BigDecimal::zero(),
-            current_node: start_index,
+            reduced_cost: BigDecimal::zero(), time: graph.nodes[start_index].ready_time.clone(),
+            load: BigDecimal::zero(), current_node: start_index,
             visited: crate::domain::route_generation::VisitedCustomers::empty(customer_count),
-            forbidden: ForbiddenCustomers::empty(customer_count),
-            predecessor: None,
-            predecessor_arc: None,
+            forbidden: ForbiddenCustomers::empty(customer_count), predecessor: None, predecessor_arc: None,
         };
-        let mut labels = vec![root];
-        let mut dominated = vec![false];
-        let mut labels_at_node = vec![Vec::<usize>::new(); graph.nodes.len()];
-        labels_at_node[start_index].push(0);
-        let mut queue = VecDeque::from([0usize]);
-        let mut statistics = LabelStatistics {
-            labels_created: 1,
-            ..LabelStatistics::default()
+        let extend = |index: usize, label: &ExactLabel, arc_index: usize, _: usize| -> Result<Option<ExactLabel>> {
+            let arc = &graph.arcs[arc_index];
+            let node = &graph.nodes[arc.to];
+            if arc.to == end_index && label.visited.count() == 0 { return Ok(None); }
+            if let Some(customer) = node.customer_index {
+                if label.visited.contains(customer) || label.forbidden.contains(customer) { return Ok(None); }
+                if label.visited.count() >= max_depth {
+                    depth_limited.set(true);
+                    return Ok(None);
+                }
+            }
+            let arrival = &label.time + duration_value(&request.instance, arc.travel_time)?;
+            let service_start = arrival.max(node.ready_time.clone());
+            let load = &label.load + &node.demand;
+            if service_start > node.due_time || load > graph.vehicle_capacity { return Ok(None); }
+            let visited = node.customer_index.map_or_else(|| label.visited.clone(), |index| label.visited.add(index));
+            let (forbidden, markings) = update_forbidden_customers(&label.forbidden, graph, arc.to, &visited, &load)?;
+            unreachable.set(unreachable.get() + markings);
+            Ok(Some(ExactLabel {
+                reduced_cost: &label.reduced_cost + &arc.reduced_cost,
+                time: service_start + &node.service_time, load, current_node: arc.to, visited, forbidden,
+                predecessor: Some(index), predecessor_arc: Some(arc_index),
+            }))
         };
-        let mut negative_label_indices = Vec::new();
-        let mut min_reduced_cost: Option<BigDecimal> = None;
-        let mut interrupted = request.interrupted();
-        let mut truncated = false;
-        let mut truncation_reason = None;
-
-        while let Some(label_index) = queue.pop_front() {
-            if request.interrupted() {
-                interrupted = true;
-                break;
+        let finish = |labels: &[ExactLabel]| -> Result<Option<(ExactLabel, Route<BigDecimal>)>> {
+            let route = self.backtrack_route(graph, labels, labels.len() - 1, request)?;
+            self.validate_backtracked_route(&route, request)?;
+            let cost = match request.duals.phase {
+                PricingPhase::PhaseOne => BigDecimal::zero(),
+                PricingPhase::PhaseTwo => route.cost.value.clone(),
+            };
+            let coefficients = self.graph_builder.pricing_rows.route_coefficients(&route, &request.instance)?;
+            let row_price: BigDecimal = coefficients.iter().map(|(id, value)| value * &request.duals.extension[id]).sum();
+            let reduced_cost = cost - request.duals.fleet_dual(&request.vehicle_type_id)
+                - route.customer_ids().iter().map(|id| request.duals.customer_dual(id)).sum::<BigDecimal>() - row_price;
+            let mut current_minimum = minimum.borrow_mut();
+            if current_minimum.as_ref().is_none_or(|current| reduced_cost < *current) {
+                *current_minimum = Some(reduced_cost.clone());
             }
-            if dominated[label_index] {
-                continue;
-            }
-            let label = labels.get(label_index).cloned().ok_or_else(|| {
-                NetworkSchedulingError::contract(
-                    "BigDecimal 前驱标签索引无效 / BigDecimal predecessor label index is invalid",
-                )
-            })?;
-            for &arc_index in graph.outgoing.get(label.current_node).ok_or_else(|| {
-                NetworkSchedulingError::structure(
-                    "BigDecimal 出弧索引无效 / BigDecimal outgoing arc index is invalid",
-                )
-            })? {
-                if request.interrupted() {
-                    interrupted = true;
-                    break;
-                }
-                let arc = graph.arcs.get(arc_index).ok_or_else(|| {
-                    NetworkSchedulingError::structure(
-                        "BigDecimal 定价弧索引无效 / BigDecimal pricing arc index is invalid",
-                    )
-                })?;
-                if arc.from != label.current_node {
-                    return Err(NetworkSchedulingError::contract(
-                        "BigDecimal 出弧索引与弧起点不一致 / BigDecimal outgoing index disagrees with arc origin",
-                    ));
-                }
-                let node = graph.nodes.get(arc.to).ok_or_else(|| {
-                    NetworkSchedulingError::structure(
-                        "BigDecimal 定价终点不存在 / BigDecimal pricing destination does not exist",
-                    )
-                })?;
-                // 空路线不是 VRPTW 列，不能让 start->end 标签支配客户路线。
-                // An empty route is not a VRPTW column and must not dominate customer routes.
-                if arc.to == end_index && label.visited.count() == 0 {
-                    continue;
-                }
-                if let Some(customer_index) = node.customer_index {
-                    if label.visited.contains(customer_index)
-                        || label.forbidden.contains(customer_index)
-                    {
-                        continue;
-                    }
-                    if label.visited.count() >= max_depth {
-                        truncated = true;
-                        truncation_reason.get_or_insert(TruncationReason::MaxDepth);
-                        continue;
-                    }
-                }
-                let arrival = &label.time + duration_value(&request.instance, arc.travel_time)?;
-                let service_start = if arrival > node.ready_time {
-                    arrival
-                } else {
-                    node.ready_time.clone()
-                };
-                if service_start > node.due_time {
-                    continue;
-                }
-                let new_load = &label.load + &node.demand;
-                if new_load > graph.vehicle_capacity {
-                    continue;
-                }
-                let visited = node
-                    .customer_index
-                    .map_or_else(|| label.visited.clone(), |index| label.visited.add(index));
-                let new_time = service_start + &node.service_time;
-                let (new_forbidden, unreachable_markings) = update_forbidden_customers(
-                    &label.forbidden,
-                    graph,
-                    arc.to,
-                    &visited,
-                    &new_time,
-                    &new_load,
-                    &request.instance,
-                )?;
-                statistics.unreachable_markings += unreachable_markings;
-                let new_label = ExactLabel {
-                    reduced_cost: &label.reduced_cost + &arc.reduced_cost,
-                    time: new_time,
-                    load: new_load,
-                    current_node: arc.to,
-                    visited,
-                    forbidden: new_forbidden,
-                    predecessor: Some(label_index),
-                    predecessor_arc: Some(arc_index),
-                };
-                statistics.extensions += 1;
-                statistics.dominance_checks += labels_at_node[arc.to].len();
-                if labels_at_node[arc.to].iter().any(|candidate| {
-                    !dominated[*candidate] && dominates(&labels[*candidate], &new_label)
-                }) {
-                    statistics.dominated_labels += 1;
-                    continue;
-                }
-                let dominated_indices = labels_at_node[arc.to]
-                    .iter()
-                    .copied()
-                    .filter(|candidate| {
-                        !dominated[*candidate] && dominates(&new_label, &labels[*candidate])
-                    })
-                    .collect::<Vec<_>>();
-                for candidate in dominated_indices {
-                    dominated[candidate] = true;
-                    statistics.dominated_labels += 1;
-                }
-                labels_at_node[arc.to].retain(|candidate| !dominated[*candidate]);
-                if request
-                    .max_labels
-                    .is_some_and(|limit| labels.len() >= limit)
-                {
-                    truncated = true;
-                    truncation_reason.get_or_insert(TruncationReason::MaxLabels);
-                    break;
-                }
-                let new_index = labels.len();
-                let reduced_cost = new_label.reduced_cost.clone();
-                labels.push(new_label);
-                dominated.push(false);
-                labels_at_node[arc.to].push(new_index);
-                queue.push_back(new_index);
-                statistics.labels_created += 1;
-                if arc.to == end_index && labels[new_index].visited.count() > 0 {
-                    if min_reduced_cost
-                        .as_ref()
-                        .is_none_or(|minimum| reduced_cost < *minimum)
-                    {
-                        min_reduced_cost = Some(reduced_cost.clone());
-                    }
-                    if reduced_cost < -&request.pricing_tolerance {
-                        negative_label_indices.push(new_index);
-                    }
-                }
-            }
-            if interrupted
-                || truncated && matches!(truncation_reason, Some(TruncationReason::MaxLabels))
-            {
-                break;
-            }
-        }
-
-        let mut routes = negative_label_indices
-            .into_iter()
-            .map(|index| self.backtrack_route(graph, &labels, index, request))
-            .collect::<Result<Vec<_>>>()?;
-        for route in &routes {
-            self.validate_backtracked_route(route, request)?;
-        }
-        routes.sort_by_key(Route::signature);
+            Ok((reduced_cost < -&request.pricing_tolerance).then(|| {
+                let mut label = labels[labels.len() - 1].clone();
+                label.reduced_cost = reduced_cost;
+                (label, route)
+            }))
+        };
+        let compare = |left: &ExactLabel, a: &Route<BigDecimal>, right: &ExactLabel, b: &Route<BigDecimal>|
+            left.reduced_cost.cmp(&right.reduced_cost).then_with(|| a.signature().cmp(&b.signature()));
+        let graph_view = path_search::graph(graph.nodes.len(), graph.arcs.iter().map(|arc| (arc.arc_id.clone(), arc.from, arc.to)))?;
+        let policy = PricingPathPolicy { root, extend: &extend, finish: &finish,
+            dominates: (self.graph_builder.route_cost_policy.additive_label_cost_is_exact()
+                && self.graph_builder.pricing_rows.additive_decomposition_is_exact()).then_some(&dominates), compare: &compare };
+        let mut problem = PathProblem::new(&graph_view, policy);
+        problem.starts = vec![path_search::node_id(start_index)];
+        problem.terminals = [path_search::node_id(end_index)].into();
+        problem.options.maximum_steps = Some(customer_count + 1);
+        let interrupt = || request.interrupted();
+        let search = PathSearchContext.search(&problem, &PathSearchBudget {
+            maximum_labels: request.max_labels, interrupted: Some(&interrupt), ..Default::default()
+        })?;
+        let interrupted = search.completion == PathSearchCompletion::Interrupted;
+        let exact_pricing_complete = search.complete() && !depth_limited.get();
+        let statistics = LabelStatistics {
+            labels_created: search.diagnostics.generated_labels, extensions: search.diagnostics.extensions,
+            dominance_checks: search.diagnostics.dominance_checks, dominated_labels: search.diagnostics.dominated_labels,
+            unreachable_markings: unreachable.get(),
+        };
+        let mut routes: Vec<_> = search.paths.into_iter().filter_map(|candidate| candidate.state.route).collect();
         let selected_count = routes.len().min(request.max_columns_per_pricing);
-        if selected_count < routes.len() {
-            truncated = true;
-            truncation_reason.get_or_insert(TruncationReason::MaxColumns);
-            routes.truncate(selected_count);
-        }
-        let exact_pricing_complete = !(interrupted
-            || matches!(
-                truncation_reason,
-                Some(TruncationReason::MaxLabels | TruncationReason::MaxDepth)
-            ));
+        let truncation_reason = if search.completion == PathSearchCompletion::BudgetLimit { Some(TruncationReason::MaxLabels) }
+            else if depth_limited.get() { Some(TruncationReason::MaxDepth) }
+            else if selected_count < routes.len() { Some(TruncationReason::MaxColumns) }
+            else { None };
+        routes.truncate(selected_count);
         Ok(ExactBigDecimalPricingResult {
-            routes,
-            min_reduced_cost: min_reduced_cost.unwrap_or_else(BigDecimal::zero),
-            exact_pricing_complete,
-            interrupted,
-            truncated,
-            truncation_reason,
-            statistics,
+            routes, min_reduced_cost: minimum.into_inner().unwrap_or_else(BigDecimal::zero),
+            exact_pricing_complete, interrupted, truncated: truncation_reason.is_some(), truncation_reason, statistics,
         })
     }
 
@@ -742,7 +675,7 @@ impl ExactBigDecimalEspprcPricer {
             ));
         }
         let mut total_distance = BigDecimal::zero();
-        let mut total_cost = BigDecimal::zero();
+        let mut arc_costs = Vec::with_capacity(arc_indices.len());
         let mut stops = Vec::with_capacity(label_indices.len());
         for (position, label_index) in label_indices.iter().copied().enumerate() {
             let label = labels.get(label_index).ok_or_else(|| {
@@ -781,7 +714,7 @@ impl ExactBigDecimalEspprcPricer {
                     )
                 })?;
                 total_distance += &arc.distance;
-                total_cost += &arc.route_cost;
+                arc_costs.push(Quantity::new(arc.arc_cost.clone(), request.instance.units.cost_unit.clone()));
             }
             let arrival_instant = instant_value_to_time(&request.instance, &arrival)?;
             let service_instant = instant_value_to_time(&request.instance, &service_start)?;
@@ -801,6 +734,12 @@ impl ExactBigDecimalEspprcPricer {
                 ),
             });
         }
+        let vehicle = request.instance.vehicle_type(&request.vehicle_type_id).ok_or_else(||
+            NetworkSchedulingError::validation("路线车辆类型不存在 / route vehicle type does not exist"))?;
+        let cost = self.graph_builder.route_cost_policy.cost(vehicle, &arc_costs, &request.instance)?;
+        crate::infrastructure::validate_linear_units([&cost.unit, &request.instance.units.cost_unit])?;
+        let cost = cost.to_unit(&request.instance.units.cost_unit).map_err(|error|
+            NetworkSchedulingError::Conversion { message: error.to_string() })?;
         Route::with_arc_ids(
             request.vehicle_type_id.clone(),
             stops,
@@ -809,7 +748,7 @@ impl ExactBigDecimalEspprcPricer {
                 .map(|index| graph.arcs[*index].arc_id.clone())
                 .collect(),
             Quantity::new(total_distance, request.instance.units.distance_unit.clone()),
-            Quantity::new(total_cost, request.instance.units.cost_unit.clone()),
+            cost,
         )
     }
 
@@ -822,7 +761,6 @@ impl ExactBigDecimalEspprcPricer {
         let travel_time_calculator =
             DistanceAsTravelTimeCalculator::new(EuclideanDistanceCalculator);
         let arc_cost_calculator = DistanceArcCostCalculator;
-        let route_cost_policy = FixedPlusArcCostPolicy;
         let arc_feasibility_policy: &dyn ArcFeasibilityPolicy<BigDecimal> =
             &DefaultArcFeasibilityPolicy;
         RouteValidator::validate_with_policy(
@@ -832,7 +770,7 @@ impl ExactBigDecimalEspprcPricer {
                 distance_calculator: &distance_calculator,
                 travel_time_calculator: &travel_time_calculator,
                 arc_cost_calculator: &arc_cost_calculator,
-                route_cost_policy: &route_cost_policy,
+                route_cost_policy: &self.graph_builder.route_cost_policy,
                 arc_feasibility_policy,
                 branch_mask: request.branch_mask.as_ref(),
             },
@@ -869,7 +807,16 @@ fn validate_reduced_cost_snapshot(
             PricingPhase::PhaseOne => BigDecimal::zero(),
             PricingPhase::PhaseTwo => arc.route_cost.clone(),
         };
-        let expected = phase_cost - customer_dual - fleet_dual;
+        if arc.row_coefficients.len() != request.duals.extension.len() {
+            return Err(NetworkSchedulingError::pricing("图扩展行与对偶域不一致 / graph extension rows disagree with dual domain"));
+        }
+        let mut row_price = BigDecimal::zero();
+        for (id, value) in &arc.row_coefficients {
+            let price = request.duals.extension.get(id).ok_or_else(|| NetworkSchedulingError::pricing(
+                "图扩展行缺少对偶 / graph extension row lacks a dual"))?;
+            row_price += value * price;
+        }
+        let expected = phase_cost - customer_dual - fleet_dual - row_price;
         if arc.reduced_cost != expected {
             return Err(NetworkSchedulingError::pricing(format!(
                 "BigDecimal 定价图弧 {} 的 reduced cost 快照无效 / BigDecimal reduced-cost snapshot for pricing arc {} is invalid",
@@ -892,6 +839,13 @@ struct ExactLabel {
     predecessor_arc: Option<usize>,
 }
 
+impl PricingLabel for ExactLabel {
+    fn set_predecessor(&mut self, predecessor: Option<usize>, arc: Option<usize>) {
+        self.predecessor = predecessor;
+        self.predecessor_arc = arc;
+    }
+}
+
 fn dominates(a: &ExactLabel, b: &ExactLabel) -> bool {
     a.current_node == b.current_node
         && a.reduced_cost <= b.reduced_cost
@@ -909,9 +863,7 @@ fn update_forbidden_customers(
     graph: &ExactBigDecimalPricingGraph,
     current_node: usize,
     visited: &crate::domain::route_generation::VisitedCustomers,
-    departure_time: &BigDecimal,
     load: &BigDecimal,
-    instance: &VrptwInstance<BigDecimal>,
 ) -> Result<(ForbiddenCustomers, usize)> {
     let mut forbidden = current_forbidden.clone();
     let mut markings = 0;
@@ -933,15 +885,8 @@ fn update_forbidden_customers(
             if visited.contains(index) || forbidden.contains(index) {
                 continue;
             }
-            let arrival = departure_time + duration_value(instance, arc.travel_time)?;
-            let service_start = if arrival > candidate.ready_time {
-                arrival
-            } else {
-                candidate.ready_time.clone()
-            };
-            if service_start > candidate.due_time
-                || load + &candidate.demand > graph.vehicle_capacity
-            {
+            // 与普通入口一致，不从直达超窗推导永久不可达。 / Match ordinary pricing: direct-window failure does not prove permanent unreachability.
+            if load + &candidate.demand > graph.vehicle_capacity {
                 forbidden = forbidden.add(index);
                 markings += 1;
             }
@@ -1031,6 +976,8 @@ fn instant_value_to_time(
 mod tests {
     #![allow(clippy::borrow_interior_mutable_const)]
 
+    mod pricing_rows;
+
     use std::collections::{BTreeMap, BTreeSet};
     use std::str::FromStr;
 
@@ -1053,8 +1000,7 @@ mod tests {
         bigdecimal::BigDecimal::from_str(value).expect("valid decimal")
     }
 
-    #[test]
-    fn exact_pricer_keeps_decimal_reduced_cost_and_route_cost_without_f64() {
+    fn precise_instance() -> std::sync::Arc<VrptwInstance<bigdecimal::BigDecimal>> {
         let start = OffsetDateTime::UNIX_EPOCH;
         let end = start + Duration::hours(1);
         let service_window = ServiceTimeWindow::new(start, end).expect("valid service window");
@@ -1122,7 +1068,7 @@ mod tests {
             )
             .expect("end arc"),
         ];
-        let instance = std::sync::Arc::new(
+        std::sync::Arc::new(
             VrptwInstance::new_with_arcs(
                 "exact-decimal",
                 Depot {
@@ -1146,7 +1092,12 @@ mod tests {
                 arcs,
             )
             .expect("exact instance"),
-        );
+        )
+    }
+
+    #[test]
+    fn exact_pricer_keeps_decimal_reduced_cost_and_route_cost_without_f64() {
+        let instance = precise_instance();
         let vehicle_type_id = VehicleTypeId::from("v1");
         let customer_dual = decimal("3.3333333333333333333333333333");
         let fleet_dual = decimal("0.0111111111111111111111111111");
@@ -1251,12 +1202,200 @@ mod tests {
             &graph,
             graph.start_index().expect("start node"),
             &crate::domain::route_generation::VisitedCustomers::empty(1),
-            &decimal("0"),
             &graph.vehicle_capacity,
-            &instance,
         )
         .expect("capacity marking");
         assert_eq!(markings, 1);
         assert!(forbidden.contains(0));
+    }
+
+    fn parallel_instance() -> std::sync::Arc<VrptwInstance<bigdecimal::BigDecimal>> {
+        let mut instance = (*precise_instance()).clone();
+        instance.arcs.push(VrptwArc::new(
+            "a-expensive", "start", "customer-node",
+            Quantity::new(decimal("2"), Meter::INSTANT.clone()),
+            TravelTime::new(Duration::seconds(2)).unwrap(),
+            Quantity::new(decimal("10"), instance.units.cost_unit.clone()),
+        ).unwrap());
+        std::sync::Arc::new(instance)
+    }
+
+    struct WholeCosts { discount: bool }
+
+    impl crate::domain::vrp::RouteCostPolicy<bigdecimal::BigDecimal> for WholeCosts {
+        fn cost(
+            &self,
+            vehicle: &VehicleType<bigdecimal::BigDecimal>,
+            arcs: &[Quantity<bigdecimal::BigDecimal, ospf_rust_quantities::unit::Unit>],
+            instance: &VrptwInstance<bigdecimal::BigDecimal>,
+        ) -> crate::Result<Quantity<bigdecimal::BigDecimal, ospf_rust_quantities::unit::Unit>> {
+            if !self.discount {
+                return crate::domain::vrp::RouteCostPolicy::cost(&crate::domain::vrp::FixedPlusArcCostPolicy, vehicle, arcs, instance);
+            }
+            let total: bigdecimal::BigDecimal = arcs.iter().map(|arc| arc.value.clone()).sum();
+            Ok(Quantity::new(if total > decimal("1") { decimal("0.1") } else { decimal("100") }, instance.units.cost_unit.clone()))
+        }
+    }
+
+    #[test]
+    fn exact_whole_route_cost_controls_filtering_order_and_both_phases() {
+        let instance = parallel_instance();
+        for discount in [false, true] {
+            let pricer = ExactBigDecimalEspprcPricer::new(ExactBigDecimalRouteGraphBuilder::with_cost_policy(
+                instance.clone(), WholeCosts { discount },
+            ));
+            for phase in [PricingPhase::PhaseOne, PricingPhase::PhaseTwo] {
+                let dual = if discount { decimal("1") } else { decimal("20") };
+                let mut request = ExactBigDecimalPricingRequest::new(instance.clone(), ExactBigDecimalPricingDuals::new(
+                    phase, [("c1".into(), dual)], [("v1".into(), decimal("0"))],
+                ), "v1".into());
+                let result = pricer.price_request(&request).unwrap();
+                assert!(result.exact_pricing_complete);
+                assert_eq!(result.statistics.dominance_checks, 0);
+                if phase == PricingPhase::PhaseTwo {
+                    assert_eq!(result.routes[0].arc_ids[0].as_str(), if discount { "a-expensive" } else { "s-c" });
+                    assert_eq!(result.routes.len(), if discount { 1 } else { 2 });
+                    assert_eq!(result.min_reduced_cost, if discount { decimal("-0.9") }
+                        else { decimal("-19.2222222222222222222222222223") });
+                } else {
+                    assert_eq!(result.routes.len(), 2);
+                    assert_eq!(result.min_reduced_cost, if discount { decimal("-1") } else { decimal("-20") });
+                }
+                request.max_columns_per_pricing = 0;
+                let limited = pricer.price_request(&request).unwrap();
+                assert!(limited.routes.is_empty());
+                assert!(limited.exact_pricing_complete);
+                assert_eq!(limited.min_reduced_cost, result.min_reduced_cost);
+                assert_eq!(limited.truncation_reason, Some(crate::domain::route_generation::TruncationReason::MaxColumns));
+            }
+        }
+    }
+
+    #[test]
+    fn exact_sub_f64_improvement_and_zero_budget_remain_distinct() {
+        let instance = precise_instance();
+        let pricer = ExactBigDecimalEspprcPricer::new(ExactBigDecimalRouteGraphBuilder::new(instance.clone()));
+        let epsilon = decimal("0.0000000000000000000000000000000000000001");
+        let mut request = ExactBigDecimalPricingRequest::new(instance, ExactBigDecimalPricingDuals::new(
+            PricingPhase::PhaseTwo, [("c1".into(), decimal("0.7777777777777777777777777777") + &epsilon)],
+            [("v1".into(), decimal("0"))],
+        ), "v1".into());
+        let result = pricer.price_request(&request).unwrap();
+        assert_eq!(result.min_reduced_cost, -&epsilon);
+        assert_eq!(result.routes.len(), 1);
+        assert!(result.exact_pricing_complete);
+        request.max_labels = Some(0);
+        let result = pricer.price_request(&request).unwrap();
+        assert!(result.routes.is_empty());
+        assert_eq!(result.statistics.labels_created, 0);
+        assert!(!result.exact_pricing_complete);
+        assert_eq!(result.truncation_reason, Some(crate::domain::route_generation::TruncationReason::MaxLabels));
+    }
+
+    #[test]
+    fn exact_budget_preserves_an_admitted_route_without_claiming_exhaustion() {
+        let instance = parallel_instance();
+        let pricer = ExactBigDecimalEspprcPricer::new(ExactBigDecimalRouteGraphBuilder::with_cost_policy(
+            instance.clone(), WholeCosts { discount: false },
+        ));
+        let mut request = ExactBigDecimalPricingRequest::new(instance, ExactBigDecimalPricingDuals::new(
+            PricingPhase::PhaseTwo, [("c1".into(), decimal("20"))], [("v1".into(), decimal("0"))],
+        ), "v1".into());
+        request.max_labels = Some(4);
+        let result = pricer.price_request(&request).unwrap();
+        assert_eq!(result.routes.len(), 1);
+        assert_eq!(result.routes[0].arc_ids[0].as_str(), "s-c");
+        assert_eq!(result.statistics.labels_created, 4);
+        assert!(!result.exact_pricing_complete);
+        assert_eq!(result.truncation_reason, Some(crate::domain::route_generation::TruncationReason::MaxLabels));
+        request.max_labels = None;
+        request.max_depth = Some(0);
+        let result = pricer.price_request(&request).unwrap();
+        assert!(!result.exact_pricing_complete);
+        assert_eq!(result.truncation_reason, Some(crate::domain::route_generation::TruncationReason::MaxDepth));
+        let token = crate::domain::route_generation::CancellationToken::new();
+        token.cancel();
+        request.cancellation = Some(token);
+        let result = pricer.price_request(&request).unwrap();
+        assert!(result.interrupted);
+        assert!(!result.exact_pricing_complete);
+        assert_eq!(result.statistics.labels_created, 0);
+    }
+
+    #[test]
+    fn exact_shared_search_matches_independent_small_multigraph_oracle() {
+        let template = precise_instance();
+        let start = template.scheduling_window.window.start;
+        let mut customers = template.customers.clone();
+        customers.push(Customer::new("c2",
+            coordinate_node("c2-node", decimal("2"), decimal("0"), Meter::INSTANT.clone()).unwrap(),
+            Quantity::new(decimal("1"), Kilogram::INSTANT.clone()),
+            ServiceTimeWindow::new(start, start + Duration::seconds(3)).unwrap(), Duration::ZERO,
+        ).unwrap());
+        let edges = [("start", "customer-node", 1), ("start", "customer-node", 2),
+            ("start", "c2-node", 4), ("customer-node", "c2-node", 1),
+            ("c2-node", "customer-node", 1), ("customer-node", "end", 1), ("c2-node", "end", 1)];
+        let arcs: Vec<_> = edges.into_iter().enumerate().map(|(index, (from, to, seconds))| VrptwArc::new(
+            format!("e{index}"), from, to, Quantity::new(decimal("1"), Meter::INSTANT.clone()),
+            TravelTime::new(Duration::seconds(seconds)).unwrap(),
+            Quantity::new(decimal("0.10000000000000000000000000001") * bigdecimal::BigDecimal::from(u64::try_from(index + 1).unwrap()), template.units.cost_unit.clone()),
+        ).unwrap()).collect();
+        // 两客户的全部有序访问及平行弧选择，独立于标签扩展和支配。
+        // All ordered two-customer visits and parallel-arc choices, independent of label extension and dominance.
+        let paths: [&[usize]; 6] = [&[0, 5], &[1, 5], &[2, 6], &[0, 3, 6], &[1, 3, 6], &[2, 4, 5]];
+        for mask in 1_u32..128 {
+            let instance = std::sync::Arc::new(VrptwInstance::new_with_arcs(
+                "small-exact-oracle", template.start_depot.clone(), template.end_depot.clone(), customers.clone(),
+                template.vehicle_types.clone(), template.scheduling_window.clone(), template.units.clone(), template.tolerances,
+                arcs.iter().enumerate().filter(|(index, _)| mask & (1 << index) != 0).map(|(_, arc)| arc.clone()).collect(),
+            ).unwrap());
+            for phase in [PricingPhase::PhaseOne, PricingPhase::PhaseTwo] {
+                let mut expected = BTreeMap::new();
+                let mut minimum = None;
+                for path in paths {
+                    if path.iter().any(|index| mask & (1 << index) == 0) { continue; }
+                    let mut time = start;
+                    let mut cost = instance.vehicle_types[0].fixed_cost.value.clone();
+                    let mut dual = decimal("0.1");
+                    let mut feasible = true;
+                    for &index in path {
+                        let arc = &arcs[index];
+                        time += arc.travel_time.duration;
+                        cost += &arc.cost.value;
+                        if let Some(customer) = customers.iter().find(|customer| customer.node.id == arc.to) {
+                            time = time.max(customer.time_window.ready_time);
+                            if time > customer.time_window.due_time { feasible = false; }
+                            time += customer.service_time;
+                            dual += if customer.id.as_str() == "c1" { decimal("0.6") } else { decimal("0.8") };
+                        }
+                    }
+                    if !feasible { continue; }
+                    let reduced_cost = if phase == PricingPhase::PhaseOne { -dual } else { &cost - dual };
+                    if minimum.as_ref().is_none_or(|current| reduced_cost < *current) { minimum = Some(reduced_cost.clone()); }
+                    if reduced_cost < decimal("0") {
+                        expected.insert(path.iter().map(|&index| arcs[index].id.clone()).collect::<Vec<_>>(), cost);
+                    }
+                }
+                let pricer = ExactBigDecimalEspprcPricer::new(ExactBigDecimalRouteGraphBuilder::with_cost_policy(
+                    instance.clone(), WholeCosts { discount: false },
+                ));
+                let request = ExactBigDecimalPricingRequest::new(instance.clone(), ExactBigDecimalPricingDuals::new(
+                    phase, [("c1".into(), decimal("0.6")), ("c2".into(), decimal("0.8"))],
+                    [("v1".into(), decimal("0.1"))],
+                ), "v1".into());
+                let result = pricer.price_request(&request).unwrap();
+                assert!(result.exact_pricing_complete, "mask {mask}, phase {phase:?}");
+                assert_eq!(result.min_reduced_cost, minimum.unwrap_or_else(|| decimal("0")), "mask {mask}, phase {phase:?}");
+                let actual: BTreeMap<_, _> = result.routes.iter().map(|route| (route.effective_arc_ids(), route.cost.value.clone())).collect();
+                assert_eq!(actual, expected, "mask {mask}, phase {phase:?}");
+                let certified = ExactBigDecimalEspprcPricer::new(ExactBigDecimalRouteGraphBuilder::new(request.instance.clone()))
+                    .price_request(&request).unwrap();
+                assert!(certified.exact_pricing_complete);
+                assert_eq!(certified.min_reduced_cost, result.min_reduced_cost, "certified mask {mask}, phase {phase:?}");
+                for route in &certified.routes {
+                    assert_eq!(expected.get(&route.effective_arc_ids()), Some(&route.cost.value));
+                }
+            }
+        }
     }
 }

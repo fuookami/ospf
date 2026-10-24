@@ -140,6 +140,7 @@ mod tests {
     #[test]
     fn test_default_bunch_cost_policy_uses_bunch_cost() {
         let bunch: BunchEntry = BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
@@ -156,6 +157,7 @@ mod tests {
     #[test]
     fn test_functional_bunch_cost_policy_injects_business_penalty() {
         let bunch: BunchEntry = BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0],

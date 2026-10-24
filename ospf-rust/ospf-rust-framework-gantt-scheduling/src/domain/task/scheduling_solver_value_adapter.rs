@@ -5,6 +5,7 @@
 
 use ospf_rust_core::solver::value::SolveValue;
 use ospf_rust_core::solver::value::SolveValueConversionPolicy;
+use crate::{GanttError, GanttResult};
 
 /// 调度求解器值适配器 trait / Scheduling solver value adapter trait
 ///
@@ -14,6 +15,20 @@ use ospf_rust_core::solver::value::SolveValueConversionPolicy;
 pub trait SchedulingSolverValueAdapter<V: SolveValue>:
     Send + Sync + std::fmt::Debug + 'static
 {
+    /// 可失败的 solver 到领域转换，不得委托给可能 panic 的旧入口。
+    /// Fallible solver-to-domain conversion, without invoking the legacy panicking entry point.
+    fn try_into_value(&self, value: f64) -> GanttResult<V>;
+
+    /// 可失败的领域到 solver 转换；自定义实现必须显式提供失败合同。
+    /// Fallible domain-to-solver conversion; custom implementations must explicitly define failure.
+    fn try_from_value(&self, value: &V) -> GanttResult<f64>;
+
+    /// 是否为 f64 恒等转换；默认不允许转移源域证明。
+    /// Whether this is an identity f64 conversion; proof transfer is disallowed by default.
+    fn preserves_f64_identity(&self) -> bool {
+        false
+    }
+
     /// 从 f64 转换为 V / Convert from f64 to V
     fn into_value(&self, value: f64) -> V;
 
@@ -47,6 +62,18 @@ pub trait SchedulingSolverValueAdapter<V: SolveValue>:
 pub struct F64SolverValueAdapter;
 
 impl SchedulingSolverValueAdapter<f64> for F64SolverValueAdapter {
+    fn try_into_value(&self, value: f64) -> GanttResult<f64> {
+        checked_conversion(f64::from_f64_with_policy(value, SolveValueConversionPolicy::AllowRounding))
+    }
+
+    fn try_from_value(&self, value: &f64) -> GanttResult<f64> {
+        checked_conversion(value.to_f64_with_policy(SolveValueConversionPolicy::AllowRounding))
+    }
+
+    fn preserves_f64_identity(&self) -> bool {
+        true
+    }
+
     fn into_value(&self, value: f64) -> f64 {
         value
     }
@@ -101,6 +128,18 @@ impl<V: SolveValue> Default for SolverValueAdapter<V> {
 }
 
 impl<V: SolveValue> SchedulingSolverValueAdapter<V> for SolverValueAdapter<V> {
+    fn try_into_value(&self, value: f64) -> GanttResult<V> {
+        checked_conversion(V::from_f64_with_policy(value, SolveValueConversionPolicy::AllowRounding))
+    }
+
+    fn try_from_value(&self, value: &V) -> GanttResult<f64> {
+        checked_conversion(value.to_f64_with_policy(SolveValueConversionPolicy::AllowRounding))
+    }
+
+    fn preserves_f64_identity(&self) -> bool {
+        std::any::TypeId::of::<V>() == std::any::TypeId::of::<f64>()
+    }
+
     fn into_value(&self, value: f64) -> V {
         V::from_f64_with_policy(value, SolveValueConversionPolicy::AllowRounding)
             .expect("SolverValueAdapter::into_value failed")
@@ -131,4 +170,8 @@ impl<V: SolveValue> SchedulingSolverValueAdapter<V> for SolverValueAdapter<V> {
     fn one(&self) -> V {
         self.into_value(1.0)
     }
+}
+
+fn checked_conversion<T>(result: ospf_rust_core::error::Result<T>) -> GanttResult<T> {
+    result.map_err(|error| GanttError::Conversion { message: error.to_string() })
 }

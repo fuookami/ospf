@@ -399,8 +399,10 @@ impl ConflictAnalyzer {
             target,
             &options.solve_options,
             capability,
-            &assumptions,
-            request_backend_conflict,
+            super::target::TargetEvidenceRequest {
+                assumptions: &assumptions,
+                request_conflict: request_backend_conflict,
+            },
         )?;
         let extraction_tier = actual_extraction_tier(declared_tier, backend_evidence.as_ref());
         if initial.status != AnalysisStatus::Unreachable {

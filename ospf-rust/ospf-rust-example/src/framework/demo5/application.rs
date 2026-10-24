@@ -117,7 +117,8 @@ where
         arc_feasibility_policy: Arc::new(DefaultArcFeasibilityPolicy),
         dominance_policy: DefaultLabelDominancePolicy,
         column_selector: DefaultPricingColumnSelector,
-        extensions: Vec::new(),
+        extension_factories: Vec::new(),
+        pricing_rows: Arc::new(Default::default()),
     };
     let provider = BranchNodeSolver::new(instance.clone(), Arc::new(solver), config)?;
     let mut branch_config = BranchAndPriceConfig::default();
@@ -178,7 +179,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(branch_solver), config)
             .expect("branch-node provider");
@@ -273,7 +275,8 @@ mod tests {
             arc_feasibility_policy: Arc::new(DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(branch_solver), config)
             .expect("branch-node provider");
@@ -436,7 +439,8 @@ mod scip_tests {
             arc_feasibility_policy: Arc::new(DefaultArcFeasibilityPolicy),
             dominance_policy: DefaultLabelDominancePolicy,
             column_selector: DefaultPricingColumnSelector,
-            extensions: Vec::new(),
+            extension_factories: Vec::new(),
+            pricing_rows: Arc::new(Default::default()),
         };
         let provider = BranchNodeSolver::new(instance.clone(), Arc::new(solver), config)
             .expect("branch-node provider");

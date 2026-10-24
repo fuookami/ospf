@@ -19,6 +19,7 @@ use ospf_rust_core::variable::VariableRange;
 use crate::GanttError;
 use crate::GanttResult;
 use crate::domain::bunch_compilation::model::{BunchCompilation, BunchEntry, BunchSolution};
+use crate::domain::bunch_compilation::master::{BunchMaster, BunchMasterConfiguration};
 use crate::domain::common::{ExecutorId, ExecutorIdTrait};
 use crate::domain::task_compilation::adapter::{
     IndexedLinearExpressionSymbols1, extract_value, next_gantt_symbol_id, symbols_to_indexed_1d,
@@ -54,6 +55,7 @@ where
     pub fixed_bunches: HashSet<usize>,
     /// 束索引到 x 变量模型索引的映射 / Bunch index to x variable model index mapping
     pub bunch_x_map: HashMap<usize, usize>,
+    master: Option<BunchMaster>,
 }
 
 impl<I> std::fmt::Debug for IterativeBunchCompilation<I>
@@ -93,6 +95,7 @@ where
             executor_compilation_terms: vec![Vec::new(); n_executors],
             fixed_bunches: HashSet::new(),
             bunch_x_map: HashMap::new(),
+            master: None,
         }
     }
 
@@ -101,6 +104,37 @@ where
     /// 委托给基础编译，并初始化项累积器。
     /// Delegates to base compilation and initializes term accumulators.
     pub fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        if self.base.is_registered() {
+            return self.base.validate_model(model);
+        }
+        let mut next = self.clone();
+        model.transaction(|model| {
+            next.register_initial(model)?;
+            next.refresh_master(model)
+        })?;
+        *self = next;
+        Ok(())
+    }
+
+    /// 注册前选择标准主问题组件；自定义管道仍可独立追加。 / Select the standard master before registration; custom pipelines remain independent extensions.
+    pub fn configure_master(&mut self, configuration: BunchMasterConfiguration) -> GanttResult<()> {
+        if self.base.is_registered() {
+            return Err(GanttError::Calculation { message: "注册后不能更换任务束主问题 / cannot reconfigure a registered bunch master".into() });
+        }
+        self.master = Some(BunchMaster::new(configuration, self.base.n_tasks)?);
+        Ok(())
+    }
+
+    fn refresh_master(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        if let Some(mut master) = self.master.take() {
+            let result = master.refresh(self, model);
+            self.master = Some(master);
+            result?;
+        }
+        Ok(())
+    }
+
+    fn register_initial(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.base.register(model)?;
 
         // 初始化 taskCompilation 的 y 项
@@ -130,8 +164,23 @@ where
         new_bunches: Vec<BunchEntry<I>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
+        let mut next = self.clone();
+        let added = model.transaction(|model| next.add_columns_inner(iteration, new_bunches, model))?;
+        *self = next;
+        Ok(added)
+    }
+
+    fn add_columns_inner(
+        &mut self,
+        iteration: usize,
+        new_bunches: Vec<BunchEntry<I>>,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<Vec<usize>> {
         // 委托基础编译注册 x 变量
         let added_indices = self.base.add_columns(iteration, new_bunches, model)?;
+        if added_indices.is_empty() {
+            return Ok(added_indices);
+        }
 
         // 更新项累积器
         // 需要找到每个添加束对应的 x 变量模型索引
@@ -181,15 +230,36 @@ where
 
         // 重建中间表达式
         self.rebuild_intermediate_symbols(model)?;
+        self.refresh_master(model)?;
 
         Ok(added_indices)
     }
 
     /// 移除列 / Remove columns
     ///
-    /// 软删除列，从项累积器中移除对应项，标记为已移除。
-    /// Soft-deletes columns, removes corresponding terms from accumulators.
-    pub fn remove_columns(&mut self, bunch_indices: &[usize]) {
+    /// 原子退休列、固定旧变量为零、清理目标并刷新受管主问题；重加须用新索引。
+    /// Atomically retire columns, fix old variables at zero, clear objective terms and refresh the owned master; re-addition requires a fresh index.
+    pub fn remove_columns(&mut self, bunch_indices: &[usize], model: &mut MetaModel<f64>) -> GanttResult<()> {
+        self.base.validate_model(model)?;
+        let variables = bunch_indices.iter().filter_map(|index| self.bunch_x_map.get(index).copied()).collect::<HashSet<_>>();
+        if variables.is_empty() {
+            return Ok(());
+        }
+        let mut next = self.clone();
+        model.transaction(|model| {
+            for &variable in &variables {
+                model.fix_variable_by_index(variable, 0.0).map_err(|error| GanttError::Calculation { message: error.to_string() })?;
+            }
+            model.remove_objective_terms(&variables);
+            next.remove_column_terms(bunch_indices);
+            next.rebuild_intermediate_symbols(model)?;
+            next.refresh_master(model)
+        })?;
+        *self = next;
+        Ok(())
+    }
+
+    fn remove_column_terms(&mut self, bunch_indices: &[usize]) {
         for &bunch_idx in bunch_indices {
             // 在聚合中标记为已移除
             self.base.aggregation.remove(bunch_idx);
@@ -212,7 +282,6 @@ where
             }
         }
 
-        // 注意：不在此处重建符号，调用方应在所有列操作完成后调用 rebuild_intermediate_symbols
     }
 
     /// 重建中间表达式 / Rebuild intermediate expressions
@@ -220,6 +289,7 @@ where
     /// 基于当前项累积器重建所有中间表达式符号。
     /// Rebuilds all intermediate expression symbols from current term accumulators.
     pub fn rebuild_intermediate_symbols(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        self.base.validate_model(model)?;
         // 重建 bunchCost
         let cost_terms: Vec<LinearMonomial<f64>> = self
             .cost_terms
@@ -434,6 +504,7 @@ where
         bunch_indices: &HashSet<usize>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
+        self.base.validate_model(model)?;
         for &idx in bunch_indices {
             self.fixed_bunches.insert(idx);
             if let Some(&x_idx) = self.bunch_x_map.get(&idx) {
@@ -459,6 +530,7 @@ where
         current_fixed: &HashSet<usize>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<HashSet<usize>> {
+        self.base.validate_model(model)?;
         let mut newly_fixed = HashSet::new();
         let mut best = None::<(usize, f64)>;
 
@@ -519,6 +591,7 @@ where
         bunch_indices: impl IntoIterator<Item = usize>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<()> {
+        self.base.validate_model(model)?;
         for bunch_idx in bunch_indices {
             if let Some(&x_idx) = self.bunch_x_map.get(&bunch_idx) {
                 model
@@ -533,6 +606,7 @@ where
 
     /// 恢复非移除束的范围 / Restore non-removed bunch ranges
     pub fn restore_non_removed_ranges(&self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        self.base.validate_model(model)?;
         for (&bunch_idx, &x_idx) in &self.bunch_x_map {
             if self.base.aggregation.get_bunch(bunch_idx).is_some() {
                 model
@@ -634,6 +708,36 @@ where
         }
     }
 
+    /// 生产提取校验完整当前模型；取消任务只从实际 y 变量读取，不由缺失分配猜测。 / Production extraction validates the complete current model and reads actual y variables instead of inferring cancellation from missing assignments.
+    pub fn extract_solution_checked(&self, model: &MetaModel<f64>, values: &[f64]) -> GanttResult<BunchSolution> {
+        self.base.validate_model(model)?;
+        let current = model.try_to_linear_triad_model().map_err(|error| GanttError::Calculation { message: error.to_string() })?;
+        super::validation::validate_bunch_incumbent(&current, values, None)?;
+        let invalid = || GanttError::Calculation { message: "任务束变量映射已改变或退休列非零 / changed bunch variable mapping or nonzero retired column".into() };
+        let active = self.base.aggregation.bunches().iter().map(|entry| entry.index).collect::<HashSet<_>>();
+        if self.bunch_x_map.len() != active.len()
+            || self.bunch_x_map.iter().any(|(&bunch, &index)| !active.contains(&bunch) || self.base.x_index(bunch) != Some(index))
+        {
+            return Err(invalid());
+        }
+        let mut selected_bunches = Vec::new();
+        for entry in self.base.aggregation.all_bunches() {
+            let index = self.base.x_index(entry.index).ok_or_else(invalid)?;
+            let value = *values.get(index).ok_or_else(invalid)?;
+            if active.contains(&entry.index) {
+                if value > 0.5 { selected_bunches.push(entry.index); }
+            } else if value.abs() > super::validation::SOLUTION_TOLERANCE {
+                return Err(invalid());
+            }
+        }
+        selected_bunches.sort_unstable();
+        let mut canceled_tasks = Vec::new();
+        for (task, &index) in self.base.y_indices.iter().enumerate() {
+            if *values.get(index).ok_or_else(invalid)? > 0.5 { canceled_tasks.push(task); }
+        }
+        Ok(BunchSolution { selected_bunches, canceled_tasks })
+    }
+
     /// 活跃束数量 / Active bunch count
     pub fn active_bunch_count(&self) -> usize {
         self.base.aggregation.active_count()
@@ -674,6 +778,34 @@ impl IterativeBunchCompilation<ExecutorId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checked_extraction_reads_actual_cancellation_and_rejects_corrupted_mappings() {
+        let mut model = MetaModel::new("checked-bunch-extraction");
+        let mut compilation = IterativeBunchCompilation::new(1, vec!["e"], false);
+        compilation.register(&mut model).unwrap();
+        assert!(compilation.extract_solution_checked(&model, &[0.0]).unwrap().canceled_tasks.is_empty());
+        assert_eq!(compilation.extract_solution_checked(&model, &[1.0]).unwrap().canceled_tasks, vec![0]);
+        compilation.add_columns(0, vec![BunchEntry {
+            id: "candidate".into(), index: 40, executor_id: "e".into(), task_indices: vec![0], cost: 1.0, iteration: 0, slot_index: None,
+        }], &mut model).unwrap();
+        let original = compilation.clone();
+        assert_eq!(compilation.extract_solution_checked(&model, &[0.0, 1.0]).unwrap().selected_bunches, vec![40]);
+        compilation.bunch_x_map.insert(40, usize::MAX);
+        assert!(compilation.extract_solution_checked(&model, &[0.0, 1.0]).is_err());
+        compilation = original.clone();
+        compilation.bunch_x_map.clear();
+        assert!(compilation.extract_solution_checked(&model, &[0.0, 1.0]).is_err());
+        compilation = original.clone();
+        compilation.base.y_indices[0] = 1;
+        assert!(compilation.extract_solution_checked(&model, &[0.0, 1.0]).is_err());
+        compilation = original;
+        compilation.remove_columns(&[40], &mut model).unwrap();
+        let retired = compilation.base.x_index(40).unwrap();
+        model.set_variable_range_by_index(retired, VariableRange::bounded(0.0, 1.0)).unwrap();
+        assert!(compilation.extract_solution_checked(&model, &[0.0, 1.0]).is_err());
+        assert!(compilation.extract_solution_checked(&model, &[0.0, 0.0]).unwrap().selected_bunches.is_empty());
+    }
 
     #[test]
     fn test_iterative_bunch_compilation_register() {
@@ -725,6 +857,7 @@ mod tests {
         // 添加初始列
         let bunches = vec![
             BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
@@ -733,6 +866,7 @@ mod tests {
                 slot_index: None,
             },
             BunchEntry {
+                id: "bunch-1".into(),
                 index: 1,
                 executor_id: "exec_2".into(),
                 task_indices: vec![2],
@@ -785,6 +919,7 @@ mod tests {
 
         let bunches = vec![
             BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0],
@@ -793,6 +928,7 @@ mod tests {
                 slot_index: None,
             },
             BunchEntry {
+                id: "bunch-1".into(),
                 index: 1,
                 executor_id: "exec_1".into(),
                 task_indices: vec![1],
@@ -806,7 +942,7 @@ mod tests {
         assert_eq!(compilation.cost_terms.len(), 2);
 
         // 移除第 1 个束
-        compilation.remove_columns(&[1]);
+        compilation.remove_columns(&[1], &mut model).unwrap();
         assert_eq!(compilation.cost_terms.len(), 1);
         assert_eq!(compilation.task_compilation_terms[1].len(), 1); // 只剩 y[1]
         assert_eq!(compilation.active_bunch_count(), 1);
@@ -821,6 +957,7 @@ mod tests {
             .add_columns(
                 0,
                 vec![BunchEntry {
+                    id: "bunch-0".into(),
                     index: 0,
                     executor_id: "exec_1".into(),
                     task_indices: vec![0],
@@ -857,6 +994,7 @@ mod tests {
 
         let bunches = vec![
             BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
@@ -865,6 +1003,7 @@ mod tests {
                 slot_index: None,
             },
             BunchEntry {
+                id: "bunch-1".into(),
                 index: 1,
                 executor_id: "exec_2".into(),
                 task_indices: vec![2],
@@ -917,6 +1056,7 @@ mod tests {
 
         // 第一批列
         let bunches_1 = vec![BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
@@ -929,14 +1069,16 @@ mod tests {
         // 重复列（应被去重）
         let bunches_2 = vec![
             BunchEntry {
+                id: "bunch-0".into(),
                 index: 1,
                 executor_id: "exec_1".into(),
-                task_indices: vec![0, 1], // 同执行器、同任务集合 → 去重
-                cost: 4.0,
+                task_indices: vec![0, 1], // 同 ID 同 payload 才幂等。 / Only an identical ID and payload are idempotent.
+                cost: 5.0,
                 iteration: 1,
                 slot_index: None,
             },
             BunchEntry {
+                id: "bunch-2".into(),
                 index: 2,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0], // 不同任务集合 → 不去重

@@ -4,6 +4,7 @@ mod branching;
 mod model;
 mod policy;
 mod pricing_duals;
+mod route_pricing;
 mod validator;
 
 pub use branching::{BranchMask, ResourceArc, VehicleAssignment};
@@ -19,4 +20,5 @@ pub use policy::{
     SolomonDistanceCalculator, TravelTimeCalculator,
 };
 pub use pricing_duals::{PricingDuals, PricingPhase, VrpShadowPriceMap};
+pub use route_pricing::{RoutePricingArc, RoutePricingRow, RoutePricingRows, RouteRowCoefficient};
 pub use validator::{RouteValidationPolicy, RouteValidator, VrptwValidator};

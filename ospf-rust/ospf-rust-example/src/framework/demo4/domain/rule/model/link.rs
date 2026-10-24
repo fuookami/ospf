@@ -22,6 +22,8 @@ pub struct Link {
     pub to_task: String,
     /// 链接类型 / Link type
     pub link_type: LinkType,
+    /// 拆分费用；None 强制同机相邻，Some 允许付费拆分。 / Split cost; None requires same-aircraft adjacency, Some permits a penalized split.
+    pub split_cost: Option<f64>,
 }
 
 impl Link {

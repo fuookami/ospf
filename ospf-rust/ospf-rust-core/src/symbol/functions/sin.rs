@@ -760,7 +760,7 @@ where
         // Both the piecewise offsets and the selectors are helpers of this structure.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             self.helpers.clone(),
         ))
     }

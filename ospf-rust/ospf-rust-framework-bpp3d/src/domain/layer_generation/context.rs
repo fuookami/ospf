@@ -55,29 +55,52 @@ where
 
     /// 生成层候选 / Generate layer candidates
     ///
-    /// 依次调用所有生成器，收集结果并去重，截取到 max_candidates。
-    /// Invokes all generators in sequence, collects results, deduplicates,
-    /// and truncates to max_candidates.
+    /// 按 `request.bins` 逐箱型展开调用生成器链，再按列身份去重并截取到 max_candidates。
+    /// 未指定任何箱型时保持单次直通，使不依赖箱型的生成器（如历史层生成器）仍可工作。
+    /// Expands the generator chain per bin type from `request.bins`, then deduplicates by column identity and
+    /// truncates to max_candidates. When no bin type is specified the request is passed through once, so
+    /// generators that do not depend on a bin type (such as the historical generator) keep working.
     pub fn generate(&self, request: &LayerGenerationRequest<V, U>) -> Vec<LayerGenerationResult<V, U>> {
+        let candidate_bins = request.candidate_bins();
+        let bin_requests: Vec<LayerGenerationRequest<V, U>> = if candidate_bins.is_empty() {
+            vec![request.clone()]
+        } else {
+            candidate_bins
+                .into_iter()
+                .map(|bin| LayerGenerationRequest {
+                    bin: Some(bin),
+                    ..request.clone()
+                })
+                .collect()
+        };
+
         let mut all_results: Vec<LayerGenerationResult<V, U>> = Vec::new();
-
-        for generator in &self.generators {
-            let results = generator.generate(request);
-            all_results.extend(results);
-        }
-
-        // 简化去重：基于层深度和来源
         let mut seen = std::collections::HashSet::new();
         let mut deduped = Vec::new();
-        for result in all_results {
-            let key = format!("{:?}_{}", result.layer.depth.value, result.layer.from);
-            if seen.insert(key) {
-                deduped.push(result);
+        for bin_request in bin_requests {
+            if deduped.len() >= request.max_candidates {
+                break;
+            }
+            for generator in &self.generators {
+                let results = generator.generate(&bin_request);
+                all_results.extend(results);
+                if deduped.len() >= request.max_candidates {
+                    break;
+                }
             }
         }
 
-        // 截取到最大候选数
-        deduped.truncate(request.max_candidates);
+        for result in all_results {
+            // 列身份必须包含箱型：同一排布放在不同箱型上是不同的列。
+            // Column identity must include the bin type: the same layout on different bin types is a
+            // different column.
+            if seen.insert(result.layer.identity_key()) {
+                deduped.push(result);
+            }
+            if deduped.len() >= request.max_candidates {
+                break;
+            }
+        }
         deduped
     }
 }

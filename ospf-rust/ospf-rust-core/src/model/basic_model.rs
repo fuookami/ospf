@@ -17,6 +17,9 @@ use crate::variable::{VariableId, VariableItem, VariableRange, VariableTypeTrait
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static NEXT_CONSTRAINT_ID: AtomicU64 = AtomicU64::new(1);
 
 /// 基本模型 / Basic Model
 ///
@@ -36,6 +39,7 @@ where
     symbol_dependencies: HashMap<u64, HashSet<u64>>,
     /// 约束列表 / Constraints
     constraints: Vec<MetaConstraint<LinearInequality<V>>>,
+    constraint_ids: Vec<u64>,
     /// 约束组 / Constraint groups
     constraint_groups: HashMap<u64, Arc<ConstraintGroup>>,
     /// 平展缓存上下文 / Flatten cache context
@@ -67,6 +71,7 @@ where
     symbols: Vec<Arc<dyn IntermediateSymbol<V>>>,
     symbol_dependencies: HashMap<u64, HashSet<u64>>,
     constraints: Vec<MetaConstraint<LinearInequality<V>>>,
+    constraint_ids: Vec<u64>,
     constraint_groups: HashMap<u64, Arc<ConstraintGroup>>,
     config: BasicModelConfiguration,
 }
@@ -84,6 +89,7 @@ where
             symbols: Vec::new(),
             symbol_dependencies: HashMap::new(),
             constraints: Vec::new(),
+            constraint_ids: Vec::new(),
             constraint_groups: HashMap::new(),
             flatten_ctx: LazyLinearFlattenContext::new(),
             value_cache_ctx: LazyValueCacheContext::new(),
@@ -102,6 +108,7 @@ where
             symbols: self.symbols.clone(),
             symbol_dependencies: self.symbol_dependencies.clone(),
             constraints: self.constraints.clone(),
+            constraint_ids: self.constraint_ids.clone(),
             constraint_groups: self.constraint_groups.clone(),
             config: self.config.clone(),
         }
@@ -116,6 +123,7 @@ where
         self.symbols = snapshot.symbols;
         self.symbol_dependencies = snapshot.symbol_dependencies;
         self.constraints = snapshot.constraints;
+        self.constraint_ids = snapshot.constraint_ids;
         self.constraint_groups = snapshot.constraint_groups;
         self.config = snapshot.config;
         self.rebind_contexts();
@@ -351,6 +359,18 @@ where
         let idx = self.push_token(token)?;
         self.rebind_contexts();
         Ok(idx)
+    }
+
+    /// 在原数值域注册变量数据，保留身份、类型和精确范围。
+    /// Register variable data in its native value domain, preserving identity, type and exact bounds.
+    ///
+    /// 用于模型变换；模型内列序号重新分配，重复身份报错。
+    /// For model transformations; model-local column indices are reassigned and duplicate identities fail.
+    pub fn register_variable_data(&mut self, data: TokenVariableData<V>) -> Result<usize> {
+        let token = Token::new(AnyVariable::new(data), self.tokens.len());
+        let index = self.push_token(token)?;
+        self.rebind_contexts();
+        Ok(index)
     }
 
     /// 自动注册泛型变量 / Register generic variable with auto-generated ID
@@ -604,6 +624,7 @@ where
             .into());
         }
         self.constraints.push(constraint);
+        self.constraint_ids.push(NEXT_CONSTRAINT_ID.fetch_add(1, Ordering::Relaxed));
         self.invalidate_all_caches();
         Ok(())
     }
@@ -614,7 +635,17 @@ where
         F: FnMut(&MetaConstraint<LinearInequality<V>>) -> bool,
     {
         let original_len = self.constraints.len();
-        self.constraints.retain(|constraint| predicate(constraint));
+        let mut index = 0;
+        let mut retained_ids = Vec::with_capacity(self.constraint_ids.len());
+        self.constraints.retain(|constraint| {
+            let keep = predicate(constraint);
+            if keep {
+                retained_ids.push(self.constraint_ids[index]);
+            }
+            index += 1;
+            keep
+        });
+        self.constraint_ids = retained_ids;
         let removed = original_len - self.constraints.len();
         if removed > 0 {
             self.invalidate_all_caches();
@@ -673,6 +704,10 @@ where
     /// 获取所有约束 / Get all constraints
     pub fn constraints(&self) -> &[MetaConstraint<LinearInequality<V>>] {
         &self.constraints
+    }
+
+    pub(crate) fn constraint_ids(&self) -> &[u64] {
+        &self.constraint_ids
     }
 
     /// 获取所有中间符号 / Get all intermediate symbols

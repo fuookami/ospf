@@ -17,26 +17,27 @@ pub fn apply_adjacent_gap_limits(
     estimate_load_weight_idx: &[usize],
     _estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
-    let pos_count = context.request.positions.len();
-    for p in 0..pos_count.saturating_sub(1) {
+    for (pair_index, pair) in context.request.adjacent_positions.iter().enumerate() {
+        let p = pair.first;
+        let next = pair.second;
         // estimateLoadWeight[p] - estimateLoadWeight[p+1] <= maxGap
         model.add_linear_constraint(
             &[
                 (estimate_load_weight_idx[p], 1.0),
-                (estimate_load_weight_idx[p + 1], -1.0),
+                (estimate_load_weight_idx[next], -1.0),
             ],
             ConstraintRelation::LessEqual,
             context.request.max_adjacent_load_gap,
             &format!(
                 "airworthiness_security_adjacent_gap_pos_{}_{}",
                 mode_name(context.mode),
-                p
+                pair_index
             ),
         )?;
         // estimateLoadWeight[p+1] - estimateLoadWeight[p] <= maxGap
         model.add_linear_constraint(
             &[
-                (estimate_load_weight_idx[p + 1], 1.0),
+                (estimate_load_weight_idx[next], 1.0),
                 (estimate_load_weight_idx[p], -1.0),
             ],
             ConstraintRelation::LessEqual,
@@ -44,7 +45,7 @@ pub fn apply_adjacent_gap_limits(
             &format!(
                 "airworthiness_security_adjacent_gap_neg_{}_{}",
                 mode_name(context.mode),
-                p
+                pair_index
             ),
         )?;
     }

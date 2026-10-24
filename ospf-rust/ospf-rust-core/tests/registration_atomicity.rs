@@ -69,9 +69,11 @@ fn snapshot_symbols(model: &MetaModel<f64>) -> Vec<(u64, String, Vec<u64>)> {
         .collect()
 }
 
+type ConstraintSnapshot = (String, ConstraintRelation, f64, f64, Vec<(usize, f64)>);
+
 fn snapshot_constraints(
     model: &MetaModel<f64>,
-) -> Vec<(String, ConstraintRelation, f64, f64, Vec<(usize, f64)>)> {
+) -> Vec<ConstraintSnapshot> {
     model
         .constraints()
         .iter()

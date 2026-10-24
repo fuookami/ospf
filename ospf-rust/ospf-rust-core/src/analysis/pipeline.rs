@@ -11,6 +11,7 @@
 //!    `removal 无收益 ≠ 不参与组合瓶颈`，因此排序结果**不含**任何"全局无效"判决，
 //!    只并列展示各层各自能证明的结论；
 //! 2. Tier C 候选只被降权，**永不删除**。
+//!
 //! Two semantic invariants run through this module (plan 3.5 / 7.7):
 //! 1. `inactive ≠ ineffective`, `dual = 0 ≠ globally ineffective`, and
 //!    "no removal improvement ≠ not part of a combined bottleneck", so a ranking never contains
@@ -234,7 +235,7 @@ impl CandidateFunnelRanking {
                     let dual = candidate.dual_value.ok_or_else(|| {
                         invalid_analysis("tier A candidate requires a dual value")
                     })?;
-                    if !(dual.abs() > self.dual_threshold) {
+                    if dual.abs().partial_cmp(&self.dual_threshold) != Some(std::cmp::Ordering::Greater) {
                         return Err(invalid_analysis(
                             "tier A candidate requires a dual above the threshold",
                         ));
@@ -635,7 +636,7 @@ pub fn summarize_groups(
     // Materialise every referenced group first, then mutate by key. This keeps the borrow
     // checker satisfied without giving up the deterministic `BTreeMap` ordering.
     // 先物化所有被引用的组，再按键修改；既满足借用检查，又保留 `BTreeMap` 的确定性顺序。
-    let mut ensure = |groups: &mut BTreeMap<Option<String>, AnalysisGroupSummary>,
+    let ensure = |groups: &mut BTreeMap<Option<String>, AnalysisGroupSummary>,
                       group: Option<String>| {
         groups
             .entry(group.clone())
@@ -1990,7 +1991,7 @@ mod tests {
             .with_perturbation_analysis(false)
             .with_target_analysis(false);
         let report = CriticalConstraintAnalysisPipeline::new(&solver)
-            .with_fixed_integer_adapter(&adapter)
+            .with_fixed_integer_adapter(adapter)
             .analyze(&snapshot, &baseline, None, &options)
             .expect("pipeline report");
 
@@ -2065,7 +2066,7 @@ mod tests {
             .with_fixed_integer_analysis(false)
             .with_target_analysis(false);
         let report = CriticalConstraintAnalysisPipeline::new(&cp_solver)
-            .with_perturbation_adapter(&adapter)
+            .with_perturbation_adapter(adapter)
             .analyze_with_baseline_values(
                 &snapshot,
                 BTreeMap::from([(StableVariableId::from("x"), 10)]),

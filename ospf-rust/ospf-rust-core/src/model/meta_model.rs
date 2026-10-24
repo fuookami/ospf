@@ -150,14 +150,14 @@ where
 {
     /// 构建为最大化目标。 / Build into a maximization objective.
     pub fn maximize(self, name: impl Into<String>) -> LinearObjectiveInput<V> {
-        let (terms, _constant_term) = self.into_parts();
-        LinearObjectiveInput::maximize(name).terms(terms)
+        let (terms, constant_term) = self.into_parts();
+        LinearObjectiveInput::maximize(name).terms(terms).constant(constant_term)
     }
 
     /// 构建为最小化目标。 / Build into a minimization objective.
     pub fn minimize(self, name: impl Into<String>) -> LinearObjectiveInput<V> {
-        let (terms, _constant_term) = self.into_parts();
-        LinearObjectiveInput::minimize(name).terms(terms)
+        let (terms, constant_term) = self.into_parts();
+        LinearObjectiveInput::minimize(name).terms(terms).constant(constant_term)
     }
 }
 
@@ -306,6 +306,8 @@ pub struct LinearObjectiveInput<V = f64> {
     pub category: ObjectiveCategory,
     /// 线性项列表（变量索引，系数）。 / Linear terms list (variable index, coefficient).
     pub terms: Vec<(usize, V)>,
+    /// 目标常数项。 / Objective constant term.
+    pub constant_term: V,
     /// 权重。 / Weight.
     pub weight: V,
 }
@@ -320,6 +322,7 @@ where
             name: name.into(),
             category: ObjectiveCategory::Maximum,
             terms: Vec::new(),
+            constant_term: V::zero(),
             weight: V::one(),
         }
     }
@@ -330,12 +333,19 @@ where
             name: name.into(),
             category: ObjectiveCategory::Minimum,
             terms: Vec::new(),
+            constant_term: V::zero(),
             weight: V::one(),
         }
     }
 }
 
 impl<V> LinearObjectiveInput<V> {
+    /// 设置目标常数项。 / Set the objective constant term.
+    pub fn constant(mut self, constant_term: V) -> Self {
+        self.constant_term = constant_term;
+        self
+    }
+
     /// 设置目标类型。 / Set the objective category.
     pub fn category(mut self, category: ObjectiveCategory) -> Self {
         self.category = category;
@@ -381,6 +391,7 @@ where
     config: MetaModelConfiguration,
     symbolic_constraints: Vec<SymbolicLinearConstraint<V>>,
     symbolic_quadratic_constraints: Vec<SymbolicQuadraticConstraint<V>>,
+    pub(crate) linear_state: parking_lot::Mutex<crate::model::LinearModelState<V>>,
 }
 
 impl<V> MetaModel<V>
@@ -407,6 +418,7 @@ where
             config: MetaModelConfiguration::default(),
             symbolic_constraints: Vec::new(),
             symbolic_quadratic_constraints: Vec::new(),
+            linear_state: parking_lot::Mutex::new(crate::model::LinearModelState::new()),
         }
     }
 
@@ -420,6 +432,7 @@ where
             config: MetaModelConfiguration::default(),
             symbolic_constraints: Vec::new(),
             symbolic_quadratic_constraints: Vec::new(),
+            linear_state: parking_lot::Mutex::new(crate::model::LinearModelState::new()),
         }
     }
 
@@ -446,6 +459,7 @@ where
         let config = self.config.clone();
         let symbolic_constraints = self.symbolic_constraints.clone();
         let symbolic_quadratic_constraints = self.symbolic_quadratic_constraints.clone();
+        let registered_rows = self.linear_state.lock().registered_rows.clone();
 
         match operation(self) {
             Ok(value) => Ok(value),
@@ -455,6 +469,8 @@ where
                 self.config = config;
                 self.symbolic_constraints = symbolic_constraints;
                 self.symbolic_quadratic_constraints = symbolic_quadratic_constraints;
+                // 已发布版本不回滚，避免失败事务产生可复用版本。 / Never roll back published revisions (ABA).
+                self.linear_state.lock().registered_rows = registered_rows;
                 Err(error)
             }
         }
@@ -669,6 +685,24 @@ where
         self.objective.add_sub_objective(sub_objective);
     }
 
+    /// 添加原数值域线性目标输入，保留权重及常数项。
+    /// Add a native-value linear objective input, preserving its weight and constant.
+    pub fn add_linear_objective_input(&mut self, input: LinearObjectiveInput<V>) {
+        let monomials = input.terms.into_iter()
+            .map(|(index, coefficient)| LinearMonomial::new(coefficient, index)).collect();
+        let polynomial = Linear::new(monomials, input.constant_term);
+        self.objective.add_sub_objective(SubObjective::new_with_weight(
+            input.category, polynomial, &input.name, input.weight,
+        ));
+    }
+
+    /// 设置原数值域线性目标输入，替换已有目标。 / Set a native-value linear objective input, replacing existing objectives.
+    pub fn set_linear_objective_input(&mut self, input: LinearObjectiveInput<V>) {
+        self.objective.category = input.category;
+        self.objective.sub_objectives.clear();
+        self.add_linear_objective_input(input);
+    }
+
     /// 获取目标。
     /// Get objective.
     pub fn objective(&self) -> &Objective<V> {
@@ -679,6 +713,33 @@ where
     /// Get mutable objective.
     pub fn objective_mut(&mut self) -> &mut Objective<V> {
         &mut self.objective
+    }
+
+    /// 读取后端使用的独立目标快照；所有目标入口已归一到注册变量。 / Read an independent backend objective snapshot; all inputs resolve to registered variables.
+    pub fn objective_snapshot(&self) -> Objective<V> {
+        self.objective.clone()
+    }
+
+    /// 删除所有子目标中的指定变量项，保留常数、权重和方向。 / Remove variable terms from every sub-objective, preserving constants, weights and directions.
+    pub fn remove_objective_terms(&mut self, variables: &std::collections::HashSet<usize>) {
+        for objective in &mut self.objective.sub_objectives {
+            let terms = objective.polynomial.monomials().iter()
+                .filter(|term| !variables.contains(&term.var_index()))
+                .cloned()
+                .collect();
+            objective.polynomial = Linear::new(terms, objective.polynomial.constant_term().clone());
+        }
+    }
+
+    /// 原位替换拥有的命名子目标，不覆盖其他组件的目标。 / Replace an owned named sub-objective in place without overwriting other components.
+    pub fn replace_sub_objective(&mut self, name: &str, replacement: SubObjective<V>) {
+        if let Some(objective) = self.objective.sub_objectives.iter_mut()
+            .find(|objective| objective.name == name)
+        {
+            *objective = replacement;
+        } else {
+            self.objective.add_sub_objective(replacement);
+        }
     }
 
     /// 添加线性不等式约束。
@@ -975,11 +1036,23 @@ where
     where
         V: Add<Output = V>,
     {
+        self.try_to_mechanism_model_with_expansion_policy(callback, None)
+    }
+
+    pub(crate) fn try_to_mechanism_model_with_expansion_policy(
+        &self,
+        callback: Option<&ModelBuildingStatusCallback>,
+        policy: Option<FunctionExpansionPolicy>,
+    ) -> Result<MechanismModel<V>>
+    where
+        V: Add<Output = V>,
+    {
+        let policy = policy.unwrap_or(self.basic.config().function_expansion_policy);
         let mut basic_mechanism = BasicMechanismModel::new(&self.basic.name);
         // 机制模型带着解析后的策略离开建模阶段，供求解器适配器判断是否尝试原生接口。
         // The mechanism model leaves the modelling stage carrying the resolved policy so a solver
         // adapter can decide whether to attempt native interfaces.
-        basic_mechanism.set_function_expansion_policy(self.basic.config().function_expansion_policy);
+        basic_mechanism.set_function_expansion_policy(policy);
         let model_name = self.basic.name.clone();
 
         let mut symbol_to_index: HashMap<usize, usize> = HashMap::new();
@@ -1125,7 +1198,7 @@ where
             // A non-EAGER policy prefers the solver-neutral structure; symbols without a
             // structure keep eager expansion as the generic fallback instead of producing an
             // empty model.
-            let deferred_structure = if self.basic.config().function_expansion_policy.is_eager() {
+            let deferred_structure = if policy.is_eager() {
                 None
             } else {
                 symbol.deferred_structure_with_tokens(self.basic.tokens())
@@ -1354,6 +1427,21 @@ impl MetaModel<f64> {
     /// Convert into linear triad model.
     pub fn try_to_linear_triad_model(&self) -> Result<LinearTriadModel> {
         self.try_to_linear_triad_model_with_status_callback(None)
+    }
+
+    /// 当前源模型的进程内结构快照，不是求解或对偶来源证书。
+    /// In-process source-structure snapshot, not a solve or dual-provenance certificate.
+    ///
+    /// 不含解和求值缓存；消费者还须审计实际编译模型及其完整 incumbent。
+    /// Excludes solutions and evaluation caches; consumers must also audit the compiled model and its complete incumbent.
+    pub fn linear_source_snapshot(&self) -> String {
+        let tokens = self.tokens().iter().map(|token| (
+            token.id(), token.name(), token.var_type(), token.variable.lower_bound(), token.variable.upper_bound(),
+        )).collect::<Vec<_>>();
+        let dependencies = self.symbols().iter().map(|symbol| (symbol.id(), self.symbol_dependency_ids(symbol.id().id)))
+            .collect::<Vec<_>>();
+        format!("{:?}", (tokens, self.basic.constraints(), self.symbols(), dependencies,
+            &self.objective, &self.config, self.basic.config(), &self.symbolic_constraints, &self.symbolic_quadratic_constraints))
     }
 
     /// 转换为线性三元组模型（带构建回调）。
@@ -1617,28 +1705,6 @@ impl MetaModel<f64> {
         self.set_linear_objective_input(input);
     }
 
-    /// 添加线性目标输入。
-    /// Add linear objective input.
-    pub fn add_linear_objective_input(&mut self, input: LinearObjectiveInput<f64>) {
-        let monomials: Vec<LinearMonomial<f64>> = input
-            .terms
-            .into_iter()
-            .map(|(index, coefficient)| LinearMonomial::new(coefficient, index))
-            .collect();
-        let polynomial = Linear::new(monomials, 0.0);
-        let sub_objective =
-            SubObjective::new_with_weight(input.category, polynomial, &input.name, input.weight);
-        self.objective.add_sub_objective(sub_objective);
-    }
-
-    /// 设置线性目标输入（会覆盖已有目标）。
-    /// Set linear objective input (overwrites existing objective list).
-    pub fn set_linear_objective_input(&mut self, input: LinearObjectiveInput<f64>) {
-        self.objective.category = input.category;
-        self.objective.sub_objectives.clear();
-        self.add_linear_objective_input(input);
-    }
-
     /// 添加线性约束。
     /// Add a linear constraint.
     pub fn add_linear_constraint(
@@ -1892,6 +1958,48 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn owned_objective_replacement_and_term_removal_preserve_other_components() {
+        use super::*;
+        let mut model = MetaModel::<f64>::new("owned-objectives");
+        let x = model.register_auto_variable_with_range::<crate::variable::Continuous>("x", VariableRange::bounded(0.0, 1.0)).unwrap();
+        let y = model.register_auto_variable_with_range::<crate::variable::Continuous>("y", VariableRange::bounded(0.0, 1.0)).unwrap();
+        model.set_objective_category(ObjectiveCategory::Minimum);
+        model.add_sub_objective(SubObjective::new_with_weight(ObjectiveCategory::Minimum,
+            Linear::new(vec![LinearMonomial::new(2.0, x), LinearMonomial::new(4.0, y)], 7.0), "business", 3.0));
+        model.add_linear_objective(&[(x, 5.0)], "columns");
+        let mut snapshot = model.objective_snapshot();
+        snapshot.sub_objectives.clear();
+        assert_eq!(model.objective().len(), 2);
+        model.replace_sub_objective("columns", SubObjective::minimize(
+            Linear::new(vec![LinearMonomial::new(6.0, y)], 0.0), "phase-two"));
+        assert_eq!(model.objective().len(), 2);
+        assert_eq!(model.objective().sub_objectives[0].weight, 3.0);
+        assert_eq!(model.try_to_linear_triad_model().unwrap().c, vec![6.0, 18.0]);
+        model.remove_objective_terms(&[x].into());
+        let effective = model.objective_snapshot();
+        assert_eq!(*effective.sub_objectives[0].polynomial.constant_term(), 7.0);
+        assert_eq!(effective.sub_objectives[0].weight, 3.0);
+        assert_eq!(model.try_to_linear_triad_model().unwrap().c, vec![0.0, 18.0]);
+    }
+
+    #[test]
+    fn linear_source_snapshot_tracks_structure_but_not_solver_values() {
+        let mut model = MetaModel::<f64>::new("source-snapshot");
+        let x = model.register_auto_variable_with_range::<crate::variable::Binary>("x", VariableRange::bounded(0.0, 1.0)).unwrap();
+        let snapshot = model.linear_source_snapshot();
+        model.set_solution(&[1.0]);
+        assert_eq!(snapshot, model.linear_source_snapshot());
+        model.add_le_constraint(&[(x, 1.0)], 0.0, "rule").unwrap();
+        assert_ne!(snapshot, model.linear_source_snapshot());
+        let snapshot = model.linear_source_snapshot();
+        model.add_sub_objective(crate::model::SubObjective::minimize(Linear::new(vec![], 7.0), "constant"));
+        assert_ne!(snapshot, model.linear_source_snapshot());
+        let snapshot = model.linear_source_snapshot();
+        model.set_variable_range_by_index(x, VariableRange::bounded(0.0, 0.0)).unwrap();
+        assert_ne!(snapshot, model.linear_source_snapshot());
+    }
+
     use crate::error::Result;
     use crate::model::intermediate::{
         FunctionUsageSummary, LinearTriadModel, QuadraticTetradModel,
@@ -4536,7 +4644,7 @@ mod tests {
 
         // 给侧列加额外边界后不再允许省略。
         // Adding an extra bound to the side column makes it non-omittable.
-        let mut bounded = mechanism.clone();
+        let bounded = mechanism.clone();
         if let Some(index) = bounded
             .as_basic()
             .tokens()
@@ -4748,7 +4856,7 @@ mod tests {
         // 未固定：允许原生写入。
         // Not fixed: a native write is allowed.
         let open = build(&abs, false);
-        let open_summary = open.function_usage_summary(975, result_id.clone(), &[side_id.clone()]);
+        let open_summary = open.function_usage_summary(975, result_id, std::slice::from_ref(&side_id));
         assert!(!open_summary.result_is_fixed);
         assert!(!open_summary.forbids_native_write());
 

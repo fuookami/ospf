@@ -13,23 +13,22 @@ use ospf_rust_framework::model::{
     BasicShadowPriceMap, DynamicColumnContext, DynamicModelLifecycle, ShadowPriceKey,
     ShadowPriceMap, extract_shadow_price,
 };
-#[cfg(not(feature = "async"))]
-use ospf_rust_framework::solver::{ColumnGenerationSolver, FrameworkSolveOptions};
 use ospf_rust_math::algebra::Field;
 use ospf_rust_quantities::unit::concept::UnitTrait;
 use ospf_rust_quantities::unit::derived::Meter;
 use ospf_rust_quantities::unit::physical_unit::CTUnit;
 
 use crate::domain::item::{
-    ActualItem, BinLayer, BinType, Bpp3dDemandKey, Bpp3dDemandMode, Bpp3dLayerDemandCoverage,
-    ContinuousCylinderRadiusSolution, ContinuousRadiusModelComponent, PackageAttribute,
+    ActualItem, BinLayer, BinType, BinTypeId, Bpp3dDemandKey, Bpp3dDemandMode,
+    Bpp3dLayerDemandCoverage, ContinuousCylinderRadiusSolution, ContinuousRadiusModelComponent,
+    PackageAttribute,
 };
 use crate::domain::layer_assignment::{
-    BinAmountMinimization, BinCapacityConstraint, BinDepthConstraint, Bpp3dDemandEntry,
-    Bpp3dModelComponent, Capacity, DemandConstraint, DemandShadowPriceKey, ImpreciseAssignment,
-    IterativeLayerAssignmentContext, LayerAggregation, LayerAssignmentAggregation,
-    LayerAssignmentContext, Load, PreciseAssignment, PreciseAssignmentActivationConstraint,
-    SolutionExtractor, VolumeMinimization,
+    BinAmountMinimization, BinCapacityConstraint, BinDepthConstraint, BinTypeCostMinimization,
+    BinVolumeMinimization, Bpp3dDemandEntry, Bpp3dModelComponent, Capacity, DemandConstraint,
+    DemandShadowPriceKey, ImpreciseAssignment, IterativeLayerAssignmentContext, LayerAggregation,
+    LayerAssignmentAggregation, LayerAssignmentContext, Load, PreciseAssignment,
+    PreciseAssignmentActivationConstraint, SolutionExtractor, VolumeMinimization,
 };
 use crate::domain::layer_generation::{
     BLGlobalLayerGenerator, BLLocalLayerGenerator, BlockLayerGenerator,

@@ -104,20 +104,20 @@ impl FlightCyclePeriod {
 
     /// 计算超出剩余飞行小时的部分 / Compute the amount exceeding remaining flight hours
     pub fn over_flight_hour(&self, flight_hour: &FlightHour) -> FlightHour {
-        if let Some(remaining) = &self.remaining_flight_hour {
-            if remaining < flight_hour {
-                return flight_hour.clone() - remaining.clone();
-            }
+        if let Some(remaining) = &self.remaining_flight_hour
+            && remaining < flight_hour
+        {
+            return flight_hour.clone() - remaining.clone();
         }
         FlightHour::ZERO
     }
 
     /// 计算超出剩余飞行循环的部分 / Compute the amount exceeding remaining flight cycles
     pub fn over_flight_cycle(&self, flight_cycle: &FlightCycle) -> FlightCycle {
-        if let Some(remaining) = &self.remaining_flight_cycle {
-            if remaining <= flight_cycle {
-                return flight_cycle.clone() - remaining.clone();
-            }
+        if let Some(remaining) = &self.remaining_flight_cycle
+            && remaining <= flight_cycle
+        {
+            return flight_cycle.clone() - remaining.clone();
         }
         FlightCycle::ZERO
     }

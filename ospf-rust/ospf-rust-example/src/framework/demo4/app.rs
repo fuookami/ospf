@@ -3,23 +3,28 @@
 //! 航班调度与恢复示例的应用入口，包含框架 trait 实现与演示流程。
 //! Application entry for airline scheduling and recovery demo, with framework trait implementations and showcase flow.
 
+use std::collections::HashSet;
+use std::error::Error;
+use time::{Date, Duration, Month, OffsetDateTime, Time};
+use ospf_rust_framework::model::ColumnGenerationScope;
 use ospf_rust_framework_gantt_scheduling::domain::task::{
     AssignmentPolicyTrait, Cost, CostItem, ExecutorTrait, TaskKey, TaskStatus, TaskTrait, TaskType,
 };
 use ospf_rust_framework_gantt_scheduling::infrastructure::{
     DurationUnit, TimeRange, TimeWindow, WorkingCalendar,
 };
-use std::collections::HashSet;
-use std::error::Error;
-use time::{Date, Duration, Month, OffsetDateTime, Time};
-
-use super::domain::task::model::{
+use ospf_rust_framework_network_scheduling::domain::path::PathSearchBudget;
+use crate::framework::demo4::domain::bunch_generation::recovery::{
+    RecoveryActivityCandidate, RecoveryBunchGenerationContext, RecoveryPathRequest,
+};
+use crate::framework::demo4::domain::rule::service::{BunchRecoveryRules, CostCalculator};
+use crate::framework::demo4::domain::task::model::{
     Aircraft, AircraftCapacity, AircraftMinorType, AircraftType, AircraftUsability, Airport,
     AirportType, FlightAssignmentPolicy, FlightCycle, FlightHour, FlightLeg, FlightLegPlan,
     FlightTaskAssignment, FlightTaskCategory, FlightTaskImpl, FlightTaskPlanImpl, FlightTaskStatus,
-    FlightTaskTypeImpl,
+    FlightTaskTypeImpl, FlightTaskRecovery, Route,
 };
-use super::infrastructure::{
+use crate::framework::demo4::infrastructure::{
     AircraftMinorTypeCode, AircraftRegisterNumber, AircraftTypeCode, Icao, PassengerClass,
 };
 
@@ -228,7 +233,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         flight_leg.plan.no,
         flight_leg.dep().icao.0,
         flight_leg.arr().icao.0,
-        flight_leg.plan.time().map(|(s, e)| (s, e)),
+        flight_leg.plan.time(),
     );
 
     // 创建 FlightTaskImpl (实现 TaskTrait)
@@ -262,17 +267,76 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         flight_task.delay_enabled(),
     );
 
+    let candidates = [RecoveryActivityCandidate {
+        id: "CA1234-recovered".into(),
+        recovery: FlightTaskRecovery::new(
+            flight_task.clone(),
+            aircraft.clone(),
+            Route { dep: airport_zbaa.clone(), arr: airport_zuuu.clone() },
+            (dt(2026, Month::June, 7, 9, 0, 0), dt(2026, Month::June, 7, 12, 0, 0)),
+        )?,
+    }];
+    let usability = AircraftUsability {
+        location: airport_zbaa.clone(),
+        enabled_time: dt(2026, Month::June, 7, 8, 30, 0),
+        flight_cycle_periods: Vec::new(),
+    };
+    let request = RecoveryPathRequest {
+        aircraft: &aircraft,
+        candidates: &candidates,
+        rules: BunchRecoveryRules { usability: &usability, previous: None, links: &[] },
+        cost: &CostCalculator,
+        scope: ColumnGenerationScope {
+            request: "demo4-domain-showcase".into(), model: "no-master-model".into(), dual: "heuristic".into(),
+            branch: "root".into(), groups: [aircraft.reg_no.0.clone()].into(), executor_slots: Default::default(), global: false,
+        },
+        maximum_results: None,
+    };
+    let generated = RecoveryBunchGenerationContext.generate(&request, &PathSearchBudget::default())?;
+    for candidate in &generated.batch.columns {
+        println!("Recovered bunch: tasks={:?}, actual_time={:?}, cost={}",
+            candidate.bunch.task_ids().collect::<Vec<_>>(), candidate.bunch.time(), candidate.cost);
+    }
+    println!("Domain path search: {:?}; no master LP/MILP or optimality claim", generated.batch.completion);
+
+    #[cfg(feature = "demo4-gurobi-cg")]
+    {
+        use std::collections::BTreeMap;
+        use std::sync::Arc;
+        use ospf_rust_framework::solver::gurobi_extension::GurobiColumnGenerationSolver;
+        use super::application::{RecoveryApplicationConfiguration, RecoveryApplicationService};
+        use super::domain::bunch_compilation::context::RecoveryMasterConfiguration;
+        use super::domain::bunch_generation::problem::{RecoveryAircraftDomain, RecoveryProblem};
+        use super::domain::bunch_generation::initial::RecoveryInitialConfiguration;
+        use super::domain::passenger::model::Passenger;
+
+        let originals = generated.batch.columns.iter().filter(|candidate| !candidate.bunch.activities().is_empty()).cloned().collect::<Vec<_>>();
+        let problem = RecoveryProblem::new(RecoveryMasterConfiguration {
+            tasks: vec![flight_task.clone()], aircraft: vec![aircraft.clone()], cancellation_costs: vec![None],
+        }, vec![RecoveryAircraftDomain { aircraft: aircraft.clone(), usability: usability.clone(), previous: None, candidates: candidates.to_vec() }],
+            vec![], CostCalculator)?.with_passengers(vec![Passenger { id: "demo4-Y".into(), amount: 80,
+                flights: vec![(flight_task.plan.id.clone(), PassengerClass("Y".into()))] }])?
+            .with_original_fleet_balance(&originals, Some(500.0))?
+            .with_locked_tasks(BTreeMap::from([(aircraft.reg_no.0.clone(), vec![flight_task.plan.id.clone()])]))?;
+        let report = RecoveryApplicationService::new(GurobiColumnGenerationSolver::new()).solve(Arc::new(problem), RecoveryApplicationConfiguration {
+            initial_generation: Some(RecoveryInitialConfiguration { originals }),
+            ..Default::default()
+        })?;
+        println!("Native Gantt recovery: {:?}, {:?}, objective={:?}; finite candidate scope only",
+            report.problem_status, report.termination_reason, report.solution.as_ref().and_then(|solution| solution.objective_value));
+        if let Some(solution) = report.solution.and_then(|solution| solution.value) {
+            println!("Selected recovery bunches: {}, pricing rounds: {}", solution.schedule.selected.len(), solution.pricing.len());
+            println!("Automatic initial columns: {}, fleet penalty: {}", solution.initial_generation.as_ref().map_or(0, |initial| initial.batch.columns.len()),
+                solution.schedule.fleet_balance.iter().map(|fleet| fleet.penalty).sum::<f64>());
+        }
+    }
+
     // 创建聚合 / Create aggregation
-    let task_agg = super::domain::task::Aggregation::new(
-        vec![airport_zbaa, airport_zuuu],
-        vec![aircraft],
-        vec![],
-        vec![flight_leg],
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-    );
+    let task_agg = super::domain::task::Aggregation {
+        airports: vec![airport_zbaa, airport_zuuu], aircrafts: vec![aircraft],
+        aircraft_usability: vec![], legs: vec![flight_leg], maintenances: vec![],
+        aogs: vec![], transfer_flights: vec![], origin_bunches: vec![],
+    };
     println!(
         "Task aggregation: {} airports, {} aircrafts, {} legs",
         task_agg.airports.len(),
@@ -290,7 +354,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let cost_sum: f64 = cost.cost_sum.unwrap_or(0.0);
     println!("Cost: items={}, sum={:.2}", cost.items.len(), cost_sum);
 
-    let time_window: TimeWindow<f64> = TimeWindow::hours(time.clone(), 0.0, true, 1.0);
+    let time_window: TimeWindow<f64> = TimeWindow::hours(time, 0.0, true, 1.0);
     let duration_val = time_window.value_of_duration(Duration::hours(2));
     println!("TimeWindow value_of_duration(2h): {}", duration_val);
 

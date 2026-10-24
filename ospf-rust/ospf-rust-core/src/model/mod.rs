@@ -14,6 +14,7 @@
 pub mod basic_model;
 pub mod configuration;
 pub mod meta_model;
+pub mod linear_model_state;
 pub mod object;
 pub mod range_cache;
 pub mod value_cache;
@@ -29,6 +30,7 @@ pub mod status;
 pub use basic_model::*;
 pub use configuration::*;
 pub use meta_model::*;
+pub use linear_model_state::*;
 pub use object::*;
 pub use range_cache::*;
 pub use value_cache::*;

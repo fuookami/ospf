@@ -9,7 +9,6 @@ use crate::domain::bunch_compilation::model::BunchEntry;
 use crate::domain::bunch_generation::label::Label;
 use crate::domain::bunch_generation::model::{Graph, Node};
 use crate::domain::common::{ExecutorId, ExecutorIdTrait};
-use crate::domain::task::Cost;
 
 /// 束定价问题 / Bunch pricing problem
 ///
@@ -60,12 +59,24 @@ where
                 && let Some(task_indices) = label.generate_bunch_tasks()
                 && !task_indices.is_empty()
             {
-                let reduced_cost = label.reduced_cost();
+                let cost = label.cost.solver_cost(0.0);
+                let mut trace = Vec::new();
+                let mut current = Some(&label);
+                while let Some(label) = current {
+                    if let Some(Node::Task(node)) = &label.node {
+                        trace.push((node.node_index, node.task_index, node.time.to_bits()));
+                    }
+                    current = label.prev_label.as_deref();
+                }
+                trace.reverse();
+                let executor = self.executor_id.to_string();
+                // 身份保留完整节点时刻，不包含本轮对偶或模型列索引。 / Identity retains complete node times, excluding current duals and model-column indices.
                 bunches.push(BunchEntry {
+                    id: format!("gantt-path:{}:{}:{trace:?}:{:x}", executor.len(), executor, cost.to_bits()).into(),
                     index: bunch_index_offset + i,
                     executor_id: self.executor_id.clone(),
                     task_indices,
-                    cost: reduced_cost,
+                    cost,
                     iteration: 0, // 由调用方设置
                     slot_index: None,
                 });
@@ -145,13 +156,13 @@ impl<'a> LabelSettingAlgorithm<'a> {
                                 .get(&task_node.task_index)
                                 .copied()
                                 .unwrap_or(0.0);
-                            let cost = Cost::empty();
+                            let cost = label.cost.clone();
                             Label::task(
                                 label.clone(),
                                 target.clone(),
                                 task_node.task_index,
                                 cost,
-                                shadow_price,
+                                label.shadow_price + shadow_price,
                             )
                         }
                         Node::End => Label::end(label.clone()),
@@ -233,5 +244,40 @@ mod tests {
 
         // 空图应该没有有效标签
         assert!(labels.is_empty());
+    }
+
+    fn chain(time: f64) -> Graph {
+        let mut graph = Graph::new();
+        let first = Node::Task(TaskNode::new(0, 1, time));
+        let second = Node::Task(TaskNode::new(1, 2, time + 1.0));
+        graph.add_node(first.clone());
+        graph.add_node(second.clone());
+        graph.add_edge(graph.root().clone(), first.clone());
+        graph.add_edge(first, second.clone());
+        graph.add_edge(second, graph.end().clone());
+        graph
+    }
+
+    #[test]
+    fn pricing_identity_and_true_cost_do_not_depend_on_duals_or_column_offsets() {
+        let mut pricing = BunchPricingProblem::new("e", chain(10.0));
+        pricing.set_shadow_prices(HashMap::from([(0, 5.0), (1, -2.0)]));
+        let first = pricing.solve(40).pop().unwrap();
+        assert_eq!(first.task_indices, vec![0, 1]);
+        assert_eq!(first.cost, 0.0);
+        let labels = LabelSettingAlgorithm::new(&pricing.graph, &pricing.task_shadow_prices).run();
+        assert_eq!(labels[0].reduced_cost(), -3.0);
+        pricing.set_shadow_prices(HashMap::from([(0, 9.0), (1, -1.0)]));
+        let second = pricing.solve(90).pop().unwrap();
+        assert_eq!(first.id, second.id);
+        assert_ne!(first.index, second.index);
+        assert_eq!(first.cost, second.cost);
+
+        let mut rescheduled = BunchPricingProblem::new("e", chain(11.0));
+        rescheduled.set_shadow_prices(pricing.task_shadow_prices.clone());
+        assert_ne!(first.id, rescheduled.solve(40)[0].id);
+        let mut reassigned = BunchPricingProblem::new("another-e", chain(10.0));
+        reassigned.set_shadow_prices(pricing.task_shadow_prices);
+        assert_ne!(first.id, reassigned.solve(40)[0].id);
     }
 }

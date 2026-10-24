@@ -211,6 +211,7 @@ l0,b0,5
             model_name: "dataset_suite_final".to_string(),
             primal_solution: vec![1.0, 1.0],
             objective: Some(1.0),
+            ..Default::default()
         });
         let fixture_results = self.fixtures
             .iter()

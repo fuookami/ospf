@@ -24,6 +24,8 @@ pub struct PricingDuals {
     pub customer: BTreeMap<CustomerId, f64>,
     /// 车队上界对偶 / Fleet upper-bound duals.
     pub fleet: BTreeMap<VehicleTypeId, f64>,
+    /// 全部声明扩展行的有符号对偶，包含零值 / Signed duals for all declared extension rows, including zeros.
+    pub extension: BTreeMap<String, f64>,
 }
 
 impl PricingDuals {
@@ -37,7 +39,14 @@ impl PricingDuals {
             phase,
             customer: customer.into_iter().collect(),
             fleet: fleet.into_iter().collect(),
+            extension: BTreeMap::new(),
         }
+    }
+
+    /// 附加声明行价格，完整性由对应行目录校验 / Attach declared-row prices; the corresponding catalog validates completeness.
+    pub fn with_extension_duals(mut self, prices: impl IntoIterator<Item = (String, f64)>) -> Self {
+        self.extension = prices.into_iter().collect();
+        self
     }
 
     /// 获取客户对偶；缺失时为零 / Get a customer dual, defaulting to zero.
@@ -56,6 +65,7 @@ impl PricingDuals {
 pub struct VrpShadowPriceMap {
     customer: BTreeMap<CustomerId, f64>,
     fleet: BTreeMap<VehicleTypeId, f64>,
+    extension: BTreeMap<String, f64>,
 }
 
 impl VrpShadowPriceMap {
@@ -74,6 +84,9 @@ impl VrpShadowPriceMap {
         self.fleet.insert(id, value);
     }
 
+    /// 写入声明扩展行价格 / Set a declared extension-row price.
+    pub fn set_extension_dual(&mut self, id: String, value: f64) { self.extension.insert(id, value); }
+
     /// 读取客户对偶 / Read a customer dual.
     pub fn customer_dual(&self, id: &CustomerId) -> f64 {
         self.customer.get(id).copied().unwrap_or(0.0)
@@ -86,6 +99,6 @@ impl VrpShadowPriceMap {
 
     /// 输出不可变对偶快照 / Export an immutable dual snapshot.
     pub fn snapshot(&self, phase: PricingPhase) -> PricingDuals {
-        PricingDuals::new(phase, self.customer.clone(), self.fleet.clone())
+        PricingDuals::new(phase, self.customer.clone(), self.fleet.clone()).with_extension_duals(self.extension.clone())
     }
 }

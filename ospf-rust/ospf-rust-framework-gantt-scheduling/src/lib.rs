@@ -22,6 +22,18 @@ pub use domain::error::{
 /// 甘特排程错误类型 / Gantt scheduling error type
 #[derive(Debug, thiserror::Error)]
 pub enum GanttError {
+    /// 无效的领域输入 / Invalid domain input
+    #[error("invalid input: {message}")]
+    InvalidInput { message: String },
+
+    /// 数值或单位转换失败 / Numeric or unit conversion failure
+    #[error("conversion error: {message}")]
+    Conversion { message: String },
+
+    /// 非法建模生命周期 / Invalid modeling lifecycle
+    #[error("lifecycle error: {message}")]
+    Lifecycle { message: String },
+
     /// 无效的时间范围 / Invalid time range
     #[error("invalid time range: {message}")]
     InvalidTimeRange { message: String },

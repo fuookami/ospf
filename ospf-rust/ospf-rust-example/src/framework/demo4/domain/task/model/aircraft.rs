@@ -8,7 +8,7 @@ use ospf_rust_framework_gantt_scheduling::domain::task::ExecutorTrait;
 use time::{Duration, OffsetDateTime};
 
 /// 飞机容量 / Aircraft capacity
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AircraftCapacity {
     /// 客机容量 / Passenger aircraft capacity
     Passenger {
@@ -42,6 +42,16 @@ impl Aircraft {
     /// 获取每小时成本 / Get cost per flight hour
     pub fn cost_per_hour(&self) -> f64 {
         self.minor_type.cost_per_hour
+    }
+
+    /// 比较同一注册号的完整业务配置，而非仅比较实体身份。 / Compare complete business configurations, not only registration identity.
+    pub fn same_configuration(&self, other: &Self) -> bool {
+        self == other && self.capacity == other.capacity
+            && self.minor_type == other.minor_type
+            && self.minor_type.cost_per_hour.to_bits() == other.minor_type.cost_per_hour.to_bits()
+            && self.minor_type.route_fly_time == other.minor_type.route_fly_time
+            && self.minor_type.connection_time == other.minor_type.connection_time
+            && self.minor_type.max_fly_time == other.minor_type.max_fly_time
     }
 }
 

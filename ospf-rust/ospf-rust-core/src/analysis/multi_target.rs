@@ -223,10 +223,7 @@ impl MultiTargetAnalysisReport {
             .map(|result| CriticalityObservation {
                 target: result.target.clone(),
                 status: result.feasibility.status,
-                blocking_constraint_ids: result
-                    .has_verified_conflict()
-                    .then(|| result.conflict.constraint_ids())
-                    .unwrap_or_default(),
+                blocking_constraint_ids: if result.has_verified_conflict() { result.conflict.constraint_ids() } else { BTreeSet::new() },
             })
             .collect::<Vec<_>>();
         if self.criticality_profile.observations != expected_observations {
@@ -337,10 +334,7 @@ impl MultiTargetAnalyzer {
                 // Only a verified conflict is evidence for a criticality classification.
                 // An unverified/partial conflict remains available in the per-target report,
                 // but must not be promoted into the aggregate bottleneck profile.
-                blocking_constraint_ids: result
-                    .has_verified_conflict()
-                    .then(|| result.conflict.constraint_ids())
-                    .unwrap_or_default(),
+                blocking_constraint_ids: if result.has_verified_conflict() { result.conflict.constraint_ids() } else { BTreeSet::new() },
             })
             .collect();
         let criticality_profile = build_criticality_profile(observations)?;

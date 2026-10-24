@@ -11,6 +11,8 @@ pub struct MacOptimizationContext<'a> {
     pub request: &'a Demo2Request,
     /// 货物-位置决策变量索引 / Cargo-position decision variable indices
     pub x_idx: &'a [Vec<usize>],
+    /// 含预测与推荐的舱位重量。 / Position weights including predicate and recommendation.
+    pub weights: &'a [usize],
     /// 最大载荷偏差变量索引 / Maximum load deviation variable index
     pub z: Option<usize>,
     /// 流水线模式 / Pipeline mode

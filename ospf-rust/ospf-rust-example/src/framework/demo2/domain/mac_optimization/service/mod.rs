@@ -19,12 +19,14 @@ pub fn apply_mac_optimization_pipeline(
     request: &Demo2Request,
     x_idx: &[Vec<usize>],
     z: Option<usize>,
+    weights: &[usize],
     mode: Demo2PipelineMode,
 ) -> Result<(), Box<dyn Error>> {
     let context = MacOptimizationContext {
         request,
         x_idx,
         z,
+        weights,
         mode,
     };
     let aggregation = MacOptimizationAggregation::from_context(&context);

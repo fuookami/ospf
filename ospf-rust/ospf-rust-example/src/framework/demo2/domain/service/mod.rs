@@ -12,15 +12,15 @@ mod tests {
         let expected = vec![
             DomainPolicySnapshot {
                 domain: "stowage",
-                step_counts: vec![2, 1, 1],
+                step_counts: vec![2, 2, 2],
             },
             DomainPolicySnapshot {
                 domain: "airworthiness",
-                step_counts: vec![4, 4, 4],
+                step_counts: vec![5, 5, 5],
             },
             DomainPolicySnapshot {
                 domain: "mac_optimization",
-                step_counts: vec![1, 2, 2],
+                step_counts: vec![2, 3, 3],
             },
             DomainPolicySnapshot {
                 domain: "loading_effectiveness",

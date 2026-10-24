@@ -13,7 +13,7 @@ use std::error::Error;
 pub fn apply_assignment_limits(
     model: &mut MetaModel<f64>,
     context: &StowageContext<'_>,
-    aggregation: &StowageAggregation,
+    _aggregation: &StowageAggregation,
     loaded_idx: &[usize],
     _estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
@@ -22,8 +22,10 @@ pub fn apply_assignment_limits(
         // 对齐 Kotlin: loaded[i] eq/leq true
         model.add_linear_constraint(
             &[(loaded_idx[c], 1.0)],
-            aggregation.assignment_relation,
-            aggregation.assignment_rhs,
+            if context.request.loading.cargos.get(&context.request.cargos[c].name)
+                .and_then(|policy| policy.required).unwrap_or(context.mode == crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode::Predistribution)
+                { ospf_rust_core::model::ConstraintRelation::Equal } else { ospf_rust_core::model::ConstraintRelation::LessEqual },
+            1.0,
             &format!("stowage_assignment_{}_{}", mode_name(context.mode), c),
         )?;
     }

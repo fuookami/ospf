@@ -16,6 +16,7 @@ use ospf_rust_framework::model::pipeline::Pipeline;
 use ospf_rust_framework::model::shadow_price::{
     BasicShadowPriceMap, ShadowPrice, ShadowPriceKey, ShadowPriceMap,
 };
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -23,7 +24,8 @@ use super::{
     Bpp3dDemandEntry, Bpp3dSolverValueAdapter, Bpp3dSolverValueAdapterKind, DemandShadowPriceKey,
     ImpreciseAssignment, PreciseAssignment,
 };
-use crate::domain::item::BinType;
+use crate::domain::item::{BinType, BinTypeId};
+use ospf_rust_quantities::unit::derived::Meter;
 
 include!("limits/demand_constraint.rs");
 include!("limits/precise_assignment_activation_constraint.rs");
@@ -31,6 +33,7 @@ include!("limits/bin_capacity_constraint.rs");
 include!("limits/bin_depth_constraint.rs");
 include!("limits/bin_amount_minimization.rs");
 include!("limits/volume_minimization.rs");
+include!("limits/mixed_bin_objectives.rs");
 include!("limits/better_layer_maximization.rs");
 include!("limits/tail_bin_assignment_constraint.rs");
 include!("limits/deferred.rs");

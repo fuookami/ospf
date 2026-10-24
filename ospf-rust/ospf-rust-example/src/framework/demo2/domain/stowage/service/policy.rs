@@ -24,7 +24,7 @@ pub fn pipeline_specs() -> Vec<PipelineSpec<StowagePipelineStep>> {
         },
         PipelineSpec {
             priority: 20,
-            mode_selector: ModeSelector::FullLoadOnly,
+            mode_selector: ModeSelector::All,
             apply: limits::apply_empty_forbidden_limits,
         },
     ]

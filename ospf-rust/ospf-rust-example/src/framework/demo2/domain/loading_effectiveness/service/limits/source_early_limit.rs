@@ -18,7 +18,7 @@ pub fn apply_source_early_limits(
         }
         let coefficients: Vec<(usize, f64)> = cargos
             .iter()
-            .flat_map(|c| (0..=aggregation.early_end).map(move |p| (context.x_idx[*c][p], 1.0)))
+            .flat_map(|c| aggregation.early_positions.iter().map(move |p| (context.x_idx[*c][*p], 1.0)))
             .collect();
         model.add_linear_constraint(
             &coefficients,

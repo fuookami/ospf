@@ -10,6 +10,7 @@ use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 /// Defines priority and applicable mode for each constraint limit step.
 pub fn pipeline_specs() -> Vec<PipelineSpec<MacOptimizationPipelineStep>> {
     vec![
+        PipelineSpec { priority: 5, mode_selector: ModeSelector::All, apply: limits::apply_horizontal_stabilizer_limits },
         PipelineSpec {
             priority: 10,
             mode_selector: ModeSelector::PredistributionOnly,

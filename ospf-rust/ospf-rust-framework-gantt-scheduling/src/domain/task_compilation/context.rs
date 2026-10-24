@@ -4,7 +4,7 @@
 //! Defines interface and shadow price extraction for task compilation context
 //! in iterative column generation.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ospf_rust_core::model::MetaModel;
 use ospf_rust_framework::solver::column_generation_solver::LinearDualSolution;
@@ -13,12 +13,29 @@ use crate::GanttResult;
 use crate::domain::common::{ConstraintIndexMap, GanttDynamicModelLifecycle};
 use crate::domain::task::Cost;
 use crate::domain::task_compilation::iterative::{AddedTaskColumn, IterativeTaskCompilation};
+use crate::domain::task_generation::TaskPricingDomain;
 
 /// 迭代任务编译上下文 trait / Iterative task compilation context trait
 ///
 /// 定义迭代列生成中任务编译上下文的接口。
 /// Defines interface for task compilation context in iterative column generation.
 pub trait IterativeTaskCompilationContext: Send + Sync {
+    /// 完整定价域；旧上下文缺省不声明全域证明。 / Complete pricing domain; legacy contexts do not declare global proof by default.
+    fn pricing_domain(&self) -> Option<TaskPricingDomain> {
+        None
+    }
+
+    /// 可观测业务修订；未提供时不认证完整域，模型指纹仍须独立验证。 / Observable business revision; absence disables global certification, and model fingerprints still require independent validation.
+    fn pricing_revision(&self) -> Option<String> {
+        None
+    }
+
+    /// 任务到原模型行的显式映射，允许下游覆盖命名。 / Explicit task-to-original-row mapping, with downstream naming overrides.
+    fn task_pricing_rows(&self) -> BTreeMap<usize, String> {
+        (0..self.task_count_for_shadow_price())
+            .map(|task| (task, format!("task_compilation_{task}"))).collect()
+    }
+
     /// 注册到模型 / Register to model
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()>;
 
@@ -121,6 +138,21 @@ impl BasicTaskCompilationContext {
 }
 
 impl IterativeTaskCompilationContext for BasicTaskCompilationContext {
+    fn pricing_domain(&self) -> Option<TaskPricingDomain> {
+        Some(TaskPricingDomain::unslotted(self.compilation.n_tasks, self.compilation.n_executors))
+    }
+
+    fn pricing_revision(&self) -> Option<String> {
+        let mut removed: Vec<_> = self.compilation.removed_columns.iter().copied().collect();
+        removed.sort_unstable();
+        let mut fixed: Vec<_> = self.compilation.fixed_columns.iter().copied().collect();
+        fixed.sort_unstable();
+        Some(format!("{:?}:{removed:?}:{fixed:?}:{:?}:{:?}:{:?}:{:?}:{:?}:{}:{}", self.compilation.columns,
+            self.compilation.task_assignment_terms, self.compilation.task_compilation_terms,
+            self.compilation.executor_compilation_terms, self.compilation.y_indices, self.compilation.z_indices,
+            self.compilation.task_cancel_enabled, self.compilation.with_executor_leisure))
+    }
+
     fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         self.compilation.register(model)
     }

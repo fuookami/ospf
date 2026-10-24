@@ -28,7 +28,14 @@ pub fn apply_airworthiness_security_pipeline(
     estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
     let context = AirworthinessContext::new(request, x_idx, mode);
-    let aggregation = AirworthinessAggregation::from_context(&context);
+    let mut aggregation = AirworthinessAggregation::from_context(&context);
+    // 全部适航规则使用含附加资源的同一重量口径。 / All airworthiness rules use the same weight metric including additional resources.
+    aggregation.total_payload_coefficients = estimate_load_weight_idx.iter().map(|column| (*column, 1.0)).collect();
+    aggregation.envelope_longitudinal_moment_coefficients = estimate_load_weight_idx.iter().enumerate()
+        .map(|(p, column)| (*column, request.positions[p].longitudinal_arm)).collect();
+    aggregation.lateral_moment_coefficients = estimate_load_weight_idx.iter().enumerate()
+        .map(|(p, column)| (*column, request.positions[p].lateral_arm)).collect();
+    aggregation.per_position_weight_coefficients = estimate_load_weight_idx.iter().map(|column| vec![(*column, 1.0)]).collect();
     for step in pipeline_list_generator::pipeline_steps(context.mode) {
         step(
             model,

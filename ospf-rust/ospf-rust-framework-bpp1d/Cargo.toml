@@ -1,0 +1,34 @@
+[package]
+name = "ospf-rust-framework-bpp1d"
+version = "1.1.0"
+edition = "2024"
+description = "Quantity-safe one-dimensional bin packing framework"
+license.workspace = true
+readme = "README.md"
+
+[dependencies]
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+ospf-rust-framework-bpp = { path = "../ospf-rust-framework-bpp", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
+num-traits = "0.2.19"
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[dev-dependencies]
+bigdecimal = "0.4"
+num-rational = "0.4"
+
+[features]
+default = []
+serde = ["dep:serde", "ospf-rust-framework-bpp/serde"]
+async = ["ospf-rust-framework-bpp/async"]
+nightly = ["ospf-rust-framework-bpp/nightly"]
+big-rational = ["ospf-rust-framework-bpp/big-rational"]
+big-decimal = ["ospf-rust-framework-bpp/big-decimal"]
+gurobi10 = ["ospf-rust-framework-bpp/gurobi10"]
+gurobi11 = ["ospf-rust-framework-bpp/gurobi11"]
+gurobi12 = ["ospf-rust-framework-bpp/gurobi12"]
+scip = ["ospf-rust-framework-bpp/scip"]
+scip-bundled = ["ospf-rust-framework-bpp/scip-bundled"]
+scip-from-source = ["ospf-rust-framework-bpp/scip-from-source"]
+scip-quadratic = ["ospf-rust-framework-bpp/scip-quadratic"]

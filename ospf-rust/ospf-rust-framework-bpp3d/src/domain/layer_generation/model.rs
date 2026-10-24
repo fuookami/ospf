@@ -116,6 +116,9 @@ where
     pub iteration: i64,
     /// 目标箱型 / Target bin type
     pub bin: Option<BinType<V, U>>,
+    /// 参与候选生成的全部箱型；为空时退化为仅 `bin` / all bin types taking part in candidate generation;
+    /// empty means only `bin`
+    pub bins: Vec<BinType<V, U>>,
     /// 货物列表 / Items
     pub items: Vec<ActualItem<V, U>>,
     /// 包装属性 / Package attributes
@@ -144,6 +147,7 @@ where
         Self {
             iteration,
             bin: None,
+            bins: Vec::new(),
             items,
             package_attributes: HashMap::new(),
             package_rule_policy: Arc::new(DefaultLayerGenerationPackageRulePolicy),
@@ -159,6 +163,31 @@ where
     pub fn with_bin(mut self, bin: BinType<V, U>) -> Self {
         self.bin = Some(bin);
         self
+    }
+
+    /// 设置参与候选生成的全部箱型 / Set every bin type taking part in candidate generation
+    ///
+    /// 主箱型排在最前，其余按传入顺序去重；与 `with_bin` 同时使用时，`bins` 优先。
+    /// The main bin type comes first and the rest keep their input order, deduplicated; when combined with
+    /// `with_bin`, `bins` takes precedence.
+    pub fn with_bins(mut self, bins: Vec<BinType<V, U>>) -> Self {
+        self.bins = bins;
+        self
+    }
+
+    /// 实际参与生成的箱型序列 / Bin type sequence actually used by generation
+    ///
+    /// 未指定任何箱型时返回空序列，调用方应保持单次直通，使不依赖箱型的生成器仍可工作。
+    /// Returns an empty sequence when no bin type is specified; callers must keep a single pass-through so
+    /// generators that do not depend on a bin type keep working.
+    pub fn candidate_bins(&self) -> Vec<BinType<V, U>>
+    where
+        V: Clone,
+    {
+        if !self.bins.is_empty() {
+            return self.bins.clone();
+        }
+        self.bin.clone().into_iter().collect()
     }
 
     /// 设置需求条目 / Set demand entries

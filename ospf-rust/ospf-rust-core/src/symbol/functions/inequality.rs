@@ -882,7 +882,7 @@ where
         // The relation indicator has no helper columns, so only the result column is reported.
         Some(crate::model::intermediate::StructureUsageBinding::new(
             self.symbol.id.id,
-            self.result.clone(),
+            self.result,
             Vec::new(),
         ))
     }

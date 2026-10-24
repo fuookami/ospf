@@ -32,16 +32,21 @@ where
     }
 
     /// 添加新层（带去重）/ Add new layers (with deduplication)
+    ///
+    /// 去重按列身份键进行：箱型、来源、深度与需求覆盖共同参与，与层生成上下文的去重口径一致。
+    /// Deduplication uses the column identity key: bin type, source, depth and demand coverage all participate,
+    /// matching the deduplication口径 of the layer generation context.
     pub fn add_columns(&mut self, new_layers: Vec<BinLayer<V, U>>) -> Vec<BinLayer<V, U>>
     where
         V: Clone + PartialEq,
     {
         let mut added = Vec::new();
         for layer in new_layers {
-            // 简化去重：基于深度和来源
-            let is_dup = self.layers.iter().any(|existing| {
-                existing.depth.value == layer.depth.value && existing.from == layer.from
-            });
+            let identity = layer.identity_key();
+            let is_dup = self
+                .layers
+                .iter()
+                .any(|existing| existing.identity_key() == identity);
             if !is_dup {
                 self.layers.push(layer.clone());
                 added.push(layer);

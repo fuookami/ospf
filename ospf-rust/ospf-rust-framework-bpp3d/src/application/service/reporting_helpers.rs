@@ -1,3 +1,28 @@
+// ============================================================================
+// 候选箱型排序 / Candidate bin ordering
+// ============================================================================
+
+/// 排序列出参与层生成的候选箱型 / Order the candidate bin types taking part in layer generation
+///
+/// 主箱型排在最前，其余按传入顺序去重，使每种箱型都能产出候选列。
+/// The main bin type comes first and the rest keep their input order, deduplicated, so that every bin type
+/// can produce candidate columns.
+fn layer_generation_candidate_bins(bins: &[BinType<f64, Meter>]) -> Vec<BinType<f64, Meter>> {
+    let mut ordered: Vec<BinType<f64, Meter>> = Vec::new();
+    if let Some(main_bin) = bins.iter().find(|bin| bin.is_main) {
+        ordered.push(main_bin.clone());
+    }
+    for bin in bins {
+        if !ordered
+            .iter()
+            .any(|existing| existing.type_code == bin.type_code)
+        {
+            ordered.push(bin.clone());
+        }
+    }
+    ordered
+}
+
 fn packed_bins_from_selected_layers(
     layers: &[BinLayer<f64, Meter>],
     layer_indices: &[usize],

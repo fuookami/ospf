@@ -3,6 +3,7 @@
 //! 按 Kotlin Gantt Scheduling 子模块映射为 Rust 包。
 //! Maps Kotlin Gantt Scheduling submodules into Rust modules.
 
+pub mod activity;
 pub mod bunch_compilation;
 pub mod bunch_generation;
 pub mod capacity_scheduling;

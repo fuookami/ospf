@@ -34,7 +34,7 @@ pub fn apply_domain_pipeline(
         estimate_load_weight_idx,
         estimate_loaded_idx,
     )?;
-    apply_mac_optimization_pipeline(model, request, x_idx, z, mode)?;
+    apply_mac_optimization_pipeline(model, request, x_idx, z, estimate_load_weight_idx, mode)?;
     apply_loading_effectiveness_pipeline(model, request, x_idx, mode)?;
     apply_express_effectiveness_pipeline(model, request, x_idx, mode)?;
     apply_soft_security_pipeline(model, request, x_idx, mode)?;

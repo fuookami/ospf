@@ -246,7 +246,7 @@ impl MetaModelRmpExecutor {
             ),
         ]);
         info.extend(solve.info);
-        diagnostics.write_info(&mut info);
+        diagnostics.write_bpp3d_info(&mut info);
         ColumnGenerationRmpExecution {
             objective: solve.objective,
             shadow_price_summary,

@@ -28,29 +28,6 @@ pub struct Aggregation {
 }
 
 impl Aggregation {
-    /// 创建新的聚合 / Create a new aggregation
-    pub fn new(
-        airports: Vec<Airport>,
-        aircrafts: Vec<Aircraft>,
-        aircraft_usability: Vec<(Aircraft, AircraftUsability)>,
-        legs: Vec<FlightLeg>,
-        maintenances: Vec<Maintenance>,
-        aogs: Vec<Aog>,
-        transfer_flights: Vec<Transfer>,
-        origin_bunches: Vec<FlightTaskBunch>,
-    ) -> Self {
-        Self {
-            airports,
-            aircrafts,
-            aircraft_usability,
-            legs,
-            maintenances,
-            aogs,
-            transfer_flights,
-            origin_bunches,
-        }
-    }
-
     /// 获取所有飞行任务 / Get all flight tasks
     pub fn flight_tasks(&self) -> Vec<&str> {
         let mut tasks: Vec<&str> = Vec::new();
@@ -89,6 +66,10 @@ impl Aggregation {
 pub struct FlightTaskContext {
     /// 任务领域聚合 / Task domain aggregation
     pub aggregation: Option<Aggregation>,
+}
+
+impl Default for FlightTaskContext {
+    fn default() -> Self { Self::new() }
 }
 
 impl FlightTaskContext {

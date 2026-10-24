@@ -10,7 +10,7 @@ use ospf_rust_core::variable::{ContinuousVariableItem, VariableId};
 fn assert_function_symbol<T: FunctionSymbol<f64>>() {}
 
 #[test]
-fn Xor_has_a_dedicated_contract_test_file() {
+fn xor_has_a_dedicated_contract_test_file() {
     assert_function_symbol::<XorFunction<f64>>();
 }
 

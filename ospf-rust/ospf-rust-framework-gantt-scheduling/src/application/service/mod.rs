@@ -1,5 +1,6 @@
 //! 应用服务 / Application services
 
+pub mod activity;
 pub mod bunch;
 pub mod task;
 
@@ -9,3 +10,4 @@ pub use bunch::{
     search_bunch_branch_and_price_with_hooks, search_bunch_branch_and_price_with_progress,
 };
 pub use task::create_task_column_generation;
+pub use activity::ActivitySchedulingApplicationService;

@@ -159,9 +159,28 @@ where
     }
 
     /// 执行一轮层生成 / Execute one layer-generation iteration
+    ///
+    /// `bin` 为单个目标箱型；需要多箱型生成时使用 `generate_once_with_bins`。
+    /// `bin` is a single target bin type; use `generate_once_with_bins` for multi-bin generation.
     pub fn generate_once(
         &mut self,
         bin: Option<BinType<V, U>>,
+        items: Vec<ActualItem<V, U>>,
+        demand_entries: Vec<LayerGenerationDemandEntry>,
+    ) -> Vec<LayerGenerationResult<V, U>> {
+        let bins = bin.clone().into_iter().collect();
+        self.generate_once_with_bins(bin, bins, items, demand_entries)
+    }
+
+    /// 执行一轮多箱型层生成 / Execute one multi-bin layer-generation iteration
+    ///
+    /// 每种箱型分别产出候选列，列通过 `BinLayer.bin` 携带箱型；`bins` 为空时退回单次直通。
+    /// Each bin type produces candidate columns carrying their type through `BinLayer.bin`; an empty `bins`
+    /// falls back to a single pass-through.
+    pub fn generate_once_with_bins(
+        &mut self,
+        bin: Option<BinType<V, U>>,
+        bins: Vec<BinType<V, U>>,
         items: Vec<ActualItem<V, U>>,
         demand_entries: Vec<LayerGenerationDemandEntry>,
     ) -> Vec<LayerGenerationResult<V, U>> {
@@ -174,6 +193,7 @@ where
             .with_max_candidates(self.config.max_candidates_per_iteration);
         request.existing_layers = self.active_layers();
         request.bin = bin;
+        request.bins = bins;
 
         let results = self.layer_generation.generate(&request);
         let layers = results.iter().map(|result| result.layer.clone()).collect();

@@ -791,7 +791,7 @@ mod tests {
                         // the usage gate of a real writer.
                         if self.native_functions.contains(&function) && !request.usage.in_constraint
                         {
-                            container.writes.push(format!("{function}"));
+                            container.writes.push(function.to_string());
                             NativeWriteOutcome::Native(NativeWriteRecord::new(
                                 self.name,
                                 "functions-abs-1",

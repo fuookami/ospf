@@ -7,6 +7,9 @@ use ospf_rust_quantities::unit::UnitConversionValue;
 
 /// 标签支配策略 / Label-dominance policy.
 pub trait LabelDominancePolicy: Send + Sync {
+    /// 认证保留最优路径及主问题系数；未认证策略不会用于证明性剪枝。 / Certify preservation of optimal paths and master coefficients; uncertified policies are not used for proof pruning.
+    fn is_certified(&self) -> bool { false }
+
     /// 判断标签 `a` 是否支配标签 `b` / Check whether label `a` dominates `b`.
     fn dominates(&self, a: &EspprcLabel, b: &EspprcLabel) -> bool;
 }
@@ -16,6 +19,8 @@ pub trait LabelDominancePolicy: Send + Sync {
 pub struct DefaultLabelDominancePolicy;
 
 impl LabelDominancePolicy for DefaultLabelDominancePolicy {
+    fn is_certified(&self) -> bool { true }
+
     fn dominates(&self, a: &EspprcLabel, b: &EspprcLabel) -> bool {
         a.current_node == b.current_node
             && a.reduced_cost <= b.reduced_cost
@@ -38,7 +43,7 @@ where
     fn select(&self, routes: &[Route<V>], max_columns: usize) -> Vec<Route<V>>;
 }
 
-/// 默认按路线签名稳定排序并截断 / Default stable signature ordering and truncation.
+/// 保留定价入口的 reduced-cost 排序，仅截取输出 / Preserve the pricer's reduced-cost ranking and truncate only output.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct DefaultPricingColumnSelector;
 
@@ -47,10 +52,7 @@ where
     V: SolveValue + UnitConversionValue,
 {
     fn select(&self, routes: &[Route<V>], max_columns: usize) -> Vec<Route<V>> {
-        let mut routes = routes.to_vec();
-        routes.sort_by_key(Route::signature);
-        routes.truncate(max_columns);
-        routes
+        routes.iter().take(max_columns).cloned().collect()
     }
 }
 

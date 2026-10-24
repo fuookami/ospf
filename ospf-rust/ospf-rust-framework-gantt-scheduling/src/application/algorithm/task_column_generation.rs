@@ -1,11 +1,13 @@
 //! 任务级列生成算法 / Task-level column generation algorithm
 //!
-//! 实现任务调度的列生成算法主循环。
-//! Implements the column generation algorithm main loop for task scheduling.
+//! 提供共享注册、LP 报告及有作用域的任务定价编排入口。
+//! Provides shared registration, LP reports and scoped task-pricing orchestration entries.
 
 use std::collections::{HashMap, HashSet};
 
 use ospf_rust_core::model::MetaModel;
+use ospf_rust_core::solver::SolveReport;
+use ospf_rust_framework::model::{ColumnGenerationBatch, ColumnGenerationCompletion, ColumnGenerationScope};
 use ospf_rust_framework::solver::column_generation_solver::{
     ColumnGenerationSolver, FeasibleSolution, LPResult,
 };
@@ -18,6 +20,7 @@ use crate::application::iteration::Iteration;
 use crate::domain::task::Cost;
 use crate::domain::task_compilation::context::IterativeTaskCompilationContext;
 use crate::domain::task_compilation::iterative::AddedTaskColumn;
+use crate::domain::task_generation::{TaskCGPolicy, TaskPricingColumn, TaskPricingDomain, TaskPricingRequest, TaskPricingSession};
 
 /// 任务级列生成算法 / Task-level column generation algorithm
 ///
@@ -61,6 +64,7 @@ where
     pub best_solution: Option<Vec<f64>>,
     /// 最佳目标值 / Best objective value
     pub best_obj: f64,
+    pricing: TaskPricingSession,
 }
 
 impl<C, S> std::fmt::Debug for TaskColumnGenerationAlgorithm<C, S>
@@ -95,11 +99,13 @@ where
             shadow_prices: HashMap::new(),
             best_solution: None,
             best_obj: f64::NEG_INFINITY,
+            pricing: TaskPricingSession::default(),
         }
     }
 
     /// 注册模型 / Register model
     pub fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        self.pricing.invalidate();
         self.context.register(model)
     }
 
@@ -109,26 +115,89 @@ where
         columns: Vec<(usize, usize, Cost<f64>)>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<AddedTaskColumn>> {
+        self.pricing.invalidate();
         self.context.add_columns(0, columns, model)
+    }
+
+    /// 由共享批次注册候选；包含子批次的返回值须由策略在根 columns 汇总。 / Register shared-batch candidates; policies must aggregate child output in root columns.
+    pub fn add_priced_columns(
+        &mut self,
+        columns: Vec<TaskPricingColumn>,
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<Vec<AddedTaskColumn>> {
+        let domain = self.context.pricing_domain().ok_or_else(|| GanttError::Calculation {
+            message: "注册任务定价列需要声明上下文域 / registering priced task columns requires a declared context domain".into(),
+        })?;
+        for column in &columns {
+            crate::domain::task_generation::validate_column(column, &domain)?;
+        }
+        self.pricing.invalidate();
+        self.context.add_columns(self.iteration.iteration,
+            columns.into_iter().map(|column| (column.task_index, column.executor_index, column.cost)).collect(), model)
+    }
+
+    /// 读取并保留正常不可行、限时或取消报告，不伪造 incumbent。 / Preserve normal infeasible, limited or cancelled reports without inventing incumbents.
+    pub fn solve_rmp_lp_report(&mut self, model: &MetaModel<f64>) -> GanttResult<SolveReport<f64>> {
+        self.pricing.invalidate();
+        self.shadow_prices.clear();
+        let mut current = model.try_to_linear_triad_model().map_err(|error| GanttError::Calculation {
+            message: error.to_string(),
+        })?;
+        current.linear_relax();
+        let report = solve_lp_report_with_options_sync(&self.solver, &current, FrameworkSolveOptions::new())
+            .map_err(|error| GanttError::Calculation { message: error.to_string() })?;
+        self.pricing.accept_report(model, &self.context, &report)?;
+        Ok(report)
+    }
+
+    /// 接收外部 LP 的原报告并逐一核对兼容投影；裸对偶不能认证。 / Accept an external LP source report and check its projections; raw duals cannot certify.
+    pub fn accept_pricing_lp(&mut self, model: &MetaModel<f64>, result: &LPResult) -> GanttResult<()> {
+        self.shadow_prices.clear();
+        self.pricing.accept_result(model, &self.context, result)
+    }
+
+    /// 直接绑定当前 LP 原报告；正常非最优报告不会产生认证价格。 / Bind the original current LP report directly; normal nonoptimal reports produce no certified prices.
+    pub fn accept_pricing_report(&mut self, model: &MetaModel<f64>, report: &SolveReport<f64>) -> GanttResult<()> {
+        self.shadow_prices.clear();
+        self.pricing.accept_report(model, &self.context, report)
+    }
+
+    /// 消费共享任务批次；当前任务编译按无时隙任务-执行器对注册。 / Consume shared task batches; current task compilation registers unslotted task-executor pairs.
+    pub fn generate_task_batch(
+        &mut self,
+        model: &MetaModel<f64>,
+        domain: TaskPricingDomain,
+        policy: &dyn TaskCGPolicy,
+    ) -> GanttResult<ColumnGenerationBatch<TaskPricingColumn>> {
+        let request = TaskPricingRequest {
+            scope: ColumnGenerationScope {
+                request: String::new(), groups: Default::default(), model: String::new(), dual: String::new(),
+                branch: String::new(), global: false, executor_slots: Default::default(),
+            },
+            iteration: self.iteration.iteration, domain,
+            shadow_prices: self.shadow_prices.clone(), row_duals: Default::default(),
+            fixed_columns: self.fixed_columns.clone(), kept_columns: self.kept_columns.clone(), verified_duals: None,
+        };
+        self.pricing.generate(model, &self.context, request, policy)
+    }
+
+    /// 完整定价域的认证最小化 LP 下界；不代表整数最优。 / Certified minimization LP bound over the complete pricing domain, not integer optimality.
+    pub fn certified_lower_bound(&self, model: &MetaModel<f64>) -> GanttResult<Option<f64>> {
+        self.pricing.lower_bound(model, &self.context, &self.fixed_columns, &self.kept_columns)
+    }
+
+    /// 最近一次成功批次的真实完成度，不等同无改进证明。 / Actual completion of the last successful batch, distinct from no-improvement proof.
+    pub fn pricing_completion(&self) -> Option<ColumnGenerationCompletion> {
+        self.pricing.completion()
     }
 
     /// 求解 RMP LP / Solve RMP LP relaxation
     ///
     /// 求解 LP 松弛并提取影子价格。
     /// Solves LP relaxation and extracts shadow prices.
-    pub fn solve_rmp_lp(&self, model: &MetaModel<f64>) -> GanttResult<LPResult> {
-        let options = FrameworkSolveOptions::new();
-        let triad_model =
-            model
-                .try_to_linear_triad_model()
-                .map_err(|e| GanttError::Calculation {
-                    message: format!("Failed to convert model: {:?}", e),
-                })?;
-        solve_lp_with_options_sync(&self.solver, &triad_model, options).map_err(|e| {
-            GanttError::Calculation {
-                message: format!("LP solve failed: {:?}", e),
-            }
-        })
+    pub fn solve_rmp_lp(&mut self, model: &MetaModel<f64>) -> GanttResult<LPResult> {
+        let report = self.solve_rmp_lp_report(model)?;
+        LPResult::try_from_solve_report(&report).map_err(|error| GanttError::Calculation { message: error.to_string() })
     }
 
     /// 求解 MILP / Solve MILP
@@ -141,13 +210,14 @@ where
 
     /// 提取影子价格 / Extract shadow prices
     ///
-    /// 从 LP 对偶解提取影子价格。
-    /// Extracts shadow prices from LP dual solution.
+    /// 旧入口仅提供启发式价格，并清除认证证据。
+    /// The legacy entry supplies heuristic prices only and clears certification.
     pub fn extract_shadow_prices(
         &mut self,
         lp_result: &LPResult,
         constraint_name_to_index: &HashMap<String, usize>,
     ) {
+        self.pricing.invalidate();
         self.shadow_prices = self
             .context
             .extract_shadow_price(&lp_result.dual_solution, constraint_name_to_index);
@@ -172,6 +242,7 @@ where
     /// 将指定列固定为已选择。
     /// Fixes specified columns as selected.
     pub fn globally_fix(&mut self, columns: &HashSet<usize>) {
+        self.pricing.invalidate();
         self.fixed_columns.extend(columns.iter().copied());
     }
 
@@ -180,6 +251,7 @@ where
     /// 将解值超过阈值的列固定。
     /// Fixes columns with solution value above threshold.
     pub fn locally_fix(&mut self, solution: &[f64]) -> HashSet<usize> {
+        self.pricing.invalidate();
         let _threshold = self.policy.local_fix_threshold;
         let mut newly_fixed = HashSet::new();
 
@@ -195,6 +267,7 @@ where
 
     /// 刷新迭代状态 / Flush iteration state
     pub fn flush(&mut self) {
+        self.pricing.invalidate();
         self.fixed_columns.clear();
         self.kept_columns.clear();
         self.shadow_prices.clear();
@@ -202,27 +275,27 @@ where
 }
 
 #[cfg(feature = "async")]
-fn solve_lp_with_options_sync<S>(
+fn solve_lp_report_with_options_sync<S>(
     solver: &S,
     model: &ospf_rust_core::model::intermediate::LinearTriadModel,
     options: FrameworkSolveOptions,
-) -> ospf_rust_core::error::Result<LPResult>
+) -> ospf_rust_core::error::Result<SolveReport<f64>>
 where
     S: ColumnGenerationSolver,
 {
-    futures::executor::block_on(solver.solve_lp_with_options(model, options))
+    futures::executor::block_on(solver.solve_lp_report_with_options(model, options))
 }
 
 #[cfg(not(feature = "async"))]
-fn solve_lp_with_options_sync<S>(
+fn solve_lp_report_with_options_sync<S>(
     solver: &S,
     model: &ospf_rust_core::model::intermediate::LinearTriadModel,
     options: FrameworkSolveOptions,
-) -> ospf_rust_core::error::Result<LPResult>
+) -> ospf_rust_core::error::Result<SolveReport<f64>>
 where
     S: ColumnGenerationSolver,
 {
-    solver.solve_lp_with_options(model, options)
+    solver.solve_lp_report_with_options(model, options)
 }
 
 #[cfg(feature = "async")]

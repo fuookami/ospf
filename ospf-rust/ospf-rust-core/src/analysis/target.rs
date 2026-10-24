@@ -34,6 +34,15 @@ pub const TARGET_FEASIBILITY_REPORT_SCHEMA_VERSION: &str = "1.0";
 /// Stable ID prefix for a temporary target constraint / 临时 target 约束的稳定 ID 前缀。
 pub const OBJECTIVE_TARGET_CONSTRAINT_PREFIX: &str = "analysis-target:";
 
+/// 目标求解的激活与证据请求 / Activation and evidence request for a target solve.
+#[derive(Clone, Copy)]
+pub(crate) struct TargetEvidenceRequest<'a> {
+    /// 当前激活假设 / Current activation assumptions.
+    pub(crate) assumptions: &'a [ConstraintProgrammingAssumption],
+    /// 是否请求后端冲突证据 / Whether to request backend conflict evidence.
+    pub(crate) request_conflict: bool,
+}
+
 /// Result of checking one objective target / 一个目标条件的检查结果。
 ///
 /// `Reachable` is justified by a validated witness. `Unreachable` is emitted
@@ -239,8 +248,7 @@ impl TargetFeasibilityAnalyzer {
             target,
             options,
             capability,
-            &[],
-            request_conflict,
+            TargetEvidenceRequest { assumptions: &[], request_conflict },
         )
     }
 
@@ -255,9 +263,9 @@ impl TargetFeasibilityAnalyzer {
         target: &ObjectiveTarget,
         options: &ConstraintProgrammingSolveOptions<'_>,
         capability: &CapabilityMatrix,
-        assumptions: &[ConstraintProgrammingAssumption],
-        request_conflict: bool,
+        evidence: TargetEvidenceRequest<'_>,
     ) -> Result<(TargetFeasibilityReport, Option<InfeasibilityEvidence>)> {
+        let TargetEvidenceRequest { assumptions, .. } = evidence;
         snapshot.validate_identity()?;
         target.validate()?;
         validate_target_objective(snapshot, target)?;
@@ -314,8 +322,7 @@ impl TargetFeasibilityAnalyzer {
             target,
             bound,
             options,
-            assumptions,
-            request_conflict,
+            evidence,
         )
     }
 
@@ -407,33 +414,6 @@ impl TargetFeasibilityAnalyzer {
         Ok(report)
     }
 
-    /// Internal active-constraint target check used by conflict shrinking.
-    /// 冲突收缩使用的活动约束子集 target 检查。
-    pub(crate) fn analyze_active_constraints<S: ConstraintProgrammingSolver + ?Sized>(
-        &self,
-        solver: &S,
-        snapshot: &ConstraintProgrammingSnapshot,
-        target: &ObjectiveTarget,
-        active_ids: &BTreeSet<StableConstraintId>,
-        options: &ConstraintProgrammingSolveOptions<'_>,
-    ) -> Result<TargetFeasibilityReport> {
-        let active_sources = snapshot
-            .constraints
-            .iter()
-            .filter(|constraint| active_ids.contains(&constraint.id))
-            .map(|constraint| DiagnosticSource::Constraint {
-                id: constraint.id.clone(),
-            })
-            .chain(
-                crate::analysis::activation::DiagnosticActivationSet::from_snapshot(snapshot)
-                    .active_sources()
-                    .into_iter()
-                    .filter(|source| !matches!(source, DiagnosticSource::Constraint { .. })),
-            )
-            .collect::<Vec<_>>();
-        self.analyze_active_sources(solver, snapshot, target, &active_sources, options)
-    }
-
     /// Analyze a target with an explicitly activated original evidence set.
     /// 使用显式激活的原始证据集合分析 target。
     pub(crate) fn analyze_active_sources<S: ConstraintProgrammingSolver + ?Sized>(
@@ -487,22 +467,9 @@ impl TargetFeasibilityAnalyzer {
             target,
             bound,
             options,
-            &assumptions,
-            false,
+            TargetEvidenceRequest { assumptions: &assumptions, request_conflict: false },
         )
         .map(|(report, _)| report)
-    }
-
-    fn solve_derived<S: ConstraintProgrammingSolver + ?Sized>(
-        &self,
-        solver: &S,
-        derived: &ConstraintProgrammingSnapshot,
-        target: &ObjectiveTarget,
-        bound: i64,
-        options: &ConstraintProgrammingSolveOptions<'_>,
-    ) -> Result<TargetFeasibilityReport> {
-        self.solve_derived_with_conflict(solver, derived, target, bound, options, &[], false)
-            .map(|(report, _)| report)
     }
 
     pub(crate) fn solve_derived_with_conflict<S: ConstraintProgrammingSolver + ?Sized>(
@@ -512,9 +479,9 @@ impl TargetFeasibilityAnalyzer {
         target: &ObjectiveTarget,
         bound: i64,
         options: &ConstraintProgrammingSolveOptions<'_>,
-        assumptions: &[ConstraintProgrammingAssumption],
-        request_conflict: bool,
+        evidence: TargetEvidenceRequest<'_>,
     ) -> Result<(TargetFeasibilityReport, Option<InfeasibilityEvidence>)> {
+        let TargetEvidenceRequest { assumptions, request_conflict } = evidence;
         let started = std::time::Instant::now();
         let conflict_options = ConstraintProgrammingSolveOptions {
             request_conflict: true,
@@ -789,14 +756,13 @@ fn active_sources_for_assumptions(
     // 对由 assumption 承载的边界/值域只保留一份表达：derived snapshot 只保留原始约束，变量
     // 边界和稀疏域由 `solve_with_assumptions` 注入。两处同时保留会使空 assumption 基线可能
     // 在后端消费 assumptions 前已经不可行，从而把有效提取错误降级为重复求解。
-    let sources = snapshot
+    snapshot
         .constraints
         .iter()
         .map(|constraint| DiagnosticSource::Constraint {
             id: constraint.id.clone(),
         })
-        .collect::<Vec<_>>();
-    sources
+        .collect::<Vec<_>>()
 }
 
 fn relax_inactive_domains(

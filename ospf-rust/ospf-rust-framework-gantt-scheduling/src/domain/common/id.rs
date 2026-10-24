@@ -141,6 +141,7 @@ macro_rules! string_id_type {
 }
 
 string_id_type!(TaskId, "任务 ID", "Task id");
+string_id_type!(BunchId, "完整业务候选的稳定任务束 ID", "Stable bunch ID identifying the complete business candidate");
 string_id_type!(ExecutorId, "执行者 ID", "Executor id");
 string_id_type!(TaskStepId, "任务步骤 ID", "Task step id");
 string_id_type!(TaskPlanId, "任务计划 ID", "Task plan id");

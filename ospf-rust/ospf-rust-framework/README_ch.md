@@ -45,6 +45,35 @@ application 代码通常应使用统一的 `solve(...)` 和 `solve_with_options(
 
 ## 核心概念
 
+### 共享列投影
+
+`solver::ColumnProjection<V>` 使用 Core 的完整线性快照，不在领域 context 旁边维护第二份
+行或目标定义。`ColumnDecision` 显式将原变量映射到块，未映射变量保留为全局变量；
+`ProjectedColumn` 必须提供该块全部决策值。`add_columns` / `remove_columns` 管理列池，
+`master` 用相同源行和目标重建 LP / final MILP，Phase I 使用人工变量而不是大 M。
+LP 列变量只有非负界（不添加干扰行对偶定价的冗余上界）；最终整数模型使用二元选列。
+
+`ColumnMasterRegistration` 私有保存冻结列、实际行身份与结构版本。f64 的受控入口
+`solve_master_lp` 将本次实际编译模型交给后端，验证完整最优 LP 报告的证书、指纹和行列
+映射，并按编译时保存的源行身份及乘数合并等式拆行和翻号对偶。不提供公开裸价格绑定。
+每次成功求解签发新 dual epoch；同一模型结构不变而重求，也会拒绝旧请求。失败求解
+清除旧价格。原数值域快照不意味着可以转移 f64 证明：目前精确定价求解门禁仅限同域
+f64，其他数值域可以建模和 seed，但未获得受控证据时不能声明定价收敛。
+`pricing_request` 从同源行生成 c-πa，
+`pricing_model` 仅复制完全属于当前块的局部行；跨块及全局行通过对偶参与目标。
+无对偶 seed 使用 `None`，不能据此声明定价收敛。通过 `add_priced_batch` 在所有块
+使用同一轮对偶完成定价后一次加列；不应逐块加列后继续使用旧请求。
+所有候选列先按冻结版本完整校验，再一次提交列池与状态；后续块或最后一列失败不残留
+前面的列，也不使失败前合法注册失效。
+
+源模型、列池或实际主问题修改都会在 `require_current` / `require_pricing_current`
+和定价消费边界被拒绝。新增局部行或收紧范围使旧列不可行时，主问题重建显式报错，
+要求删列或重新定价。独立补全的资源从列的行/目标贡献中排除，改为全局变量计一次，
+整数补全模式恢复资源的原整数类型。
+`extract_solution` 要求无人工变量的整数主问题，按 VariableId 合并并复核完整主问题和
+原始展开模型；领域仍需独立验证。不实现联合 CG/Benders、割有效性证明、原生增量矩阵
+或 Branch-and-Price，也不把根 LP 收敛当作整数最优证书。
+
 1. `Pipeline<M>` 为模型注册并执行一个约束或目标族。
 2. `CGPipeline<Args, Model, Map>` 在 pipeline 基础上增加 shadow-price refresh 和 reduced-cost extraction。
 3. `ShadowPriceKey`、`ShadowPrice` 和 `ShadowPriceMap` 为 column generation 提供稳定 dual mapping。
@@ -191,6 +220,25 @@ persistence backend 遵循 Cargo feature。公共层包含 `ExpressionRepository
 SQLx 编译器返回 `SqlxCompiledQuery`，其中包含 SQL 模板、参数值、参数类型摘要、方言和复制后的计划。`execute_with` 有意接收外部执行器，因为连接所有权和行映射属于应用或 SQLx adapter；该方法只补充返回行数、耗时和截断统计。需要结构化执行分类的 adapter 应使用 `execute_with_classifier`，显式把执行器错误映射为 `Timeout`、`UnsupportedDialect` 或 `Database`；通用层不会根据错误文本推断分类。未知数据源、未知或歧义字段、非法 Join、不支持的谓词和错误白名单均以结构化 `RelationalQueryFailure` 返回。
 
 ## Solver Backend 说明
+
+### 固定连续追索
+
+`LinearBendersPartition::build` 划分完整展开的 `MetaModel<f64>`，不平行手写另一套模型。
+全部整数／辅助整数留在 master；零成本连续变量默认为可行性追索；显式目标追索需要由
+真实变量边界推导有限 theta 下界。追索矩阵不可变，RHS 对 master 决策为仿射关系。追索
+边界全部作为显式行，子问题变量自由，切割因此包含完整边界贡献。
+
+`FixedRecourseAlgorithm` 控制当前 master／sub 求解，只从实际 LP 独立验证的原始／最优
+对偶证据或 Farkas 证据私有生成割。缺少数值证据时可在同一总时限内求显式证书模型，
+已有但无效的证据不被静默替换。实际报告映射／指纹、完整源可行性、源版本、目标常数
+及有证据界均被检查。结果保留实际 Core 报告，区分证书失败、数学终态和执行终态，
+不隐式跨数值域转换证明。应用层回退必须采用全新模型且仅用剩余预算；共享 BPP 应用
+已提供此边界。
+切割系数／常数精确累加，舍入误差按真实 master 边界补偿，RHS 只向外舍入。无法约束
+的舍入误差方向以 Unsupported 停止，不授权不安全切割，并保留已有已验证源方案。
+theta box 下界、固定 anchor 后的 RHS 和源目标也使用精确二进制 f64 有理运算，下界向下
+舍入、候选解目标向上舍入。RHS 无法精确表示为有限 f64 时，在求解不同系统前以
+Unsupported 停止。
 
 framework backend adapter 只有在 `ospf-rust-framework` 上启用对应 feature 时才会编译，并且该 feature 会透传到 `ospf-rust-core`。
 

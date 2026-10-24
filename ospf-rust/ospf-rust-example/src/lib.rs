@@ -2,7 +2,13 @@
 
 pub mod constraint_programming;
 
+#[cfg(feature = "backend-gurobi")]
+mod core;
+#[cfg(feature = "backend-gurobi")]
+mod example_modeling;
+
 #[cfg(any(
+    feature = "demo4-offline",
     feature = "backend-gurobi",
     feature = "demo5-offline",
     feature = "demo5-gurobi-bp",

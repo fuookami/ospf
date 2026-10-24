@@ -19,7 +19,9 @@ pub use service::{
 
 pub use service::limits::{
     BetterLayerMaximization, BinAmountMinimization, BinCapacityConstraint, BinDepthConstraint,
-    BinLoadingOrderConstraint, DeferredRegistrationPlan, DemandAssignmentRef, DemandConstraint,
+    BinLoadingOrderConstraint, BinTypeCostMinimization, BinVolumeMinimization,
+    DeferredRegistrationPlan, DemandAssignmentRef, DemandConstraint,
     PreciseAssignmentActivationConstraint, RestAmountMinimization, TailBinAssignmentConstraint,
-    TailBinLoadingRateMinimization, VolumeMinimization,
+    TailBinLoadingRateMinimization, VolumeMinimization, bin_volume, bin_waste_ratio,
+    bin_waste_volume, per_type_bin_cost,
 };

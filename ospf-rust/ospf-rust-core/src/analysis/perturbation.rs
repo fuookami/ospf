@@ -27,6 +27,21 @@ pub const PERTURBATION_REPORT_SCHEMA_VERSION: &str = "1.0";
 /// 自适应扰动报告 schema 版本 / Adaptive-perturbation report schema version.
 pub const ADAPTIVE_PERTURBATION_REPORT_SCHEMA_VERSION: &str = "1.0";
 
+#[derive(Clone, Copy)]
+struct PerturbationBaseline<'a> {
+    model: &'a LinearTriadModel,
+    values: &'a [f64],
+    objective: f64,
+    objective_tolerance: f64,
+}
+
+struct AdaptiveProgress<'a> {
+    observations: &'a mut Vec<ConstraintPerturbationObservation>,
+    solve_count: &'a mut usize,
+    started: &'a Instant,
+    unavailable_reason: &'a mut Option<String>,
+}
+
 /// 自适应扰动配置 / Adaptive perturbation configuration.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
@@ -518,20 +533,26 @@ impl ConstraintPerturbationAnalyzer {
         let mut observations = Vec::new();
         let mut solve_count = 0usize;
         let mut unavailable_reason = None;
+        let baseline = PerturbationBaseline {
+            model,
+            values: baseline_values,
+            objective: baseline_objective,
+            objective_tolerance: policy.objective_tolerance,
+        };
 
         let _deltas = if let Some(config) = policy.adaptive {
             self.adaptive_deltas(
                 solver,
-                model,
+                baseline,
                 row,
-                baseline_values,
-                baseline_objective,
                 config,
                 policy,
-                &mut observations,
-                &mut solve_count,
-                &started,
-                &mut unavailable_reason,
+                AdaptiveProgress {
+                    observations: &mut observations,
+                    solve_count: &mut solve_count,
+                    started: &started,
+                    unavailable_reason: &mut unavailable_reason,
+                },
             )?
         } else {
             let requested = policy.deltas.clone();
@@ -542,12 +563,9 @@ impl ConstraintPerturbationAnalyzer {
                 }
                 let observation = self.solve_perturbation(
                     solver,
-                    model,
+                    baseline,
                     row,
-                    baseline_values,
-                    baseline_objective,
                     *delta,
-                    policy.objective_tolerance,
                 )?;
                 solve_count = solve_count.saturating_add(1);
                 observations.push(observation);
@@ -622,17 +640,13 @@ impl ConstraintPerturbationAnalyzer {
     fn adaptive_deltas<S: LinearSolver + ?Sized>(
         &self,
         solver: &S,
-        model: &LinearTriadModel,
+        baseline: PerturbationBaseline<'_>,
         row: usize,
-        baseline_values: &[f64],
-        baseline_objective: f64,
         config: AdaptivePerturbationConfig,
         policy: &ConstraintPerturbationPolicy,
-        observations: &mut Vec<ConstraintPerturbationObservation>,
-        solve_count: &mut usize,
-        started: &Instant,
-        unavailable_reason: &mut Option<String>,
+        progress: AdaptiveProgress<'_>,
     ) -> Result<Vec<f64>> {
+        let AdaptiveProgress { observations, solve_count, started, unavailable_reason } = progress;
         config.validate()?;
         let mut deltas = Vec::new();
         let mut delta = config.initial_delta;
@@ -645,12 +659,9 @@ impl ConstraintPerturbationAnalyzer {
             }
             let observation = self.solve_perturbation(
                 solver,
-                model,
+                baseline,
                 row,
-                baseline_values,
-                baseline_objective,
                 delta.min(config.max_delta),
-                policy.objective_tolerance,
             )?;
             *solve_count = solve_count.saturating_add(1);
             let improved = observation.improved;
@@ -685,12 +696,9 @@ impl ConstraintPerturbationAnalyzer {
                 let middle = lower + (upper - lower) / 2.0;
                 let observation = self.solve_perturbation(
                     solver,
-                    model,
+                    baseline,
                     row,
-                    baseline_values,
-                    baseline_objective,
                     middle,
-                    policy.objective_tolerance,
                 )?;
                 *solve_count = solve_count.saturating_add(1);
                 match observation.improved {
@@ -718,24 +726,18 @@ impl ConstraintPerturbationAnalyzer {
     fn solve_perturbation<S: LinearSolver + ?Sized>(
         &self,
         solver: &S,
-        model: &LinearTriadModel,
+        baseline: PerturbationBaseline<'_>,
         row: usize,
-        baseline_values: &[f64],
-        baseline_objective: f64,
         delta: f64,
-        objective_tolerance: f64,
     ) -> Result<ConstraintPerturbationObservation> {
-        let perturbed_model = perturb_rhs(model, row, delta)?;
+        let perturbed_model = perturb_rhs(baseline.model, row, delta)?;
         let report = solver.solve_linear_report(&perturbed_model)?;
         perturbation_observation(
             &report,
-            model,
+            baseline,
             &perturbed_model,
-            baseline_values,
-            baseline_objective,
             delta,
             perturbed_model.basic.b[row],
-            objective_tolerance,
         )
     }
 }
@@ -794,14 +796,17 @@ fn remove_metadata<T>(values: &mut Vec<T>, row: usize) {
 
 fn perturbation_observation(
     report: &SolveReport<f64>,
-    original_model: &LinearTriadModel,
+    baseline: PerturbationBaseline<'_>,
     solved_model: &LinearTriadModel,
-    baseline_values: &[f64],
-    baseline_objective: f64,
     delta: f64,
     perturbed_rhs: f64,
-    objective_tolerance: f64,
 ) -> Result<ConstraintPerturbationObservation> {
+    let PerturbationBaseline {
+        model: original_model,
+        values: baseline_values,
+        objective: baseline_objective,
+        objective_tolerance,
+    } = baseline;
     report.validate()?;
     let objective = report
         .solution

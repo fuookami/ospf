@@ -16,7 +16,7 @@ use ospf_rust_core::variable::Binary;
 
 use crate::GanttError;
 use crate::GanttResult;
-use crate::domain::common::{ExecutorId, ExecutorIdTrait};
+use crate::domain::common::{BunchId, ExecutorId, ExecutorIdTrait};
 use crate::domain::task_compilation::adapter::next_gantt_symbol_id;
 
 // ============================================================================
@@ -48,6 +48,8 @@ pub struct BunchEntry<I = ExecutorId>
 where
     I: ExecutorIdTrait,
 {
+    /// 完整业务候选的稳定 ID，不从覆盖任务集合推测。 / Stable ID of the complete business candidate, never inferred from covered tasks.
+    pub id: BunchId,
     /// 束索引 / Bunch index
     pub index: usize,
     /// 执行器 ID / Executor ID
@@ -89,32 +91,46 @@ where
         }
     }
 
-    /// 添加新束（去重）/ Add new bunches (with deduplication)
-    pub fn add_bunches(&mut self, iteration: usize, new_bunches: Vec<BunchEntry<I>>) -> Vec<usize> {
+    /// 按稳定 ID 原子增列；相同 ID 只在 payload 一致时幂等，退休后须用新索引重加。 / Atomically add by stable ID; identical payloads are idempotent and retired candidates require a fresh index.
+    pub fn add_bunches(&mut self, iteration: usize, new_bunches: Vec<BunchEntry<I>>) -> GanttResult<Vec<usize>> {
+        let iteration_count = iteration.checked_add(1).ok_or_else(|| GanttError::Calculation {
+            message: "任务束迭代索引耗尽 / bunch iteration index exhausted".into(),
+        })?;
+        let mut staged = self.clone();
         let mut added = Vec::new();
-        for bunch in new_bunches {
-            // 执行器、时隙和任务集合共同确定束的去重键。
-            // Executor, slot, and task set jointly define the bunch deduplication key.
-            let is_duplicate = self.bunches.iter().any(|existing| {
-                existing.executor_id == bunch.executor_id
-                    && existing.task_indices == bunch.task_indices
-                    && existing.slot_index == bunch.slot_index
-            });
-            if !is_duplicate {
-                let idx = bunch.index;
-                self.bunches.push(bunch);
-                added.push(idx);
+        for mut bunch in new_bunches {
+            if bunch.id.is_empty() || bunch.executor_id.is_empty() || !bunch.cost.is_finite()
+                || bunch.task_indices.iter().collect::<HashSet<_>>().len() != bunch.task_indices.len()
+            {
+                return Err(GanttError::Calculation { message: "非法任务束身份、费用或重复任务 / invalid bunch identity, cost or duplicate tasks".into() });
             }
+            let same_payload = |existing: &BunchEntry<I>| existing.id == bunch.id
+                && existing.executor_id == bunch.executor_id && existing.task_indices == bunch.task_indices
+                && existing.slot_index == bunch.slot_index && existing.cost == bunch.cost;
+            if staged.bunches.iter().any(|existing| existing.id == bunch.id && !same_payload(existing)) {
+                return Err(GanttError::Calculation { message: format!("任务束 ID 的 payload 冲突 / conflicting payload for bunch {}", bunch.id) });
+            }
+            if let Some(existing) = staged.get_bunch(bunch.index)
+                && (!same_payload(existing) || staged.removed.contains(&existing.index))
+            {
+                return Err(GanttError::Calculation { message: format!("任务束索引已使用或退休 / bunch index already used or retired: {}", bunch.index) });
+            }
+            if staged.bunches.iter().any(|existing| existing.id == bunch.id && !staged.removed.contains(&existing.index)) {
+                continue;
+            }
+            bunch.iteration = iteration;
+            added.push(bunch.index);
+            staged.bunches.push(bunch);
         }
         if !added.is_empty() {
-            // 确保迭代列表足够长
-            while self.bunches_by_iteration.len() <= iteration {
-                self.bunches_by_iteration.push(Vec::new());
+            while staged.bunches_by_iteration.len() <= iteration {
+                staged.bunches_by_iteration.push(Vec::new());
             }
-            self.bunches_by_iteration[iteration].extend(added.iter().copied());
+            staged.bunches_by_iteration[iteration].extend(added.iter().copied());
         }
-        self.iteration_count = self.iteration_count.max(iteration + 1);
-        added
+        staged.iteration_count = staged.iteration_count.max(iteration_count);
+        *self = staged;
+        Ok(added)
     }
 
     /// 获取所有活跃束 / Get all active bunches
@@ -132,7 +148,7 @@ where
             .map(|indices| {
                 indices
                     .iter()
-                    .filter_map(|&idx| self.bunches.get(idx))
+                    .filter_map(|&idx| self.get_bunch(idx))
                     .filter(|b| !self.removed.contains(&b.index))
                     .collect()
             })
@@ -141,12 +157,14 @@ where
 
     /// 标记束为已移除 / Mark bunch as removed
     pub fn remove(&mut self, index: usize) {
-        self.removed.insert(index);
+        if self.get_bunch(index).is_some() {
+            self.removed.insert(index);
+        }
     }
 
     /// 活跃束数量 / Active bunch count
     pub fn active_count(&self) -> usize {
-        self.bunches.len() - self.removed.len()
+        self.bunches.iter().filter(|bunch| !self.removed.contains(&bunch.index)).count()
     }
 
     /// 获取所有束条目（包含已移除的）/ Get all bunch entries (including removed)
@@ -222,6 +240,9 @@ where
     pub task_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
     /// executorCompilation[executor] 中间表达式 / executorCompilation intermediate expressions
     pub executor_compilation_symbols: Vec<Arc<LinearExpressionSymbol<f64>>>,
+    registration: Option<(u64, usize, Vec<I>, bool)>,
+    registered_auxiliary_indices: Option<(Vec<usize>, Vec<usize>)>,
+    x_by_bunch: HashMap<usize, usize>,
 }
 
 impl<I> std::fmt::Debug for BunchCompilation<I>
@@ -260,6 +281,9 @@ where
             bunch_cost_symbol: None,
             task_compilation_symbols: Vec::with_capacity(n_tasks),
             executor_compilation_symbols: Vec::new(),
+            registration: None,
+            registered_auxiliary_indices: None,
+            x_by_bunch: HashMap::new(),
         }
     }
 
@@ -268,6 +292,42 @@ where
     /// 注册 y[task] 取消变量、z[executor] 空闲变量和初始中间表达式。
     /// x 变量通过 `add_columns` 在列生成迭代中动态注册。
     pub fn register(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
+        if self.is_registered() {
+            return self.validate_model(model);
+        }
+        if self.executor_ids.iter().any(|executor| executor.is_empty())
+            || self.executor_ids.iter().collect::<HashSet<_>>().len() != self.executor_ids.len()
+        {
+            return Err(GanttError::Calculation { message: "执行器 ID 为空或重复 / empty or duplicate executor ID".into() });
+        }
+        let mut next = self.clone();
+        model.transaction(|model| next.register_initial(model))?;
+        next.registration = Some((model.model_identity(), next.n_tasks, next.executor_ids.clone(), next.with_executor_leisure));
+        next.registered_auxiliary_indices = Some((next.y_indices.clone(), next.z_indices.clone()));
+        *self = next;
+        Ok(())
+    }
+
+    pub(crate) fn is_registered(&self) -> bool {
+        self.registration.is_some()
+    }
+
+    pub(crate) fn validate_model(&self, model: &MetaModel<f64>) -> GanttResult<()> {
+        if self.registration.as_ref().is_none_or(|(identity, tasks, executors, leisure)| {
+            *identity != model.model_identity() || *tasks != self.n_tasks
+                || *executors != self.executor_ids || *leisure != self.with_executor_leisure
+        }) || self.registered_auxiliary_indices.as_ref().is_none_or(|(y, z)| *y != self.y_indices || *z != self.z_indices) {
+            return Err(GanttError::Calculation { message: "任务束编译未注册、跨模型使用或定义已改变 / unregistered, foreign-model or changed bunch compilation".into() });
+        }
+        Ok(())
+    }
+
+    /// 从历史列身份查找变量，删除不会压缩位置。 / Look up a variable by historical column identity without compacting positions after removal.
+    pub fn x_index(&self, bunch_index: usize) -> Option<usize> {
+        self.x_by_bunch.get(&bunch_index).copied()
+    }
+
+    fn register_initial(&mut self, model: &mut MetaModel<f64>) -> GanttResult<()> {
         // 1. 注册 y[task] 取消变量
         self.y_indices.clear();
         for ti in 0..self.n_tasks {
@@ -387,15 +447,32 @@ where
         new_bunches: Vec<BunchEntry<I>>,
         model: &mut MetaModel<f64>,
     ) -> GanttResult<Vec<usize>> {
-        let deduped = self.aggregation.add_bunches(iteration, new_bunches);
+        self.validate_model(model)?;
+        if new_bunches.iter().any(|bunch| !self.executor_ids.contains(&bunch.executor_id)
+            || bunch.task_indices.iter().any(|&task| task >= self.n_tasks))
+        {
+            return Err(GanttError::Calculation { message: "任务束引用未知执行器或任务 / bunch references an unknown executor or task".into() });
+        }
+        let mut next = self.clone();
+        let deduped = next.aggregation.add_bunches(iteration, new_bunches)?;
+        if deduped.is_empty() {
+            return Ok(deduped);
+        }
+        model.transaction(|model| next.register_columns(iteration, &deduped, model))?;
+        *self = next;
+        Ok(deduped)
+    }
+
+    fn register_columns(
+        &mut self,
+        iteration: usize,
+        deduped: &[usize],
+        model: &mut MetaModel<f64>,
+    ) -> GanttResult<()> {
 
         // 为每个新束注册 x 变量
         let mut iteration_x_indices = Vec::with_capacity(deduped.len());
-        for &bunch_idx in &deduped {
-            let _entry = self
-                .aggregation
-                .get_bunch(bunch_idx)
-                .expect("bunch entry must exist after add_bunches");
+        for &bunch_idx in deduped {
             let var_name = format!("x_{}_{}", iteration, bunch_idx);
             let var_item: ospf_rust_core::variable::VariableItem<Binary> =
                 ospf_rust_core::variable::VariableItem::create(
@@ -411,6 +488,7 @@ where
                         message: format!("Failed to register variable {}: {:?}", var_name, e),
                     })?;
             iteration_x_indices.push(model_idx);
+            self.x_by_bunch.insert(bunch_idx, model_idx);
         }
 
         // 确保迭代列表足够长
@@ -419,7 +497,7 @@ where
         }
         self.x_indices[iteration].extend(iteration_x_indices);
 
-        Ok(deduped)
+        Ok(())
     }
 }
 
@@ -530,6 +608,7 @@ mod tests {
         let mut agg = BunchAggregation::new();
         let entries = vec![
             BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0, 1],
@@ -538,6 +617,7 @@ mod tests {
                 slot_index: None,
             },
             BunchEntry {
+                id: "bunch-1".into(),
                 index: 1,
                 executor_id: "exec_2".into(),
                 task_indices: vec![2],
@@ -546,15 +626,16 @@ mod tests {
                 slot_index: None,
             },
         ];
-        let added = agg.add_bunches(0, entries);
+        let added = agg.add_bunches(0, entries).unwrap();
         assert_eq!(added.len(), 2);
         assert_eq!(agg.active_count(), 2);
     }
 
     #[test]
-    fn test_bunch_aggregation_dedup() {
+    fn test_bunch_aggregation_preserves_distinct_candidates_with_same_tasks() {
         let mut agg = BunchAggregation::new();
         let e1 = BunchEntry {
+            id: "bunch-0".into(),
             index: 0,
             executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
@@ -562,11 +643,12 @@ mod tests {
             iteration: 0,
             slot_index: None,
         };
-        let added1 = agg.add_bunches(0, vec![e1.clone()]);
+        let added1 = agg.add_bunches(0, vec![e1.clone()]).unwrap();
         assert_eq!(added1.len(), 1);
 
-        // 重复添加相同执行器和任务集合的束应被去重
+        // 覆盖集合相同不代表恢复记录相同。 / Equal coverage does not imply equal recovery records.
         let dup = BunchEntry {
+            id: "bunch-1".into(),
             index: 1,
             executor_id: "exec_1".into(),
             task_indices: vec![0, 1],
@@ -574,9 +656,98 @@ mod tests {
             iteration: 0,
             slot_index: None,
         };
-        let added2 = agg.add_bunches(0, vec![dup]);
-        assert_eq!(added2.len(), 0);
-        assert_eq!(agg.active_count(), 1);
+        let added2 = agg.add_bunches(0, vec![dup]).unwrap();
+        assert_eq!(added2, vec![1]);
+        assert_eq!(agg.active_count(), 2);
+    }
+
+    fn entry(index: usize) -> BunchEntry {
+        BunchEntry { id: format!("candidate-{index}").into(), index, executor_id: "exec_1".into(), task_indices: vec![0], cost: 10.0, iteration: 0, slot_index: None }
+    }
+
+    #[test]
+    fn stable_id_is_idempotent_but_rejects_payload_conflicts_atomically() {
+        let mut aggregation = BunchAggregation::new();
+        let first = entry(40);
+        assert_eq!(aggregation.add_bunches(2, vec![first.clone()]).unwrap(), vec![40]);
+        let mut duplicate = first.clone();
+        duplicate.index = 90;
+        assert!(aggregation.add_bunches(3, vec![duplicate]).unwrap().is_empty());
+        for conflicting in [
+            BunchEntry { cost: 9.0, ..first.clone() },
+            BunchEntry { task_indices: vec![1], ..first.clone() },
+            BunchEntry { executor_id: "exec_2".into(), ..first.clone() },
+            BunchEntry { slot_index: Some(0), ..first.clone() },
+        ] {
+            assert!(aggregation.add_bunches(3, vec![entry(41), conflicting]).is_err());
+            assert_eq!(aggregation.all_bunches().len(), 1);
+            assert!(aggregation.bunches_for_iteration(3).is_empty());
+        }
+        assert_eq!(aggregation.bunches_for_iteration(2)[0].index, 40);
+        assert_eq!(aggregation.bunches_for_iteration(2)[0].iteration, 2);
+    }
+
+    #[test]
+    fn retired_candidate_requires_fresh_index_and_cannot_change_payload() {
+        let mut aggregation = BunchAggregation::new();
+        let first = entry(40);
+        aggregation.add_bunches(0, vec![first.clone()]).unwrap();
+        aggregation.remove(40);
+        aggregation.remove(999);
+        assert_eq!(aggregation.active_count(), 0);
+        assert!(aggregation.add_bunches(1, vec![first.clone()]).is_err());
+        assert!(aggregation.add_bunches(1, vec![BunchEntry { index: 41, cost: 20.0, ..first.clone() }]).is_err());
+        assert_eq!(aggregation.add_bunches(1, vec![BunchEntry { index: 41, ..first }]).unwrap(), vec![41]);
+        assert!(aggregation.bunches_for_iteration(0).is_empty());
+        assert_eq!(aggregation.bunches_for_iteration(1)[0].index, 41);
+        assert_eq!(aggregation.active_count(), 1);
+    }
+
+    #[test]
+    fn compilation_rejects_unregistered_foreign_and_changed_models() {
+        let mut compilation = BunchCompilation::new(1, vec!["exec_1"], false);
+        let mut model = MetaModel::<f64>::new("owner");
+        let mut foreign = MetaModel::<f64>::new("foreign");
+        assert!(compilation.add_columns(0, vec![entry(40)], &mut model).is_err());
+        compilation.register(&mut model).unwrap();
+        let tokens = model.as_basic().num_tokens();
+        let symbols = model.as_basic().symbols().len();
+        compilation.register(&mut model).unwrap();
+        assert_eq!(model.as_basic().num_tokens(), tokens);
+        assert_eq!(model.as_basic().symbols().len(), symbols);
+        assert!(compilation.register(&mut foreign).is_err());
+        assert!(compilation.add_columns(0, vec![entry(40)], &mut foreign).is_err());
+        assert_eq!(foreign.as_basic().num_tokens(), 0);
+        compilation.n_tasks = 2;
+        assert!(compilation.register(&mut model).is_err());
+        assert_eq!(model.as_basic().num_tokens(), tokens);
+    }
+
+    #[test]
+    fn compilation_prevalidates_complete_batch_and_duplicate_executors() {
+        for executors in [vec!["exec_1", "exec_1"], vec![""]] {
+            let mut compilation = BunchCompilation::new(1, executors, false);
+            let mut model = MetaModel::<f64>::new("invalid_executors");
+            assert!(compilation.register(&mut model).is_err());
+            assert_eq!(model.as_basic().num_tokens(), 0);
+        }
+        let mut compilation = BunchCompilation::new(1, vec!["exec_1"], false);
+        let mut model = MetaModel::<f64>::new("batch");
+        compilation.register(&mut model).unwrap();
+        let invalid = [
+            BunchEntry { executor_id: "unknown".into(), ..entry(41) },
+            BunchEntry { task_indices: vec![1], ..entry(41) },
+            BunchEntry { task_indices: vec![0, 0], ..entry(41) },
+            BunchEntry { cost: f64::NAN, ..entry(41) },
+            BunchEntry { id: "".into(), ..entry(41) },
+            BunchEntry { index: 40, ..entry(41) },
+        ];
+        for invalid in invalid {
+            assert!(compilation.add_columns(0, vec![entry(40), invalid], &mut model).is_err());
+            assert_eq!(model.as_basic().num_tokens(), 1);
+            assert!(compilation.aggregation.all_bunches().is_empty());
+            assert!(compilation.x_indices.is_empty());
+        }
     }
 
     #[test]
@@ -584,6 +755,7 @@ mod tests {
         let mut aggregation = BunchAggregation::new();
         let entries = vec![
             BunchEntry {
+                id: "bunch-0".into(),
                 index: 0,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0],
@@ -592,6 +764,7 @@ mod tests {
                 slot_index: Some(0),
             },
             BunchEntry {
+                id: "bunch-1".into(),
                 index: 1,
                 executor_id: "exec_1".into(),
                 task_indices: vec![0],
@@ -601,7 +774,7 @@ mod tests {
             },
         ];
 
-        let added = aggregation.add_bunches(0, entries);
+        let added = aggregation.add_bunches(0, entries).unwrap();
 
         assert_eq!(added, vec![0, 1]);
         assert_eq!(aggregation.active_count(), 2);

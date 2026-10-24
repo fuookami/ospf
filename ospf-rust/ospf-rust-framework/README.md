@@ -45,6 +45,41 @@ Application code should generally use unified `solve(...)` and `solve_with_optio
 
 ## Core Concepts
 
+### Shared Column Projection
+
+`solver::ColumnProjection<V>` consumes Core's complete linear snapshots instead of maintaining
+a second row/objective definition beside each domain context. `ColumnDecision` explicitly assigns
+source variables to blocks; unmapped variables remain global. A `ProjectedColumn` supplies every
+local decision value. `add_columns` / `remove_columns` manage the pool, while `master` rebuilds LP
+and final MILP models from the same rows and objective. Phase I uses artificials, not big M.
+LP column variables have nonnegative bounds only (no redundant upper bounds affecting row-dual
+pricing); the final integer model uses binary column selection.
+
+`ColumnMasterRegistration` privately freezes columns, actual row identities and structural
+revisions. The controlled f64 `solve_master_lp` entry hands the actual compilation to a backend,
+validates the full optimal LP report's certificate, fingerprint and mapping, then merges split/sign-
+flipped row duals using origins and multipliers recorded during compilation. Raw price binding is
+not public. Every successful solve issues a new dual epoch: even an unchanged master invalidates
+requests from a previous solve. Failed solves clear old prices. Native-domain snapshots do not
+transfer f64 proofs: the exact-pricing solve gate currently supports same-domain f64 only; other
+domains support modeling and seeding but cannot certify pricing convergence without controlled
+evidence. `pricing_request` derives c-πa from the same rows; `pricing_model` copies
+only wholly local hard rows, leaving cross-block/global rows in the dual objective. Zero-dual seed
+pricing uses `None` and cannot certify convergence. Use `add_priced_batch` after every block has
+priced against the same round's duals, rather than adding a block and reusing stale requests.
+All candidate columns are validated against a frozen revision before committing the pool and
+state once. Failure in a later block or final column leaves no partial pool changes and preserves
+registrations that were valid before the failed attempt.
+
+Source, pool or actual master changes are rejected at `require_current`,
+`require_pricing_current` and pricing-consumption boundaries. If new local rows or tighter bounds
+invalidate old columns, rebuilding fails explicitly and requires removal or repricing. Independently
+completed resources are excluded from column row/objective contributions and counted
+once as global variables. `extract_solution` requires an integer master without artificials,
+merges by VariableId and validates the complete master and expanded source; independent domain
+validation remains necessary. There is no joint CG/Benders algorithm, cut-validity proof, native
+incremental matrix or Branch-and-Price, and root-LP convergence is not an integer-optimality proof.
+
 1. `Pipeline<M>` registers and executes a constraint or objective family for a model.
 2. `CGPipeline<Args, Model, Map>` extends pipeline behavior with shadow-price refresh and reduced-cost extraction.
 3. `ShadowPriceKey`, `ShadowPrice`, and `ShadowPriceMap` provide stable dual mapping for column generation.
@@ -196,6 +231,29 @@ Backend scope:
 The SQLx compiler returns `SqlxCompiledQuery` with a SQL template, parameter values, parameter type summary, dialect, and the copied plan. `execute_with` deliberately accepts an external executor because connection ownership and row mapping belong to the application or SQLx adapter; it only adds returned-row, duration, and truncation statistics. Adapters that need structured execution categories should use `execute_with_classifier` and explicitly map executor errors to `Timeout`, `UnsupportedDialect`, or `Database`; the generic layer does not infer categories from error text. Unknown sources, unknown or ambiguous columns, invalid joins, unsupported predicates, and malformed allowlists are returned as structured `RelationalQueryFailure` values.
 
 ## Solver Backend Notes
+
+### Fixed Continuous Recourse
+
+`LinearBendersPartition::build` partitions the complete expanded `MetaModel<f64>`, not a parallel
+handwritten model. All integers/helpers stay in master; zero-cost continuous variables default to
+feasibility recourse. Explicit objective recourse needs a finite box-derived theta lower bound.
+The recourse matrix is immutable and its RHS depends affinely on master decisions. Every recourse
+bound is an explicit row and recourse variables are free, so cuts include all bound contributions.
+
+`FixedRecourseAlgorithm` controls the current master/subproblem solves and generates cuts privately
+from the actual LP's verified primal/optimal-dual or Farkas evidence. Missing numeric evidence may
+be recovered through explicit certificate models under the same deadline. Invalid existing evidence
+is never silently replaced. Actual report mappings/fingerprints, full-source feasibility, source
+revision, objective constants and certified bounds are checked. Results retain original Core reports
+and distinguish certificate failures from mathematical and execution terminals. There is no implicit
+cross-value-domain proof conversion. Application-owned fallback must use fresh models and only the
+remaining budget; the shared BPP application supplies this boundary.
+Cut coefficients/constants are accumulated exactly. Rounding errors are compensated over actual
+master bounds and RHS rounding is outward; an unbounded rounding-error direction stops as
+Unsupported rather than authorizing an unsafe cut, while retaining any validated source incumbent.
+Theta box lower bounds, anchored RHS values and source objectives use exact binary-f64 rational
+arithmetic too. Lower bounds round down and incumbent objectives round up. An anchored RHS that
+cannot be represented exactly as finite f64 stops Unsupported before solving a different system.
 
 Framework backend adapters are compiled only when their feature is enabled on `ospf-rust-framework`, and the feature is forwarded to `ospf-rust-core`.
 

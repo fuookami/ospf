@@ -22,16 +22,20 @@
 
 pub mod appendable_pool;
 pub mod constraint_programming;
+pub mod column_generation_batch;
 pub mod dynamic_lifecycle;
 pub mod indexed_combination;
 pub mod optional_array;
 pub mod pipeline;
+pub mod pricing_duals;
 pub mod shadow_price;
 
 pub use appendable_pool::*;
 pub use constraint_programming::*;
+pub use column_generation_batch::*;
 pub use dynamic_lifecycle::*;
 pub use indexed_combination::*;
 pub use optional_array::*;
 pub use pipeline::*;
+pub use pricing_duals::*;
 pub use shadow_price::*;

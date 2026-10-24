@@ -8,7 +8,7 @@ use std::collections::HashMap;
 fn assert_function_symbol<T: FunctionSymbol<f64>>() {}
 
 #[test]
-fn QuadraticSlackRange_has_a_dedicated_contract_test_file() {
+fn quadratic_slack_range_has_a_dedicated_contract_test_file() {
     assert_function_symbol::<QuadraticSlackRangeFunction<f64>>();
 }
 

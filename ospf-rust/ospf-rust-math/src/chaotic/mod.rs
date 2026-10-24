@@ -53,6 +53,7 @@ mod three_scroll_tsucs1;
 mod three_scroll_tsucs2;
 mod wang_sun;
 mod wimol_banlue;
+mod windmi;
 mod yu_wang;
 
 // Point4-based systems
@@ -151,6 +152,7 @@ pub use three_scroll_tsucs1::*;
 pub use three_scroll_tsucs2::*;
 pub use wang_sun::*;
 pub use wimol_banlue::*;
+pub use windmi::*;
 pub use yu_wang::*;
 
 pub use four_scroll_hyper_chaotic::*;

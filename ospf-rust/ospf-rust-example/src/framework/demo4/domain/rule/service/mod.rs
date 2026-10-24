@@ -7,12 +7,16 @@ pub mod cost_calculator;
 pub mod feasibility_judger;
 /// 最早起飞时间计算器模块 / Minimum departure time calculator module
 pub mod minimum_departure_time_calculator;
+/// 实际恢复记录的转移策略。 / Transition policies over actual recovery records.
+pub mod transition;
 
 /// 连接时间计算器 / Connection time calculator
 pub use connection_time_calculator::ConnectionTimeCalculator;
 /// 费用计算器 / Cost calculator
-pub use cost_calculator::CostCalculator;
+pub use cost_calculator::{CostCalculator, RecoveryCostPolicy};
 /// 可行性判断器 / Feasibility judger
-pub use feasibility_judger::FeasibilityJudger;
+pub use feasibility_judger::{BunchRecoveryRules, FeasibilityJudger};
 /// 最早起飞时间计算器 / Minimum departure time calculator
 pub use minimum_departure_time_calculator::MinimumDepartureTimeCalculator;
+/// 默认及可注入的只读转移策略。 / Default and injectable read-only transition policies.
+pub use transition::{DefaultRecoveryTransitionPolicy, RecoveryTransitionPolicy};

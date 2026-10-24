@@ -15,6 +15,7 @@ fn csv_materialized_continuous_radius_renders_solver_selected_radius() {
                 model_name: "pwl_selected_radius_final".to_string(),
                 primal_solution: vec![1.0, 1.0],
                 objective: Some(1.0),
+                ..Default::default()
             })
             .execute(state);
             execution.info.insert(

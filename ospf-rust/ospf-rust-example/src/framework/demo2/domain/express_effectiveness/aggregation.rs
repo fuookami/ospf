@@ -11,7 +11,7 @@ impl ExpressEffectivenessAggregation {
     /// 从上下文构建聚合数据 / Build aggregation data from context
     pub fn from_context(context: &ExpressEffectivenessContext<'_>) -> Self {
         let must_ship_indices = (0..context.request.cargos.len())
-            .filter(|c| context.request.cargos[*c].priority >= 8)
+            .filter(|c| context.request.loading.cargos.get(&context.request.cargos[*c].name).and_then(|policy| policy.required) == Some(true))
             .collect();
         Self { must_ship_indices }
     }

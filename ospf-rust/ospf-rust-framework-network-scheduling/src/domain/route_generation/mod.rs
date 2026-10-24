@@ -5,6 +5,7 @@ mod exact;
 mod graph;
 mod initial_routes;
 mod model;
+mod path_search;
 mod policy;
 mod pricer;
 

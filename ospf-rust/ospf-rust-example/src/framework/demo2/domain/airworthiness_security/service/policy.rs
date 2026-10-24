@@ -10,6 +10,7 @@ use crate::framework::demo2::domain::shared::pipeline_policy::PipelineSpec;
 /// Defines the execution order and mode selection for airworthiness constraints.
 pub fn pipeline_specs() -> Vec<PipelineSpec<AirworthinessPipelineStep>> {
     vec![
+        PipelineSpec { priority: 5, mode_selector: ModeSelector::All, apply: limits::apply_clim_limits },
         PipelineSpec {
             priority: 10,
             mode_selector: ModeSelector::All,

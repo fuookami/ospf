@@ -12,11 +12,13 @@
 
 ## 模块
 
+- `activity.rs`：有限候选单次 MILP，共用事务 context 注册和完整编译 incumbent 审计；见[活动指南](../../domain/activity/README_ch.md)。
 - `task.rs`：创建任务列生成流程的辅助入口。
 - `bunch.rs`：任务束列生成、branch-and-price 构造、fresh-model 搜索和默认任务束生成策略。
 
 ## 公共 API
 
+- `ActivitySchedulingApplicationService::{solve, solve_with}`：新 context 工厂、可选下游扩展和 `SolveReport<ActivitySchedule<V>>`，同步/async 语义一致。
 - `create_task_column_generation`
 - `create_bunch_branch_and_price`
 - `search_bunch_branch_and_price_with_fresh_model`

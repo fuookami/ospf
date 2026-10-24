@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use ospf_rust_core::solver::value::{SolveValue, SolveValueConversionPolicy};
 use ospf_rust_quantities::unit::UnitConversionValue;
 
-use super::model::{CommodityId, FlowGraph};
+use super::model::{CommodityId, FlowProblem};
 use crate::error::{NetworkSchedulingError, Result};
 use crate::infrastructure::NetworkArcId;
 
@@ -18,7 +18,7 @@ where
 {
     /// 最小总成本 / Minimum total cost.
     pub objective: V,
-    /// 每个 `(commodity, arc)` 的整数流 / Integral flow for each `(commodity, arc)` pair.
+    /// 每个 `(commodity, arc)` 的步长计数，未配置步长时为单位整数流 / Step counts per `(commodity, arc)`, or unit integral flows without a configured step.
     pub flows: BTreeMap<(CommodityId, NetworkArcId), i64>,
 }
 
@@ -31,7 +31,7 @@ where
 /// This implementation is for small-instance mathematical cross-checks, not production-scale
 /// networks.
 pub fn solve_bounded_integral_min_cost_flow<V>(
-    graph: &FlowGraph<V>,
+    graph: &FlowProblem<V>,
 ) -> Result<Option<IntegralFlowOracleResult<V>>>
 where
     V: SolveValue + UnitConversionValue,
@@ -41,17 +41,14 @@ where
             message: error.to_string(),
         },
     )?;
-    let one = V::from_f64_with_policy(1.0, SolveValueConversionPolicy::AllowRounding).map_err(
-        |error| NetworkSchedulingError::Conversion {
-            message: error.to_string(),
-        },
-    )?;
     let variables = graph
         .commodities
         .iter()
         .enumerate()
         .flat_map(|(commodity_index, commodity)| {
-            graph.arcs.iter().enumerate().map(move |(arc_index, arc)| {
+            graph.arcs.iter().enumerate()
+                .filter(move |(_, arc)| graph.is_allowed(commodity, &arc.id))
+                .map(move |(arc_index, arc)| {
                 (
                     commodity_index,
                     arc_index,
@@ -59,12 +56,11 @@ where
                     arc.id.clone(),
                     arc.from.clone(),
                     arc.to.clone(),
-                    arc.cost.quantity.value.clone(),
                 )
             })
         })
         .map(
-            |(commodity_index, arc_index, commodity, arc, from, to, cost)| {
+            |(commodity_index, arc_index, commodity, arc, from, to)| {
                 let from_index = graph
                     .nodes
                     .iter()
@@ -85,8 +81,13 @@ where
                             arc, to, arc, to
                         ))
                     })?;
-                let max_flow =
-                    integral_upper_bound(&graph.arcs[arc_index].capacity.upper.value, &arc)?;
+                let item = &graph.commodities[commodity_index];
+                let step = graph.step(item)?;
+                let consumption = graph.capacity_coefficient(item, &arc)?;
+                let cost = graph.cost_coefficient(item, &graph.arcs[arc_index])?;
+                let upper = graph.arcs[arc_index].capacity.upper.value.clone()
+                    / (consumption.clone() * step.clone());
+                let max_flow = integral_upper_bound(&upper, &arc)?;
                 Ok(FlowOracleVariable {
                     commodity_index,
                     arc_index,
@@ -95,20 +96,23 @@ where
                     from_index,
                     to_index,
                     cost,
+                    step,
+                    consumption,
                     max_flow,
                 })
             },
         )
         .collect::<Result<Vec<_>>>()?;
 
+    let variable_count = variables.len();
     let mut search = FlowOracleSearch {
         graph,
         variables,
-        assignments: vec![0; graph.commodities.len() * graph.arcs.len()],
+        assignments: vec![0; variable_count],
+        flow_values: vec![zero.clone(); variable_count],
         arc_totals: vec![zero.clone(); graph.arcs.len()],
         node_balances: vec![vec![zero.clone(); graph.nodes.len()]; graph.commodities.len()],
         zero: zero.clone(),
-        one,
         objective: zero,
         best: None,
     };
@@ -143,6 +147,8 @@ where
     from_index: usize,
     to_index: usize,
     cost: V,
+    step: V,
+    consumption: V,
     max_flow: i64,
 }
 
@@ -151,13 +157,13 @@ struct FlowOracleSearch<'a, V>
 where
     V: SolveValue + UnitConversionValue,
 {
-    graph: &'a FlowGraph<V>,
+    graph: &'a FlowProblem<V>,
     variables: Vec<FlowOracleVariable<V>>,
     assignments: Vec<i64>,
+    flow_values: Vec<V>,
     arc_totals: Vec<V>,
     node_balances: Vec<Vec<V>>,
     zero: V,
-    one: V,
     objective: V,
     best: Option<IntegralFlowOracleResult<V>>,
 }
@@ -177,13 +183,17 @@ where
         let from_index = variable.from_index;
         let to_index = variable.to_index;
         let cost = variable.cost.clone();
+        let step = variable.step.clone();
+        let consumption = variable.consumption.clone();
         let max_flow = variable.max_flow;
         let mut flow_value = self.zero.clone();
         for flow in 0..=max_flow {
             let objective_term = cost.clone() * flow_value.clone();
+            let capacity_term = consumption.clone() * flow_value.clone();
 
             self.assignments[variable_index] = flow;
-            self.arc_totals[arc_index] = self.arc_totals[arc_index].clone() + flow_value.clone();
+            self.flow_values[variable_index] = flow_value.clone();
+            self.arc_totals[arc_index] = self.arc_totals[arc_index].clone() + capacity_term.clone();
             self.node_balances[commodity_index][from_index] =
                 self.node_balances[commodity_index][from_index].clone() + flow_value.clone();
             self.node_balances[commodity_index][to_index] =
@@ -197,21 +207,23 @@ where
                 self.node_balances[commodity_index][to_index].clone() + flow_value.clone();
             self.node_balances[commodity_index][from_index] =
                 self.node_balances[commodity_index][from_index].clone() - flow_value.clone();
-            self.arc_totals[arc_index] = self.arc_totals[arc_index].clone() - flow_value.clone();
-            flow_value = flow_value + self.one.clone();
+            self.arc_totals[arc_index] = self.arc_totals[arc_index].clone() - capacity_term;
+            flow_value = flow_value + step.clone();
         }
         Ok(())
     }
 
     fn consider_complete_assignment(&mut self) -> Result<()> {
-        if !self.capacities_are_satisfied() || !self.conservation_is_satisfied() {
+        if !self.capacities_are_satisfied() || !self.resources_are_satisfied()? {
             return Ok(());
         }
+        let Some(penalty) = self.conservation_penalty() else { return Ok(()); };
+        let objective = self.objective.clone() + penalty;
 
         let is_better = self
             .best
             .as_ref()
-            .is_none_or(|best| self.objective < best.objective);
+            .is_none_or(|best| objective < best.objective);
         if !is_better {
             return Ok(());
         }
@@ -223,7 +235,7 @@ where
             .map(|(variable, flow)| ((variable.commodity.clone(), variable.arc.clone()), flow))
             .collect();
         self.best = Some(IntegralFlowOracleResult {
-            objective: self.objective.clone(),
+            objective,
             flows,
         });
         Ok(())
@@ -236,24 +248,41 @@ where
         })
     }
 
-    fn conservation_is_satisfied(&self) -> bool {
-        self.graph
-            .commodities
-            .iter()
-            .enumerate()
-            .all(|(commodity_index, commodity)| {
-                self.graph
-                    .nodes
-                    .iter()
-                    .enumerate()
-                    .all(|(node_index, node)| {
-                        let actual = &self.node_balances[commodity_index][node_index];
-                        match commodity.balances.get(&node.id) {
-                            Some(expected) => equal_values(actual, &expected.value),
-                            None => equal_values(actual, &self.zero),
-                        }
-                    })
-            })
+    fn resources_are_satisfied(&self) -> Result<bool> {
+        for resource in self.graph.resources() {
+            let mut total = self.zero.clone();
+            for (variable, amount) in self.variables.iter().zip(&self.flow_values) {
+                if let Some(usage) = resource.consumptions.get(&(variable.commodity.clone(), variable.arc.clone())) {
+                    total = total + usage.value.clone() * amount.clone();
+                }
+            }
+            if !at_least(&total, &resource.capacity.lower.value) || !at_most(&total, &resource.capacity.upper.value) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn conservation_penalty(&self) -> Option<V> {
+        let mut penalty = self.zero.clone();
+        for (commodity_index, commodity) in self.graph.commodities.iter().enumerate() {
+            for (node_index, node) in self.graph.nodes.iter().enumerate() {
+                let actual = &self.node_balances[commodity_index][node_index];
+                let expected = commodity.balances.get(&node.id).map(|value| &value.value).unwrap_or(&self.zero);
+                if equal_values(actual, expected) { continue; }
+                let slack = commodity.slacks.get(&node.id)?;
+                if actual < expected {
+                    let spill = expected.clone() - actual.clone();
+                    if !at_most(&spill, &slack.spill_limit.value) { return None; }
+                    penalty = penalty + spill * slack.spill_cost.quantity.value.clone();
+                } else {
+                    let shortage = actual.clone() - expected.clone();
+                    if !at_most(&shortage, &slack.shortage_limit.value) { return None; }
+                    penalty = penalty + shortage * slack.shortage_cost.quantity.value.clone();
+                }
+            }
+        }
+        Some(penalty)
     }
 }
 
@@ -289,7 +318,7 @@ mod tests {
     #![allow(clippy::borrow_interior_mutable_const)]
 
     use super::solve_bounded_integral_min_cost_flow;
-    use crate::domain::flow::{FlowArc, FlowGraph, FlowNode, FlowUnits, SupplyDemand};
+    use crate::domain::flow::{FlowArc, FlowProblem, FlowNode, FlowUnits, FlowCommodity};
     use crate::domain::vrp::VrptwUnits;
     use crate::infrastructure::{CapacityBounds, NetworkCost};
     use ospf_rust_quantities::Quantity;
@@ -306,7 +335,7 @@ mod tests {
             )
             .expect("valid test capacity")
         };
-        let graph = FlowGraph::new_with_units(
+        let graph = FlowProblem::new_with_units(
             vec![FlowNode::new("source"), FlowNode::new("sink")],
             vec![
                 FlowArc::new(
@@ -332,10 +361,10 @@ mod tests {
                 ),
             ],
             vec![
-                SupplyDemand::new("first")
+                FlowCommodity::new("first")
                     .with_balance("source", Quantity::new(1.0, flow_unit.clone()))
                     .with_balance("sink", Quantity::new(-1.0, flow_unit.clone())),
-                SupplyDemand::new("second")
+                FlowCommodity::new("second")
                     .with_balance("source", Quantity::new(1.0, flow_unit.clone()))
                     .with_balance("sink", Quantity::new(-1.0, flow_unit.clone())),
             ],

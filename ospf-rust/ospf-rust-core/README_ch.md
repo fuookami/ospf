@@ -13,7 +13,7 @@
 1. 变量与 token 系统。
 2. 符号表达式和函数符号系统。
 3. `MetaModel`、mechanism model、intermediate standard-form model 和 callback model 层。
-4. solver trait、options、outputs、value conversion、heuristic interface、IIS diagnostics 和 Gurobi/SCIP adapter 边界。
+4. solver trait、options、outputs、value conversion、启发式求解器、IIS diagnostics 和 Gurobi/SCIP adapter 边界。
 
 明确非目标：
 
@@ -23,13 +23,48 @@
 
 ## 模块结构
 
+### 线性结构状态
+
+`MetaModel::linear_model_snapshot()` 在原数值域内生成完整展开快照（包含函数辅助列和
+deferred 的通用线性语义），按 `VariableId` 保存系数、复制变量范围，统一为最小化目标，
+保留子目标权重并且只计一次目标常数。`LinearModelValue` 默认支持 f32、f64、BigDecimal
+和 BigRational；自定义数值域可以实现该 trait，不要求先转换到 f64。
+
+`register_linear_row(id, inequality)` 只接受已有变量上的线性行，合并重复项并删除精确零。
+同 ID 同内容幂等；不同内容、未知变量、非有限值及删除后的身份复用均报错。
+普通源行具有独立于名称和位置的会话身份。模型变换可以通过
+`register_variable_data` 保留精确变量范围和身份，并重新分配目标模型的列序号。
+
+`require_linear_model_revision(revision)` 显式刷新并拒绝跨模型或过期版本。
+直接修改行、目标或变量范围会在刷新边界被检测；解值和缓存不推进版本。
+失败事务恢复行注册但不回滚已发布版本，避免旧版本被复用。不监听任意可变对象，
+不支持刷新期间并发修改；二次约束不能进入线性快照。快照不证明割有效性，也不负责列生成编排。
+
+f64 快照的 `compile_flt64()` 在生成标准行时记录实际源行身份和正负乘数，包括等式拆行，
+并将目标常数与 backend c*x 分开。泛型 `LinearObjectiveInput` 及 expression builder 均保留
+权重和常数；结构快照不能代替本次求解来源或证明跨数值域有效性。
+
+`LinearVariableState::relaxed()` 松弛整数性之前先取隐式类型边界与显式边界的交集。
+`solver::validate_linear_farkas_ray` 独立计算包含完整边界的矛盾
+`min (lambda*A)*x - lambda*b`，绝不因存在有限边界就接受射线。该接口显式使用的数值
+容差不意味着可以把 f64 证明转移到其它源数值域。
+最优 LP 与 Farkas 证书门禁将二进制 f64 操作数精确表示为有理数后累加，包括原始行／
+目标、转置对偶活动值及极值边界 support；无界方向的微小非零残差不因容差、下溢或
+大项抵消被抹掉。显式容差只用于可行性／目标间隙，不用于无界方向驻点。
+完整快照解复核也将 f32/f64 行和边界按精确二进制有理值比较，避免大项抵消漏掉源可行性
+违反；其它支持的数值域仍使用原域运算，不经 f64 转换。
+`LinearObjectiveEvaluationFlt64` 集中精确求值变量项／常数并比较报告目标。
+`snapshot.evaluate_objective_flt64(values)` 供应用统一使用：候选目标向上、master 下界
+向下舍入，常数只计一次。无常数报告目标与完整目标分别从精确和舍入，调用方不得将已
+舍入的分量相加来重建完整目标。
+
 | Rust 模块 | Kotlin 边界 | 职责 |
 | --- | --- | --- |
 | `variable` | `core/variable` | 变量类型系统、变量项、组合和范围。 |
 | `token` | `core/token` | 变量-token 映射、token list/table、缓存值和 solver result access。 |
 | `symbol` | `core/symbol` | 表达式符号、monomial cell、函数符号、中间符号和 flattening helper。 |
 | `model` | `core/model` | `MetaModel`、mechanism model、intermediate triad/tetrad model、callback model、constraint/objective DSL 和 model state。 |
-| `solver` | `core/solver` | solver trait、options、backend config、output type、value conversion、heuristic helper、IIS diagnostics 和 backend adapter。 |
+| `solver` | `core/solver` | solver trait、options、backend config、output type、value conversion、启发式求解器、IIS diagnostics 和 backend adapter。 |
 | `error` | `core/error` | core error 和 result 类型。 |
 
 
@@ -40,11 +75,12 @@
 | 子包 | 描述 |
 |------|------|
 | config | 求解器特定配置（COPT、Gurobi、SCIP）。 |
-| heuristic | 元启发式框架（PSO、选择、交叉、变异）。 |
-| iis | 不可约不可行子系统诊断。 |
-| output | 求解器输出数据结构（可行/不可行）。 |
-| alue | 值类型转换（IntoValue trait）。 |
-| ackend | 特性门控后端适配器（Gurobi、SCIP）。 |
+| `heuristic` | 元启发式框架：生命周期骨架、18 个算子族、组合工厂与算法入口。 |
+| [`hyper_heuristic`](src/solver/hyper_heuristic/README_ch.md) | 选择型超启发式：双层自适应信用、原生约束、计费局部搜索与业务破坏修复、HV奖励、JSON/YAML/TOML配置、持久化会话与调度重放；兼容性边界见模块文档。 |
+| `iis` | 不可约不可行子系统诊断。 |
+| `output` | 求解器输出数据结构（可行/不可行）。 |
+| `value` | 值类型转换（IntoValue trait）。 |
+| `backend` | 特性门控后端适配器（Gurobi、SCIP）。 |
 
 ### model/
 

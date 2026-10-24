@@ -5,11 +5,8 @@ use crate::framework::demo2::domain::stowage::context::StowageContext;
 use ospf_rust_core::model::{ConstraintRelation, MetaModel};
 use std::error::Error;
 
-/// 空禁限制: 禁止放空的舱位必须装载至少一个货物
-/// 对齐 Kotlin EmptyForbiddenLimit
-///
-/// Kotlin: `load.estimateLoaded[j] eq true`
-/// Rust: 使用已注册的 estimateLoaded 符号索引。
+/// 显式空禁约束整体占位，三种模式一致，允许合法空预留。
+/// Explicit empty-forbidden constrains whole occupancy in all modes, including legal empty reservations.
 pub fn apply_empty_forbidden_limits(
     model: &mut MetaModel<f64>,
     context: &StowageContext<'_>,
@@ -17,19 +14,14 @@ pub fn apply_empty_forbidden_limits(
     _loaded_idx: &[usize],
     estimate_loaded_idx: &[usize],
 ) -> Result<(), Box<dyn Error>> {
-    // 在 FullLoad 模式下，所有舱位必须装载至少一个货物
-    if context.mode
-        == crate::framework::demo2::domain::shared::pipeline_mode::Demo2PipelineMode::FullLoad
-    {
-        for p in 0..context.request.positions.len() {
-            // estimateLoaded[p] >= 1 (该位置至少装载一个货物)
-            model.add_linear_constraint(
-                &[(estimate_loaded_idx[p], 1.0)],
-                ConstraintRelation::GreaterEqual,
-                1.0,
-                &format!("stowage_empty_forbidden_{}_{}", mode_name(context.mode), p),
-            )?;
-        }
+    for p in 0..context.request.positions.len() {
+        if !context.request.loading.positions[&context.request.positions[p].name].empty_forbidden { continue; }
+        model.add_linear_constraint(
+            &[(estimate_loaded_idx[p], 1.0)],
+            ConstraintRelation::GreaterEqual,
+            1.0,
+            &format!("stowage_empty_forbidden_{}_{}", mode_name(context.mode), p),
+        )?;
     }
     Ok(())
 }

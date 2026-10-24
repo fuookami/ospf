@@ -13,7 +13,7 @@ This crate covers:
 1. Variable and token systems.
 2. Symbolic expression and function-symbol systems.
 3. `MetaModel`, mechanism model, intermediate standard-form models, and callback model layers.
-4. Solver traits, options, outputs, value conversion, heuristic interfaces, IIS diagnostics, and Gurobi/SCIP adapter boundaries.
+4. Solver traits, options, outputs, value conversion, heuristic solvers, IIS diagnostics, and Gurobi/SCIP adapter boundaries.
 
 Explicit non-goals:
 
@@ -23,13 +23,58 @@ Explicit non-goals:
 
 ## Module Structure
 
+### Linear Structural State
+
+`MetaModel::linear_model_snapshot()` expands the complete linear semantics in the native value
+domain, including function helpers and deferred fallbacks. It keys coefficients by `VariableId`,
+copies bounds, normalizes the objective to minimization, preserves sub-objective weights and
+counts the objective constant once. `LinearModelValue` supports f32, f64, BigDecimal and
+BigRational; custom numeric domains can implement it without first converting to f64.
+
+`register_linear_row(id, inequality)` accepts rows over existing variables, merges repeated terms
+and removes exact zeros. Identical IDs/contents are idempotent. Different contents, unknown
+variables, nonfinite values and reuse after removal fail. Ordinary source rows carry session
+identities independent of names or positions. Model transformations can use
+`register_variable_data` to preserve exact bounds and identities while assigning new local indices.
+
+`require_linear_model_revision(revision)` explicitly refreshes and rejects stale or foreign-model
+revisions. Direct row, objective and bound edits are detected at refresh boundaries; solution
+values and caches do not advance revisions. Failed transactions restore row registrations but never
+roll back published revisions, avoiding ABA. There are no arbitrary mutation listeners or concurrent
+mutation guarantees; quadratic constraints cannot enter a linear snapshot. This layer neither
+proves cut validity nor orchestrates column generation.
+
+For f64 snapshots, `compile_flt64()` records actual source-row origins and sign multipliers while
+emitting standard rows, including equality splits, and keeps the objective constant separate from
+backend c*x. Generic `LinearObjectiveInput` and expression builders both preserve weights and
+constants. A structural snapshot cannot establish a solve execution's origin or transfer proofs
+between numeric domains.
+
+`LinearVariableState::relaxed()` intersects implicit type bounds with explicit bounds before
+relaxing integrality. `solver::validate_linear_farkas_ray` independently evaluates the full
+bound-aware contradiction `min (lambda*A)*x - lambda*b`; the existence of finite bounds alone
+is never accepted as a certificate. Its explicit numeric tolerance does not transfer f64 proofs
+to a different source value domain.
+Optimal-LP and Farkas certificate gates accumulate binary-f64 operands exactly as rationals,
+including primal rows/objectives, transposed dual activities and extremal-bound support. A small
+nonzero unbounded residual cannot be erased by tolerance, underflow or large-term cancellation.
+The explicit tolerance applies to feasibility/objective gaps, not unbounded stationarity.
+Full snapshot solution validation also evaluates f32/f64 rows and bounds through exact binary
+rationals, so source feasibility cannot be hidden by cancelling large activities. Other supported
+value domains retain their native arithmetic without a conversion through f64.
+`LinearObjectiveEvaluationFlt64` centralizes exact variable/constant objective evaluation and
+reported-objective comparison. `snapshot.evaluate_objective_flt64(values)` supplies the same
+boundary to applications: incumbent values round up, master lower bounds round down, and constants
+are included once. Variable-only reports and full objectives are rounded independently from their
+exact sums; callers must not reconstruct full objectives by adding already-rounded components.
+
 | Rust module | Kotlin boundary | Responsibility |
 | --- | --- | --- |
 | `variable` | `core/variable` | Variable type system, variable items, combinations, and ranges. |
 | `token` | `core/token` | Variable-token mapping, token lists/tables, cached values, and solver result access. |
 | `symbol` | `core/symbol` | Expression symbols, monomial cells, function symbols, intermediate symbols, and flattening helpers. |
 | `model` | `core/model` | `MetaModel`, mechanism model, intermediate triad/tetrad models, callback model, constraint/objective DSL, and model state. |
-| `solver` | `core/solver` | Solver traits, options, backend configs, output types, value conversion, heuristic helpers, IIS diagnostics, and backend adapters. |
+| `solver` | `core/solver` | Solver traits, options, backend configs, output types, value conversion, heuristic solvers, IIS diagnostics, and backend adapters. |
 | `error` | `core/error` | Core error and result types. |
 
 
@@ -40,7 +85,8 @@ Explicit non-goals:
 | Sub-package | Description |
 |-------------|-------------|
 | `config` | Solver-specific configuration (COPT, Gurobi, SCIP). |
-| `heuristic` | Metaheuristic framework (PSO, selection, crossover, mutation). |
+| `heuristic` | Metaheuristic framework: lifecycle skeletons, 18 operator families, composition factories, and algorithm entries. |
+| [`hyper_heuristic`](src/solver/hyper_heuristic/README.md) | Selection hyper-heuristics: two-level adaptive credit, native constraints, metered local search and domain ruin/recreate, HV rewards, JSON/YAML/TOML configuration, persistent sessions and schedule replay; see module compatibility boundaries. |
 | `iis` | Irreducible Infeasible Subsystem diagnostics. |
 | `output` | Solver output data structures (feasible/infeasible). |
 | `value` | Value type conversion (IntoValue trait). |
