@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitepress'
 import { withMermaid } from 'vitepress-plugin-mermaid'
+import { frameworkSidebar } from './frameworks'
 
 // https://vitepress.dev/reference/site-config
 export default withMermaid({
@@ -46,9 +47,11 @@ export default withMermaid({
         nav: [
           { text: 'Home', link: '/' },
           { text: 'Guide', link: '/guide/what-is-ospf' },
+          { text: 'Business Frameworks', link: '/frameworks/' },
           { text: 'Examples', link: '/examples/example1' }
         ],
         sidebar: {
+          '/frameworks/': frameworkSidebar(),
           '/guide': [
             {
               text: 'Introduction',
@@ -282,9 +285,11 @@ export default withMermaid({
         nav: [
           { text: '主页', link: '/zh-cn/' },
           { text: '指南', link: '/zh-cn/guide/what-is-ospf' },
+          { text: '业务框架', link: '/zh-cn/frameworks/' },
           { text: '示例', link: '/zh-cn/examples/example1' }
         ],
         sidebar: {
+          '/zh-cn/frameworks/': frameworkSidebar(true),
           '/zh-cn/guide': [
             {
               text: '简介',

@@ -15,6 +15,9 @@ hero:
       text: Quickstart
       link: /guide/getting-started
     - theme: alt
+      text: Start with a Business Scenario
+      link: /frameworks/
+    - theme: alt
       text: GitHub
       link: https://github.com/fuookami/ospf
 

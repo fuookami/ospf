@@ -1,9 +1,10 @@
 {
   "scripts": {
+    "docs:check": "node scripts/check-framework-docs.cjs",
     "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
+    "docs:build": "npm run docs:check && vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "deploy": "vitepress build docs && gh-pages -d docs/.vitepress/dist"
+    "deploy": "npm run docs:build && gh-pages -d docs/.vitepress/dist"
   },
   "devDependencies": {
     "gh-pages": "^6.3.0",

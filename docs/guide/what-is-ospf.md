@@ -4,6 +4,8 @@ OSPF is a solution and development component for modeling and coding processes i
 
 ## Reading paths
 
+For packing, cutting, scheduling or network optimization, start with [business framework selection](/frameworks/): choose a scenario, run a complete case, inspect the result and change one business condition. This path does not require rebuilding every variable and constraint first.
+
 Start with [Getting Started](./getting-started) to run a complete model, then read [The Language of Operations Research](./operations-research-language), [The Modeling and Solving Workflow](./modeling-workflow), and [Understanding Solver Results](./solving-results). These explain why intermediates belong to the modeling language, how a model is assembled, and what its results mean.
 
 For complex business organization, continue with [DDD Architecture](./use-ddd-architecture). For the path from expressions to different backends, read [Symbolic Expressions](./symbolic-expressions) and [Compiler-Like Architecture](./compiler-architecture). The discussion below explains OSPF's role through the motivation for abstraction and contrasting model examples.

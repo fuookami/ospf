@@ -15,6 +15,9 @@ hero:
       text: 快速开始
       link: /zh-cn/guide/getting-started
     - theme: alt
+      text: 从业务场景开始
+      link: /zh-cn/frameworks/
+    - theme: alt
       text: GitHub
       link: https://github.com/fuookami/ospf
 

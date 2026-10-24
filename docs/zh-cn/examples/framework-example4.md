@@ -2,6 +2,10 @@
 
 [English](/examples/framework-example4)
 
+::: tip 前置教程
+先完成[Gantt：第一次活动排程](/zh-cn/frameworks/gantt/first-schedule)。本例讨论航班恢复领域的组合与任务束路径，不表示基础 Gantt 自动具备全部航空业务规则。
+:::
+
 ## 1. 概述
 
 Demo4 是架构示例。`Application` 为空类，通用量示例可运行；上下文页面描述已经实现的契约，不宣称已经组装了完整生产模型。

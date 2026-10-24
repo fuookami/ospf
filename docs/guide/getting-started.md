@@ -1,5 +1,9 @@
 # Quickstart
 
+::: tip Two ways to start
+This page builds a Core model from variables, constraints and objectives. For packing, cutting, scheduling or networks, the [business framework tutorials](/frameworks/) start from reusable domain objects and application entries instead.
+:::
+
 This walkthrough builds and solves the same small integer production-allocation model in Kotlin and Rust. The tabs are complete examples: they declare variables, create named intermediate symbols, add the resource constraint and objective, call a backend, and print the solve status and result.
 
 The snippets follow the current 1.1.0 source APIs. Backend installation is intentionally kept separate because native solver libraries and licenses depend on the machine.

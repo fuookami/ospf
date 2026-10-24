@@ -2,6 +2,10 @@
 
 [English](/examples/framework-example5)
 
+::: tip 前置教程
+先通过[Network：第一次网络流优化](/zh-cn/frameworks/network/first-flow)理解节点、弧、供需与容量。本例进一步处理车辆时间窗、整条路线列与分支定价，不是普通流模型的直接换名。
+:::
+
 ## 1. 概述
 
 Demo5 是可运行的 VRPTW 集成。它建立基于路线的受限主问题，定价带资源约束的初等路线，并通过 network-scheduling framework 执行分支定价。

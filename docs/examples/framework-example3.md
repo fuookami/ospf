@@ -2,6 +2,10 @@
 
 [中文](/zh-cn/examples/framework-example3)
 
+::: tip Prerequisite tutorial
+Complete [your first CSP1D slitting plan](/frameworks/csp1d/first-slitting). This example goes deeper into material/production contexts and the column-generation lifecycle rather than repeating setup and ordinary solving.
+:::
+
 ## 1. Overview
 
 This example uses the one-dimensional cutting-stock (CSP1D) framework to separate product/material data, the cutting-plan master, and pricing. The overview explains column generation; the material and produce pages define the data contract and master model separately.

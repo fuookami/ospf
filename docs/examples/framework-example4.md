@@ -2,6 +2,10 @@
 
 [中文](/zh-cn/examples/framework-example4)
 
+::: tip Prerequisite tutorial
+Complete [your first Gantt activity schedule](/frameworks/gantt/first-schedule). This example explores flight-recovery composition and task-bunch paths; its aviation rules are not automatically provided by basic Gantt.
+:::
+
 ## 1. Overview
 
 Demo4 is an architecture sample. `Application` is empty, while the generic quantity sample is executable; context pages describe implemented contracts without claiming that one production model is assembled.

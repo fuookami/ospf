@@ -1,5 +1,7 @@
 # Complex examples overview
 
+New to a business framework? Start with [scenario selection and first lessons](/frameworks/). These pages explain integrated business and context models, not minimal executable onboarding. Read Demo3 after CSP1D, Demo4 after Gantt and Demo5 after Network.
+
 This page is the entry point for the DDD-based framework examples. Each demo has its own overview page, and its bounded-context domain models are nested below that demo in the sidebar.
 
 ## Demo map

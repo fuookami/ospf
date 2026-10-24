@@ -2,6 +2,10 @@
 
 [中文](/zh-cn/examples/framework-example5)
 
+::: tip Prerequisite tutorial
+Start with [your first Network flow](/frameworks/network/first-flow) for nodes, arcs, balances and capacity. This example adds vehicle time windows, complete-route columns and branch-and-price rather than simply renaming a flow model.
+:::
+
 ## 1. Overview
 
 Demo5 is the runnable VRPTW integration. It builds a route-based restricted master, prices elementary resource-constrained routes, and applies branch-and-price through the network-scheduling framework.
