@@ -5,6 +5,7 @@ use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use ospf_rust_quantities::unit::UnitConversionValue;
 use ospf_rust_core::model::{MetaModel, Objective};
 use ospf_rust_core::model::intermediate::LinearTriadModel;
+use ospf_rust_core::solver::audit::linear_model_mapping;
 use ospf_rust_core::solver::value::SolveValue;
 use ospf_rust_core::solver::{ProblemStatus, ProofReliability, ProofStatus, SolutionPresence, SolveDiagnostics, SolveProof,
     SolveReport, SolveSolution, SolveStatistics, SolveTrace, SolveWarning, linear_model_fingerprint};
@@ -143,6 +144,12 @@ impl<V: SolveValue + UnitConversionValue> ActivitySchedulingContext<V> {
         if report.fingerprints.model.as_ref().is_some_and(|actual| *actual != fingerprint)
             || verified && report.fingerprints.model.is_none()
         { return Err(lifecycle("activity report does not bind the actual complete compiled model")); }
+        if let Some(mapping) = &report.model_mapping {
+            let expected = linear_model_mapping(&compilation.compiled).map_err(model_error)?;
+            if *mapping != expected {
+                return Err(lifecycle("activity report mapping does not match the complete compiled model"));
+            }
+        }
         let Some(solution) = &report.solution else { return Ok(None); };
         validate_bunch_incumbent(&compilation.compiled, &solution.values, solution.objective_value)?;
         if let Some(objective) = solution.objective {
@@ -197,13 +204,21 @@ impl<V: SolveValue + UnitConversionValue> ActivitySchedulingContext<V> {
             result.trace = report.trace.clone();
             result.fingerprints = report.fingerprints.clone();
             result.model_mapping = report.model_mapping.clone();
+            result.statistics.extensions = report.statistics.extensions.clone();
+            result.warnings = report.warnings.clone();
+            // 数字型求值不能伪装成领域 payload；无损路径保留其余结构化诊断。
+            // Numeric evaluations cannot become domain payloads; retain the other structured diagnostics on lossless paths.
+            result.diagnostics = SolveDiagnostics {
+                infeasibility_evidence: report.diagnostics.infeasibility_evidence.clone(),
+                warnings: report.diagnostics.warnings.clone(), issues: report.diagnostics.issues.clone(),
+                extensions: report.diagnostics.extensions.clone(), ..SolveDiagnostics::default()
+            };
         } else {
             result.trace = SolveTrace { nodes_explored: report.trace.nodes_explored, nodes_pruned: report.trace.nodes_pruned,
                 active_nodes: report.trace.active_nodes, total_iterations: report.trace.total_iterations, elapsed: report.trace.elapsed, ..SolveTrace::default() };
             result.warnings.push(SolveWarning::new("activity.solverModelOnly", "原域只确认可行 incumbent，编译模型证明不转移 / native domain confirms feasible incumbents only; compiled proofs do not transfer"));
         }
         result.provenance = report.provenance.clone();
-        result.diagnostics = SolveDiagnostics::default();
         result.diagnostics.extensions.insert("activity.solverModelReport.debug".into(), format!("{report:?}"));
         result.diagnostics.extensions.insert("activity.objectiveOffset".into(), compilation.offset.to_string());
         result.diagnostics.extensions.insert("activity.declaredObjective".into(), format!("{:?}", compilation.declared_objective()));

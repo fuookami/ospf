@@ -72,17 +72,11 @@ impl MacOptimizationAggregation {
         let mut lat_moment: Vec<(usize, f64)> = Vec::new();
         let mut neg_lat_moment: Vec<(usize, f64)> = Vec::new();
 
-        for p in 0..context.request.positions.len() {
-            for c in 0..context.request.cargos.len() {
-                let long_coeff = context.request.cargos[c].weight
-                    * context.request.positions[p].longitudinal_arm;
-                let lat_coeff =
-                    context.request.cargos[c].weight * context.request.positions[p].lateral_arm;
-                long_moment.push((context.x_idx[c][p], long_coeff));
-                neg_long_moment.push((context.x_idx[c][p], -long_coeff));
-                lat_moment.push((context.x_idx[c][p], lat_coeff));
-                neg_lat_moment.push((context.x_idx[c][p], -lat_coeff));
-            }
+        for (p, column) in context.weights.iter().enumerate() {
+            long_moment.push((*column, context.request.positions[p].longitudinal_arm));
+            neg_long_moment.push((*column, -context.request.positions[p].longitudinal_arm));
+            lat_moment.push((*column, context.request.positions[p].lateral_arm));
+            neg_lat_moment.push((*column, -context.request.positions[p].lateral_arm));
         }
 
         Self {

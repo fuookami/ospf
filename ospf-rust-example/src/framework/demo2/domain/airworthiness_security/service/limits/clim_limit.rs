@@ -11,12 +11,15 @@ pub fn apply_clim_limits(
     model: &mut MetaModel<f64>,
     context: &AirworthinessContext<'_>,
     aggregation: &AirworthinessAggregation,
+    _weights: &[usize],
+    _occupied: &[usize],
 ) -> Result<(), Box<dyn Error>> {
+    let Some(max_clim) = context.request.loading.max_clim else { return Ok(()); };
     // 纵向力矩下限
     model.add_linear_constraint(
         &aggregation.envelope_longitudinal_moment_coefficients,
         ConstraintRelation::GreaterEqual,
-        context.request.envelope_longitudinal_moment_min,
+        -max_clim,
         &format!(
             "airworthiness_security_clim_min_{}",
             mode_name(context.mode)
@@ -26,7 +29,7 @@ pub fn apply_clim_limits(
     model.add_linear_constraint(
         &aggregation.envelope_longitudinal_moment_coefficients,
         ConstraintRelation::LessEqual,
-        context.request.envelope_longitudinal_moment_max,
+        max_clim,
         &format!(
             "airworthiness_security_clim_max_{}",
             mode_name(context.mode)

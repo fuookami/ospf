@@ -8,6 +8,8 @@ members = [
     "ospf-rust-core",
     "ospf-rust-framework",
     "ospf-rust-framework-geometry2d",
+    "ospf-rust-framework-bpp",
+    "ospf-rust-framework-bpp1d",
     "ospf-rust-framework-bpp2d",
     "ospf-rust-framework-bpp3d",
     "ospf-rust-framework-csp1d",

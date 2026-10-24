@@ -118,6 +118,32 @@ fn activity_application_preserves_normal_terminals_and_propagates_technical_fail
 }
 
 #[test]
+fn activity_time_limited_incumbent_keeps_backend_gap_and_separate_objective_offset() {
+    let mut input = problem(); input.activities.push(activity());
+    let service = ActivitySchedulingApplicationService::new(Fixture::new(|model| {
+        let mut report = backend_report(model, vec![1.0, 0.0]);
+        report.termination_reason = TerminationReason::TimeLimit; report.proof = None;
+        report.solution_presence = SolutionPresence::Incumbent;
+        report.statistics.best_bound_value = Some(1.0);
+        report.statistics.absolute_gap = Some(1.0); report.statistics.relative_gap = Some(0.5);
+        report.trace = SolveTrace { global_lower_bound: Some(1.0), upper_bound: Some(2.0), relative_gap: Some(0.5), ..Default::default() };
+        report.validate().unwrap(); Ok(report)
+    }));
+    let output = invoke!(service.solve_with(|| Ok(context(input)), |model, _| {
+        model.add_sub_objective(SubObjective::minimize(Linear::new(vec![], 7.0), "constant-offset"));
+        Ok(())
+    }, Default::default())).unwrap();
+    assert_eq!(output.termination_reason, TerminationReason::TimeLimit);
+    assert_eq!(output.problem_status, ProblemStatus::Feasible); assert_eq!(output.solution_presence, SolutionPresence::Incumbent);
+    assert!(output.proof.is_none()); assert_eq!(output.diagnostics.extensions["activity.objectiveOffset"], "7");
+    assert_eq!(output.solution.as_ref().unwrap().objective_value, Some(2.0));
+    assert_eq!(output.statistics.best_bound_value, Some(1.0)); assert_eq!(output.statistics.absolute_gap, Some(1.0));
+    assert_eq!(output.statistics.relative_gap, Some(0.5)); assert_eq!(output.trace.global_lower_bound, Some(1.0));
+    assert_eq!(output.trace.upper_bound, Some(2.0)); assert_eq!(output.trace.relative_gap, Some(0.5));
+    assert_eq!(output.solution.unwrap().value.unwrap().cost.value, 2.0);
+}
+
+#[test]
 fn activity_application_rejects_illegal_incumbents_even_when_solver_claims_optimality() {
     for values in [vec![], vec![0.5, 0.5], vec![0.0, 0.0], vec![f64::NAN, 1.0], vec![f64::INFINITY, 0.0], vec![1.0, 1.0], vec![1.0, 0.0, 0.0]] {
         let mut input = problem(); input.activities.push(activity());
@@ -151,7 +177,39 @@ fn rich_evidence(model: &LinearTriadModel, status: ProblemStatus) -> SolveReport
         report.diagnostics = ospf_rust_core::solver::evaluate_linear_solution(model, &solution.values, 1e-7).unwrap();
     }
     report.diagnostics.extensions.insert("solver-only-proof".into(), "compiled".into());
+    report.warnings.push(ospf_rust_core::solver::SolveWarning::new("backend.warning", "compiled backend warning"));
+    report.diagnostics.warnings.push(ospf_rust_core::solver::SolveWarning::new("backend.diagnostic", "compiled diagnostic warning"));
+    report.diagnostics.issues.push(ospf_rust_core::solver::SolveIssue::new("backend.issue", "compiled diagnostic issue"));
+    if status == ProblemStatus::Infeasible {
+        report.diagnostics.infeasibility_evidence = Some(ospf_rust_core::solver::InfeasibilityEvidence {
+            source: ospf_rust_core::solver::InfeasibilityEvidenceSource::NativeIis,
+            reliability: ospf_rust_core::solver::ProofReliability::Reliable,
+            completeness: ospf_rust_core::solver::ProofCompleteness::Complete,
+            constraint_ids: report.model_mapping.as_ref().unwrap().constraints_by_row.iter().cloned().collect(),
+            members: BTreeSet::new(), minimality: Default::default(), computation_time: Default::default(), unavailable_reason: None,
+        });
+    }
     report
+}
+
+#[test]
+fn activity_identity_reports_preserve_transferable_metadata_and_diagnostics() {
+    for status in [ProblemStatus::Feasible, ProblemStatus::Infeasible] {
+        let mut input = problem(); input.activities.push(activity());
+        let service = ActivitySchedulingApplicationService::new(Fixture::new(move |model| Ok(rich_evidence(model, status))));
+        let output = invoke!(service.solve(|| Ok(context(input)), Default::default())).unwrap();
+        assert_eq!(output.problem_status, status);
+        assert!(output.proof.is_some()); assert!(output.model_mapping.is_some());
+        assert_eq!(output.warnings, vec![ospf_rust_core::solver::SolveWarning::new("backend.warning", "compiled backend warning")]);
+        assert_eq!(output.diagnostics.warnings, vec![ospf_rust_core::solver::SolveWarning::new("backend.diagnostic", "compiled diagnostic warning")]);
+        assert_eq!(output.diagnostics.issues, vec![ospf_rust_core::solver::SolveIssue::new("backend.issue", "compiled diagnostic issue")]);
+        assert_eq!(output.statistics.extensions["untrusted-bound"], "1");
+        assert_eq!(output.diagnostics.extensions["solver-only-proof"], "compiled");
+        assert_eq!(output.diagnostics.infeasibility_evidence.is_some(), status == ProblemStatus::Infeasible);
+        assert!(output.diagnostics.constraint_evaluations.is_empty()); assert!(output.diagnostics.variable_bound_evaluations.is_empty());
+        assert!(output.diagnostics.extensions["activity.solverModelReport.debug"].contains("compiled"));
+        output.validate().unwrap();
+    }
 }
 
 #[test]
@@ -168,6 +226,8 @@ fn activity_lossy_f64_reports_isolate_every_evidence_channel_including_no_incumb
         assert!(output.trace.iteration_snapshots.is_empty()); assert!(output.model_mapping.is_none());
         assert!(output.fingerprints.model.is_none()); assert!(output.diagnostics.infeasibility_evidence.is_none());
         assert!(output.diagnostics.constraint_evaluations.is_empty()); assert!(output.diagnostics.variable_bound_evaluations.is_empty());
+        assert!(output.warnings.iter().all(|warning| warning.code == "activity.solverModelOnly"));
+        assert!(output.diagnostics.warnings.is_empty()); assert!(output.diagnostics.issues.is_empty());
         assert!(!output.diagnostics.extensions.contains_key("solver-only-proof"));
         assert!(output.diagnostics.extensions["activity.solverModelReport.debug"].contains("compiled"));
         if let Some(solution) = output.solution { assert!(solution.objective_value.is_none()); assert_eq!(solution.value.unwrap().cost.value, 2.0); }

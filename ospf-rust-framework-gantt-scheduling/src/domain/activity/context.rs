@@ -68,6 +68,8 @@ impl<V: SolveValue + UnitConversionValue> ActivitySchedulingContext<V> {
 
     /// 原子注册并扩展受管结构；用户闭包外部副作用不在回滚保证内。
     /// Atomically register and extend managed structure; external closure side effects are not rolled back.
+    /// 扩展不得修改共享符号的内部状态；事务只回滚受管模型结构和聚合暂存态。
+    /// Extensions must not mutate shared symbol internals; rollback covers only managed model structure and staged aggregation.
     pub fn register_with<F>(&mut self, model: &mut MetaModel<f64>, extension: F) -> GanttResult<()>
     where
         F: FnOnce(&mut MetaModel<f64>, &ActivitySchedulingAggregation<V>) -> GanttResult<()>,

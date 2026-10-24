@@ -312,97 +312,16 @@ where
         return Ok(certificate.dual.to_vec());
     }
 
-    resolve_lp_dual_solution_by_model(solver, lp_model, options)
-}
-
-const CERTIFICATE_TOLERANCE: f64 = 1e-7;
-
-fn approximately_equal_certificate(left: f64, right: f64) -> bool {
-    let scale = left.abs().max(right.abs()).max(1.0);
-    (left - right).abs() <= CERTIFICATE_TOLERANCE * scale
-}
-
-fn valid_model_dimensions(model: &LinearTriadModel) -> bool {
-    model.c.len() == model.num_variables()
-        && model.basic.lb.len() == model.num_variables()
-        && model.basic.ub.len() == model.num_variables()
-        && model.basic.b.len() == model.num_constraints()
-        && model.basic.A.rows.len() == model.num_constraints()
-}
-
-fn valid_bound_pair(lower: f64, upper: f64) -> bool {
-    if lower.is_nan() || upper.is_nan() {
-        return false;
-    }
-    if lower.is_infinite() && lower.is_sign_positive() {
-        return false;
-    }
-    if upper.is_infinite() && upper.is_sign_negative() {
-        return false;
-    }
-    true
+    let dual = resolve_lp_dual_solution_by_model(solver, lp_model, options)?;
+    let mut verified_report = report.clone();
+    if let Some(solution) = &mut verified_report.solution { solution.dual_solution = Some(dual.clone()); }
+    require_optimal_lp_certificate_for_linear_model(&verified_report, lp_model)?;
+    Ok(dual)
 }
 
 fn farkas_row_certificate_is_valid(lp_model: &LinearTriadModel, dual: &[f64]) -> bool {
-    let expected_rows = lp_model.num_constraints();
-    if dual.len() < expected_rows || !valid_model_dimensions(lp_model) {
-        return false;
-    }
-    let rows = &dual[..expected_rows];
-    if rows
-        .iter()
-        .any(|value| !value.is_finite() || *value < -CERTIFICATE_TOLERANCE)
-    {
-        return false;
-    }
-    if rows
-        .iter()
-        .all(|value| value.abs() <= CERTIFICATE_TOLERANCE)
-    {
-        return false;
-    }
-
-    let mut transposed_activity = vec![0.0; lp_model.num_variables()];
-    for (row_index, row) in lp_model.basic.A.rows.iter().enumerate() {
-        for (column, coefficient) in &row.entries {
-            if *column >= transposed_activity.len() || !coefficient.is_finite() {
-                return false;
-            }
-            transposed_activity[*column] += coefficient * rows[row_index];
-        }
-    }
-    if transposed_activity.iter().any(|value| !value.is_finite()) {
-        return false;
-    }
-
-    let mut has_general_finite_bound = false;
-    for column in 0..lp_model.num_variables() {
-        let lower = lp_model.basic.lb[column];
-        let upper = lp_model.basic.ub[column];
-        if !valid_bound_pair(lower, upper) || lower > upper {
-            return false;
-        }
-        let has_bound_dual = !(lower.is_infinite() && upper.is_infinite())
-            && !(lower == 0.0 && upper.is_infinite())
-            && !(lower.is_infinite() && upper == 0.0);
-        if has_bound_dual {
-            has_general_finite_bound = true;
-        } else if !approximately_equal_certificate(transposed_activity[column], 0.0) {
-            return false;
-        }
-    }
-
-    let row_rhs_product = lp_model
-        .basic
-        .b
-        .iter()
-        .zip(rows.iter())
-        .map(|(rhs, value)| rhs * value)
-        .sum::<f64>();
-    if !row_rhs_product.is_finite() {
-        return false;
-    }
-    has_general_finite_bound || row_rhs_product < -CERTIFICATE_TOLERANCE
+    dual.get(..lp_model.num_constraints()).is_some_and(|ray|
+        ospf_rust_core::solver::validate_linear_farkas_ray(lp_model, ray, 1e-7).is_ok())
 }
 
 fn resolve_lp_dual_solution_by_model<S>(
@@ -555,6 +474,11 @@ where
     {
         return Err(CoreError::Solver(SolverError::ContractViolation(
             "explicit Farkas fallback returned a non-finite multiplier".to_owned(),
+        )));
+    }
+    if !farkas_row_certificate_is_valid(lp_model, &farkas_solution) {
+        return Err(CoreError::Solver(SolverError::ContractViolation(
+            "explicit Farkas fallback fails independent bound-aware contradiction verification".to_owned(),
         )));
     }
     Ok(farkas_solution[..expected_rows].to_vec())

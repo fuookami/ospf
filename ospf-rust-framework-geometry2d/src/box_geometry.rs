@@ -24,6 +24,7 @@ use crate::point::{QuantityPoint2, QuantityVector2};
 use crate::quantity_core::{quantity_minus_safe, quantity_plus_safe, quantity_ord_or_null};
 use crate::shape::PackingShape2;
 use std::cmp::Ordering;
+use std::ops::Add;
 
 // ============================================================================
 // Box2Geometry - 二维包围盒 / 2D bounding box
@@ -45,8 +46,34 @@ pub struct Box2Geometry<V, U: UnitTrait> {
 
 impl<V, U> Box2Geometry<V, U>
 where
-    V: Field + Clone + PartialOrd + num_traits::Float,
-    U: UnitTrait + CTUnit + Clone,
+    V: Clone + PartialOrd + Add<Output = V>,
+    U: UnitTrait,
+{
+    /// 已归一化矩形的内部重叠，无 Float 或 solver 转换要求。
+    /// Interior overlap of normalized rectangles, without Float or solver conversion requirements.
+    ///
+    /// 非矩形、单位未统一或不可比较时返回 None；调用方先验证有限性和正尺寸。
+    /// Returns None for nonrectangles, inconsistent units or incomparable values; callers first validate finite positive extents.
+    pub fn rectangle_overlapped(&self, other: &Self) -> Option<bool> {
+        let (PackingShape2::Rectangle(first), PackingShape2::Rectangle(second)) = (&self.shape, &other.shape) else { return None; };
+        let quantities = [&self.x, &self.y, &first.width, &first.height, &other.x, &other.y, &second.width, &second.height];
+        let unit = &self.x.unit;
+        if quantities.iter().any(|quantity| quantity.unit.dimension_symbol() != unit.dimension_symbol()
+            || quantity.unit.scale_value() != unit.scale_value()) { return None; }
+        let first_max_x = self.x.value.clone() + first.width.value.clone();
+        let first_max_y = self.y.value.clone() + first.height.value.clone();
+        let second_max_x = other.x.value.clone() + second.width.value.clone();
+        let second_max_y = other.y.value.clone() + second.height.value.clone();
+        Some(first_max_x.partial_cmp(&other.x.value)? == Ordering::Greater
+            && second_max_x.partial_cmp(&self.x.value)? == Ordering::Greater
+            && first_max_y.partial_cmp(&other.y.value)? == Ordering::Greater
+            && second_max_y.partial_cmp(&self.y.value)? == Ordering::Greater)
+    }
+}
+
+impl<V, U> Box2Geometry<V, U>
+where
+    U: UnitTrait,
 {
     /// 由角点与形状构造 / Build a box from an origin and a shape
     pub fn new(x: Quantity<V, U>, y: Quantity<V, U>, shape: PackingShape2<V, U>) -> Self {
@@ -63,9 +90,16 @@ where
         Self::new(
             x,
             y,
-            PackingShape2::Rectangle(crate::shape::RectanglePackingShape2::new(width, height)),
+            PackingShape2::Rectangle(crate::shape::RectanglePackingShape2 { width, height }),
         )
     }
+}
+
+impl<V, U> Box2Geometry<V, U>
+where
+    V: Field + Clone + PartialOrd + num_traits::Float,
+    U: UnitTrait + CTUnit + Clone,
+{
 
     /// 包围宽度 / Bounding width
     pub fn width(&self) -> Quantity<V, U> {

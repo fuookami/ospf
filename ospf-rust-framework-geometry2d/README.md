@@ -11,6 +11,13 @@ that the packing framework `ospf-rust-framework-bpp2d` and the cutting framework
 The crate is solver independent: it depends only on `ospf-rust-base`, `ospf-rust-math` and
 `ospf-rust-quantities`.
 
+`Box2Geometry::new` and `of_rectangle` are pure constructors and accept runtime units
+and native high-precision values without a `Float` requirement. The separate
+`rectangle_overlapped` path uses native ordered addition, requires equal dimensions
+and scales, and excludes touching boundaries. It returns `None` for incompatible
+units/shapes or unordered values. Callers must validate finite positive extents
+before comparison; other shape/containment APIs retain their existing bounds.
+
 ## Scope
 
 | Area | Types |

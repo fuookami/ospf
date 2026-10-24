@@ -150,14 +150,14 @@ where
 {
     /// 构建为最大化目标。 / Build into a maximization objective.
     pub fn maximize(self, name: impl Into<String>) -> LinearObjectiveInput<V> {
-        let (terms, _constant_term) = self.into_parts();
-        LinearObjectiveInput::maximize(name).terms(terms)
+        let (terms, constant_term) = self.into_parts();
+        LinearObjectiveInput::maximize(name).terms(terms).constant(constant_term)
     }
 
     /// 构建为最小化目标。 / Build into a minimization objective.
     pub fn minimize(self, name: impl Into<String>) -> LinearObjectiveInput<V> {
-        let (terms, _constant_term) = self.into_parts();
-        LinearObjectiveInput::minimize(name).terms(terms)
+        let (terms, constant_term) = self.into_parts();
+        LinearObjectiveInput::minimize(name).terms(terms).constant(constant_term)
     }
 }
 
@@ -306,6 +306,8 @@ pub struct LinearObjectiveInput<V = f64> {
     pub category: ObjectiveCategory,
     /// 线性项列表（变量索引，系数）。 / Linear terms list (variable index, coefficient).
     pub terms: Vec<(usize, V)>,
+    /// 目标常数项。 / Objective constant term.
+    pub constant_term: V,
     /// 权重。 / Weight.
     pub weight: V,
 }
@@ -320,6 +322,7 @@ where
             name: name.into(),
             category: ObjectiveCategory::Maximum,
             terms: Vec::new(),
+            constant_term: V::zero(),
             weight: V::one(),
         }
     }
@@ -330,12 +333,19 @@ where
             name: name.into(),
             category: ObjectiveCategory::Minimum,
             terms: Vec::new(),
+            constant_term: V::zero(),
             weight: V::one(),
         }
     }
 }
 
 impl<V> LinearObjectiveInput<V> {
+    /// 设置目标常数项。 / Set the objective constant term.
+    pub fn constant(mut self, constant_term: V) -> Self {
+        self.constant_term = constant_term;
+        self
+    }
+
     /// 设置目标类型。 / Set the objective category.
     pub fn category(mut self, category: ObjectiveCategory) -> Self {
         self.category = category;
@@ -381,6 +391,7 @@ where
     config: MetaModelConfiguration,
     symbolic_constraints: Vec<SymbolicLinearConstraint<V>>,
     symbolic_quadratic_constraints: Vec<SymbolicQuadraticConstraint<V>>,
+    pub(crate) linear_state: parking_lot::Mutex<crate::model::LinearModelState<V>>,
 }
 
 impl<V> MetaModel<V>
@@ -407,6 +418,7 @@ where
             config: MetaModelConfiguration::default(),
             symbolic_constraints: Vec::new(),
             symbolic_quadratic_constraints: Vec::new(),
+            linear_state: parking_lot::Mutex::new(crate::model::LinearModelState::new()),
         }
     }
 
@@ -420,6 +432,7 @@ where
             config: MetaModelConfiguration::default(),
             symbolic_constraints: Vec::new(),
             symbolic_quadratic_constraints: Vec::new(),
+            linear_state: parking_lot::Mutex::new(crate::model::LinearModelState::new()),
         }
     }
 
@@ -446,6 +459,7 @@ where
         let config = self.config.clone();
         let symbolic_constraints = self.symbolic_constraints.clone();
         let symbolic_quadratic_constraints = self.symbolic_quadratic_constraints.clone();
+        let registered_rows = self.linear_state.lock().registered_rows.clone();
 
         match operation(self) {
             Ok(value) => Ok(value),
@@ -455,6 +469,8 @@ where
                 self.config = config;
                 self.symbolic_constraints = symbolic_constraints;
                 self.symbolic_quadratic_constraints = symbolic_quadratic_constraints;
+                // 已发布版本不回滚，避免失败事务产生可复用版本。 / Never roll back published revisions (ABA).
+                self.linear_state.lock().registered_rows = registered_rows;
                 Err(error)
             }
         }
@@ -667,6 +683,24 @@ where
     /// Add a sub-objective.
     pub fn add_sub_objective(&mut self, sub_objective: SubObjective<V>) {
         self.objective.add_sub_objective(sub_objective);
+    }
+
+    /// 添加原数值域线性目标输入，保留权重及常数项。
+    /// Add a native-value linear objective input, preserving its weight and constant.
+    pub fn add_linear_objective_input(&mut self, input: LinearObjectiveInput<V>) {
+        let monomials = input.terms.into_iter()
+            .map(|(index, coefficient)| LinearMonomial::new(coefficient, index)).collect();
+        let polynomial = Linear::new(monomials, input.constant_term);
+        self.objective.add_sub_objective(SubObjective::new_with_weight(
+            input.category, polynomial, &input.name, input.weight,
+        ));
+    }
+
+    /// 设置原数值域线性目标输入，替换已有目标。 / Set a native-value linear objective input, replacing existing objectives.
+    pub fn set_linear_objective_input(&mut self, input: LinearObjectiveInput<V>) {
+        self.objective.category = input.category;
+        self.objective.sub_objectives.clear();
+        self.add_linear_objective_input(input);
     }
 
     /// 获取目标。
@@ -1002,11 +1036,23 @@ where
     where
         V: Add<Output = V>,
     {
+        self.try_to_mechanism_model_with_expansion_policy(callback, None)
+    }
+
+    pub(crate) fn try_to_mechanism_model_with_expansion_policy(
+        &self,
+        callback: Option<&ModelBuildingStatusCallback>,
+        policy: Option<FunctionExpansionPolicy>,
+    ) -> Result<MechanismModel<V>>
+    where
+        V: Add<Output = V>,
+    {
+        let policy = policy.unwrap_or(self.basic.config().function_expansion_policy);
         let mut basic_mechanism = BasicMechanismModel::new(&self.basic.name);
         // 机制模型带着解析后的策略离开建模阶段，供求解器适配器判断是否尝试原生接口。
         // The mechanism model leaves the modelling stage carrying the resolved policy so a solver
         // adapter can decide whether to attempt native interfaces.
-        basic_mechanism.set_function_expansion_policy(self.basic.config().function_expansion_policy);
+        basic_mechanism.set_function_expansion_policy(policy);
         let model_name = self.basic.name.clone();
 
         let mut symbol_to_index: HashMap<usize, usize> = HashMap::new();
@@ -1152,7 +1198,7 @@ where
             // A non-EAGER policy prefers the solver-neutral structure; symbols without a
             // structure keep eager expansion as the generic fallback instead of producing an
             // empty model.
-            let deferred_structure = if self.basic.config().function_expansion_policy.is_eager() {
+            let deferred_structure = if policy.is_eager() {
                 None
             } else {
                 symbol.deferred_structure_with_tokens(self.basic.tokens())
@@ -1657,28 +1703,6 @@ impl MetaModel<f64> {
                     .filter(|(_, coefficient)| *coefficient != 0.0),
             );
         self.set_linear_objective_input(input);
-    }
-
-    /// 添加线性目标输入。
-    /// Add linear objective input.
-    pub fn add_linear_objective_input(&mut self, input: LinearObjectiveInput<f64>) {
-        let monomials: Vec<LinearMonomial<f64>> = input
-            .terms
-            .into_iter()
-            .map(|(index, coefficient)| LinearMonomial::new(coefficient, index))
-            .collect();
-        let polynomial = Linear::new(monomials, 0.0);
-        let sub_objective =
-            SubObjective::new_with_weight(input.category, polynomial, &input.name, input.weight);
-        self.objective.add_sub_objective(sub_objective);
-    }
-
-    /// 设置线性目标输入（会覆盖已有目标）。
-    /// Set linear objective input (overwrites existing objective list).
-    pub fn set_linear_objective_input(&mut self, input: LinearObjectiveInput<f64>) {
-        self.objective.category = input.category;
-        self.objective.sub_objectives.clear();
-        self.add_linear_objective_input(input);
     }
 
     /// 添加线性约束。

@@ -28,10 +28,10 @@ mod tests {
     #[test]
     fn stowage_pipeline_applies_in_all_modes() {
         assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 2);
-        assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 1);
+        assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 2);
         assert_eq!(
             pipeline_steps(Demo2PipelineMode::WeightRecommendation).len(),
-            1
+            2
         );
     }
 }

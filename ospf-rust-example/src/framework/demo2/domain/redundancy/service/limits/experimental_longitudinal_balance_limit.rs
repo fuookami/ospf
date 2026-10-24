@@ -3,10 +3,8 @@ use crate::framework::demo2::domain::redundancy::aggregation::RedundancyAggregat
 use crate::framework::demo2::domain::redundancy::context::RedundancyContext;
 use crate::framework::demo2::domain::shared::pipeline_mode::mode_name;
 use ospf_rust_core::model::{LinearObjectiveInput, MetaModel};
-use ospf_rust_core::symbol::flatten::{Linear, LinearMonomial};
-use ospf_rust_core::symbol::function::SlackFunction;
+use ospf_rust_core::symbol::flatten::LinearMonomial;
 use std::error::Error;
-use std::sync::Arc;
 
 /// 实验性纵向平衡限制: 最小化纵向力矩偏差松弛 / Experimental longitudinal balance limit: minimize longitudinal torque deviation slack
 /// 对齐 Kotlin ExperimentalLongitudinalBalanceLimit
@@ -14,8 +12,7 @@ use std::sync::Arc;
 /// Kotlin: model.minimize(coefficient * longitudinalBalance.longitudinalTorqueSlack)
 /// 其中 longitudinalTorqueSlack = SlackFunction(mainActualLongitudinalTorque, predicateLongitudinalTorque)
 ///
-/// Rust 实现: 使用 SlackFunction 创建 slack = |moment - target|，
-/// 然后最小化 slack 的结果变量。
+/// 使用有物理边界的 epigraph 最小化力矩偏差。 / Minimize moment deviation through a physically bounded epigraph.
 pub fn apply_experimental_longitudinal_balance_limits(
     model: &mut MetaModel<f64>,
     context: &RedundancyContext<'_>,
@@ -33,17 +30,9 @@ pub fn apply_experimental_longitudinal_balance_limits(
         }
     }
 
-    // 使用 SlackFunction: slack = |moment - target|
-    // 对齐 Kotlin: longitudinalTorqueSlack = SlackFunction(mainActualLongitudinalTorque, predicateLongitudinalTorque)
-    let moment_linear = Linear::new(moment_monomials, 0.0);
-    let target_linear = Linear::new(vec![], target);
-    let slack_fn = SlackFunction::named(
-        &format!("exp_long_slack_{}", mode_name(context.mode)),
-        moment_linear,
-        target_linear,
-    );
-    let slack_idx = slack_fn.result_variable().index();
-    model.add_symbol(Arc::new(slack_fn))?;
+    let terms = moment_monomials.iter().map(|term| (term.var_index(), *term.coefficient())).collect::<Vec<_>>();
+    let slack_idx = crate::framework::demo2::domain::shared::deviation::register(
+        model, &terms, target, &format!("exp_long_slack_{}", mode_name(context.mode)))?;
 
     // 最小化 exp_long_slack
     let obj = LinearObjectiveInput::minimize(&format!(

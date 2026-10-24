@@ -10,30 +10,31 @@ use std::error::Error;
 pub fn apply_priority_order_limits(
     model: &mut MetaModel<f64>,
     context: &LoadingEffectivenessContext<'_>,
-    aggregation: &LoadingEffectivenessAggregation,
+    _aggregation: &LoadingEffectivenessAggregation,
 ) -> Result<(), Box<dyn Error>> {
     for i in 0..context.request.cargos.len() {
         for j in 0..context.request.cargos.len() {
-            if context.request.cargos[i].priority <= context.request.cargos[j].priority {
+            let first = context.request.loading.cargos.get(&context.request.cargos[i].name).and_then(|policy| policy.order);
+            let second = context.request.loading.cargos.get(&context.request.cargos[j].name).and_then(|policy| policy.order);
+            if match (first, second) { (Some(first), Some(second)) => first >= second,
+                _ => context.request.cargos[i].priority <= context.request.cargos[j].priority } {
                 continue;
             }
-            let mut coefficients: Vec<(usize, f64)> = Vec::new();
-            for p in 0..context.request.positions.len() {
-                coefficients.push((context.x_idx[i][p], p as f64 + aggregation.big_m));
-                coefficients.push((context.x_idx[j][p], -(p as f64) + aggregation.big_m));
+            let scopes = context.request.loading.positions.values().map(|input| &input.loading_order_scope).collect::<std::collections::BTreeSet<_>>();
+            for scope in scopes {
+                let mut coefficients = Vec::new();
+                let scoped = context.request.positions.iter().enumerate().filter(|(_, position)| &context.request.loading.positions[&position.name].loading_order_scope == scope).collect::<Vec<_>>();
+                let min_order = scoped.iter().map(|(_, position)| context.request.loading.positions[&position.name].loading_order).min().unwrap_or(0) as f64;
+                let max_order = scoped.iter().map(|(_, position)| context.request.loading.positions[&position.name].loading_order).max().unwrap_or(0) as f64;
+                let big_m = (max_order - min_order).max(1.0);
+                for (p, position) in scoped {
+                    let order = context.request.loading.positions[&position.name].loading_order as f64 - min_order;
+                    coefficients.push((context.x_idx[i][p], order + big_m));
+                    coefficients.push((context.x_idx[j][p], -order + big_m));
+                }
+                model.add_linear_constraint(&coefficients, ConstraintRelation::LessEqual, 2.0 * big_m,
+                    &format!("loading_priority_order_{}_{}_{}_{}", mode_name(context.mode), i, j, scope))?;
             }
-            model.add_linear_constraint(
-                &coefficients,
-                ConstraintRelation::LessEqual,
-                2.0 * aggregation.big_m,
-                &format!(
-                    "loading_priority_order_{}_{}_{}_{}",
-                    mode_name(context.mode),
-                    i,
-                    j,
-                    context.request.cargos[i].priority
-                ),
-            )?;
         }
     }
     Ok(())

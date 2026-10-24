@@ -212,6 +212,37 @@ fn activity_full_vector_and_report_fingerprint_audit_is_in_embedded_entry() {
 }
 
 #[test]
+fn activity_report_mapping_must_match_complete_compilation_even_without_incumbent() {
+    let mut input = problem(); input.activities.push(activity());
+    let mut context = context(input); let mut model = MetaModel::new("mapping"); context.register(&mut model).unwrap();
+    let compiled = context.compile(&model).unwrap();
+    let expected = ospf_rust_core::solver::audit::linear_model_mapping(compiled.model()).unwrap();
+    for incumbent in [true, false] {
+        let mut raw = if incumbent { report(&compiled, vec![1.0, 0.0]) } else {
+            SolveReport::builder(ProblemStatus::Infeasible, TerminationReason::Completed).proof(SolveProof::infeasibility())
+                .fingerprints(SolveFingerprints { model: Some(linear_model_fingerprint(compiled.model()).unwrap()), ..Default::default() }).build().unwrap()
+        };
+        raw.model_mapping = Some(expected.clone());
+        assert!(context.extract_solution(&model, &compiled, &raw).is_ok());
+        for mutation in 0..4 {
+            let mut bad = raw.clone(); let mapping = bad.model_mapping.as_mut().unwrap();
+            match mutation {
+                0 => {
+                    mapping.variables_by_column.swap(0, 1);
+                    mapping.columns_by_variable = mapping.variables_by_column.iter().cloned().enumerate().map(|(column, id)| (id, column)).collect();
+                }
+                1 => { mapping.variables_by_column.clear(); mapping.columns_by_variable.clear(); }
+                2 => { mapping.constraints_by_row.clear(); mapping.rows_by_constraint.clear(); }
+                _ => { mapping.objective_id = "another-objective".into(); }
+            }
+            bad.validate().unwrap();
+            assert!(context.extract_solution(&model, &compiled, &bad).is_err(), "incumbent={incumbent}, mutation={mutation}");
+            assert!(context.extract_report(&model, &compiled, compiled.fixture_execution(bad)).is_err());
+        }
+    }
+}
+
+#[test]
 fn activity_joint_phases_half_open_and_mid_activity_calendar_oracle() {
     let mut input = problem(); input.activities = vec![activity(), second()];
     input.resources = vec![resource("machine", 1.0), resource("crew", 1.0)];

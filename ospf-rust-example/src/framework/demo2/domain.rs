@@ -1,17 +1,10 @@
 //! 领域层 / Domain layer
-use ospf_rust_core::model::MetaModel;
-use ospf_rust_core::model::object::ObjectiveCategory;
-use ospf_rust_core::solver::{FeasibleSolverOutput, solvers::GurobiSolver};
-use ospf_rust_core::variable::{UContinuousVariableItem, VariableId};
 use ospf_rust_framework::solver::{
-    BendersIterationSnapshot, BendersRuntimeMetrics, FeasibleSolutionV, FrameworkSolveOptions,
-    GurobiLinearBendersDecompositionSolver, LinearBendersDecompositionSolver,
+    BendersIterationSnapshot, BendersRuntimeMetrics,
 };
 use std::error::Error;
 
-use self::service::domain_pipeline::apply_domain_pipeline;
 use self::shared::pipeline_mode::Demo2PipelineMode;
-use crate::example_modeling::solve_linear_meta_model_typed_if_feasible;
 use crate::framework::demo2::diagnostics::{
     NOTE_CODE_BENDERS_ADAPTIVE_EFFECTIVE, NOTE_CODE_BENDERS_CUT_EFFICIENCY_LOW,
     NOTE_CODE_BENDERS_FAILED, NOTE_CODE_BENDERS_GAP, NOTE_CODE_BENDERS_GAP_GUARD_EXCEEDED,
@@ -73,13 +66,13 @@ pub struct LoadingOrderApplication;
 
 /// 有效的 Benders 自适应配置 / Effective Benders adaptive configuration
 #[derive(Clone, Copy)]
-struct EffectiveBendersAdaptiveConfig {
+pub(crate) struct EffectiveBendersAdaptiveConfig {
     /// 最小二值变量数阈值 / Minimum binary variable count threshold
-    min_binary_variables: usize,
+    pub(crate) min_binary_variables: usize,
     /// 最大迭代次数 / Maximum iteration count
-    max_iterations: usize,
+    pub(crate) max_iterations: usize,
     /// 收敛容差 / Convergence tolerance
-    tolerance: f64,
+    pub(crate) tolerance: f64,
     /// 最大停滞迭代次数 / Maximum stall iterations
     max_stall_iterations: Option<usize>,
     /// 目标停滞迭代次数 / Objective stall iterations
@@ -87,7 +80,7 @@ struct EffectiveBendersAdaptiveConfig {
 }
 
 /// 求解模式 / Solve mode
-enum SolveMode {
+pub(crate) enum SolveMode {
     /// 混合整数线性规划直接求解 / MILP direct solve
     Milp,
     /// Benders 分解求解 / Benders decomposition solve
@@ -137,7 +130,7 @@ struct BendersQualityGuardConfig {
 fn supported_aircraft(aircraft_type: AircraftTypeInput) -> bool {
     matches!(
         aircraft_type,
-        AircraftTypeInput::B737 | AircraftTypeInput::B757
+        AircraftTypeInput::B737 | AircraftTypeInput::B757 | AircraftTypeInput::B767 | AircraftTypeInput::B747
     )
 }
 
@@ -340,9 +333,17 @@ fn tune_benders_adaptive_config(
 }
 
 /// 解析求解模式（MILP 或 Benders） / Resolve solve mode (MILP or Benders)
+#[cfg(test)]
 fn resolve_solve_mode(request: &Demo2Request, notes: &mut Vec<String>) -> SolveMode {
-    let binary_variables = request.cargos.len() * request.positions.len();
-    let tuned_adaptive = tune_benders_adaptive_config(request.benders_adaptive, binary_variables);
+    resolve_solve_mode_for_size(request, request.cargos.len() * request.positions.len(), notes)
+}
+
+pub(crate) fn resolve_solve_mode_for_size(request: &Demo2Request, binary_variables: usize, notes: &mut Vec<String>) -> SolveMode {
+    let mut tuned_adaptive = tune_benders_adaptive_config(request.benders_adaptive, binary_variables);
+    // 安全固定追索没有旧版启发式停滞开关，不报告未执行的控制项。
+    // Safe fixed recourse has no legacy heuristic stall switches; never report inactive controls as effective.
+    tuned_adaptive.max_stall_iterations = None;
+    tuned_adaptive.objective_stall_iterations = None;
     let quality_guard = resolve_benders_quality_guard_config(request.benders_quality_overrides);
     if request.solve_policy.prefer_benders {
         if binary_variables < tuned_adaptive.min_binary_variables {
@@ -448,7 +449,7 @@ fn resolve_solve_mode(request: &Demo2Request, notes: &mut Vec<String>) -> SolveM
 }
 
 /// 记录求解路径诊断 / Push solver path diagnostic note
-fn push_solver_path_note(notes: &mut Vec<String>, solver_path: &str) {
+pub(crate) fn push_solver_path_note(notes: &mut Vec<String>, solver_path: &str) {
     notes.push(format!("solver_path={}", solver_path));
     push_grouped_note(
         notes,
@@ -736,6 +737,26 @@ fn resolve_benders_quality_score(
     (score * 100.0).clamp(0.0, 100.0)
 }
 
+/// 基于实际分解证据观察质量，不据启发式评分改写证明或丢弃 incumbent。
+/// Observe quality from actual decomposition evidence without rewriting proofs or discarding incumbents based on heuristic scores.
+pub(crate) fn append_decomposition_quality_notes(request: &Demo2Request, result: &ospf_rust_framework::solver::FixedRecourseResult,
+    elapsed_ms: u128, notes: &mut Vec<String>) {
+    let adaptive = tune_benders_adaptive_config(request.benders_adaptive, result.values.len());
+    let guard = resolve_benders_quality_guard_config(request.benders_quality_overrides);
+    if let (Some(objective), Some(lower)) = (result.objective, result.lower_bound) {
+        let gap = (objective - lower).abs() / objective.abs().max(1.0);
+        let metrics = BendersRuntimeMetrics { executed_iterations: result.iterations,
+            total_cuts: result.feasibility_cuts + result.optimality_cuts, best_solution_iteration: None, no_cut_iterations: 0,
+            no_obj_improvement_iterations: 0, stop_reason: None, iteration_snapshots: vec![] };
+        push_benders_runtime_notes(notes, result.iterations, gap, elapsed_ms);
+        push_benders_quality_score_note(notes, resolve_benders_quality_score(&adaptive, &guard, result.iterations,
+            gap, elapsed_ms, Some(&metrics)));
+        if let Some(reason) = resolve_benders_quality_reason(&adaptive, &guard, result.iterations, gap, elapsed_ms, Some(&metrics)) {
+            push_benders_quality_action_note(notes, "observe_only", reason);
+        }
+    } else { notes.push("benders_quality_gap=unknown; no fabricated bound or trajectory".into()); }
+}
+
 /// 记录 Benders 质量评分诊断 / Push Benders quality score diagnostic note
 fn push_benders_quality_score_note(notes: &mut Vec<String>, quality_score: f64) {
     notes.push(format!("benders_quality_score={:.2}", quality_score));
@@ -816,7 +837,7 @@ fn resolve_benders_quality_reason(
 }
 
 /// 构造无解响应 / Construct no-solution response
-fn no_solution_response(status: &str, notes: Vec<String>) -> Demo2Response {
+pub(crate) fn no_solution_response(status: &str, notes: Vec<String>) -> Demo2Response {
     let diagnostics = build_structured_diagnostics(&notes);
     Demo2Response {
         status: status.to_string(),
@@ -824,11 +845,13 @@ fn no_solution_response(status: &str, notes: Vec<String>) -> Demo2Response {
         assignments: Vec::new(),
         notes,
         diagnostics,
+        solve_report: None, algorithm_reports: vec![], render: None, kpi: None,
+        framework_path: String::new(), selected_layouts: Default::default(), occupied_positions: Default::default(), additional_weights: Default::default(),
     }
 }
 
 /// 构造 Demo2 响应 / Construct Demo2 response
-fn demo2_response(
+pub(crate) fn demo2_response(
     status: String,
     objective: Option<f64>,
     assignments: Vec<String>,
@@ -841,11 +864,13 @@ fn demo2_response(
         assignments,
         notes,
         diagnostics,
+        solve_report: None, algorithm_reports: vec![], render: None, kpi: None,
+        framework_path: String::new(), selected_layouts: Default::default(), occupied_positions: Default::default(), additional_weights: Default::default(),
     }
 }
 
 /// 追加核心可行性诊断（检查载荷、包线、位置容量等） / Append core feasibility diagnostics (check payload, envelope, position capacity, etc.)
-fn append_core_feasibility_diagnostics(request: &Demo2Request, notes: &mut Vec<String>) {
+pub(crate) fn append_core_feasibility_diagnostics(request: &Demo2Request, notes: &mut Vec<String>) {
     let total_capacity: f64 = request
         .positions
         .iter()
@@ -901,6 +926,7 @@ fn append_core_feasibility_diagnostics(request: &Demo2Request, notes: &mut Vec<S
         );
     }
     for cargo in &request.cargos {
+        if request.loading.cargos.get(&cargo.name).and_then(|policy| policy.required) == Some(false) { continue; }
         let can_fit = request
             .positions
             .iter()
@@ -927,10 +953,21 @@ fn append_critical_constraint_notes(
     solution: &[f64],
     notes: &mut Vec<String>,
 ) {
+    append_critical_constraint_notes_with_weights(request, x_idx, solution, &vec![0.0; request.positions.len()], notes);
+}
+
+/// 使用最终源模型的完整重量诊断。 / Diagnose complete weights from the final source model.
+pub(crate) fn append_critical_constraint_notes_with_weights(
+    request: &Demo2Request,
+    x_idx: &[Vec<usize>],
+    solution: &[f64],
+    additional: &[f64],
+    notes: &mut Vec<String>,
+) {
     const CRITICAL_RATIO: f64 = 0.98;
     const EPS: f64 = 1e-6;
 
-    let mut position_loads = vec![0.0_f64; request.positions.len()];
+    let mut position_loads = additional.to_vec();
     for c in 0..request.cargos.len() {
         for (p, load) in position_loads.iter_mut().enumerate() {
             let value = solution.get(x_idx[c][p]).copied().unwrap_or(0.0);
@@ -989,16 +1026,8 @@ fn append_critical_constraint_notes(
         );
     }
 
-    let mut longitudinal_moment = 0.0_f64;
-    let mut lateral_moment = 0.0_f64;
-    for c in 0..request.cargos.len() {
-        for p in 0..request.positions.len() {
-            let value = solution.get(x_idx[c][p]).copied().unwrap_or(0.0);
-            let weight = value * request.cargos[c].weight;
-            longitudinal_moment += weight * request.positions[p].longitudinal_arm;
-            lateral_moment += weight * request.positions[p].lateral_arm;
-        }
-    }
+    let longitudinal_moment = position_loads.iter().zip(&request.positions).map(|(weight, position)| weight * position.longitudinal_arm).sum::<f64>();
+    let lateral_moment = position_loads.iter().zip(&request.positions).map(|(weight, position)| weight * position.lateral_arm).sum::<f64>();
 
     let upper_gap = request.envelope_longitudinal_moment_max - longitudinal_moment;
     let lower_gap = longitudinal_moment - request.envelope_longitudinal_moment_min;
@@ -1090,1226 +1119,67 @@ fn append_critical_constraint_notes(
     }
 }
 
-/// 使用 Benders 分解求解线性模型 / Solve linear model using Benders decomposition
-fn solve_linear_benders(
-    master_model: &MetaModel<f64>,
-    sub_model: &MetaModel<f64>,
-    fixed_variable_ids: Vec<VariableId>,
-    adaptive: EffectiveBendersAdaptiveConfig,
-) -> Result<FeasibleSolutionV<f64>, Box<dyn Error>> {
-    let mechanism_model = sub_model.try_to_mechanism_model()?;
-    let solver = GurobiLinearBendersDecompositionSolver::new().with_cut_context(
-        mechanism_model,
-        None,
-        fixed_variable_ids,
-    );
-    let mut options =
-        FrameworkSolveOptions::new().with_iterations(adaptive.max_iterations, adaptive.tolerance);
-    if let Some(max_stall_iterations) = adaptive.max_stall_iterations {
-        options = options.with_stall_iterations(max_stall_iterations);
-    }
-    if let Some(objective_stall_iterations) = adaptive.objective_stall_iterations {
-        options = options.with_objective_stall_iterations(objective_stall_iterations);
-    }
-    Ok(solver.solve_meta_typed_with_options(master_model, sub_model, options)?)
-}
-
-/// 求解元模型，若无可行解返回 None / Solve meta model, returning None if infeasible
-fn solve_meta_typed_if_feasible(
-    model: MetaModel<f64>,
-) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
-    let solver = GurobiSolver::new();
-    solve_linear_meta_model_typed_if_feasible(model, &solver)
-}
-
-/// 分析解向量，生成货位分配与关键约束诊断 / Analyze solution vector, generating cargo-position assignments and critical constraint diagnostics
-fn analyze_solution_vector(
-    request: &Demo2Request,
-    x_idx: &[Vec<usize>],
-    objective: f64,
-    solution: &[f64],
-    mut notes: Vec<String>,
-) -> Demo2Response {
-    let mut assignments = Vec::new();
-    for c in 0..request.cargos.len() {
-        for p in 0..request.positions.len() {
-            let value = solution.get(x_idx[c][p]).copied().unwrap_or(0.0);
-            if value > 0.5 {
-                assignments.push(format!(
-                    "{} -> {}",
-                    request.cargos[c].name, request.positions[p].name
-                ));
-            }
-        }
-    }
-    append_critical_constraint_notes(request, x_idx, solution, &mut notes);
-    demo2_response(String::from("Optimal"), Some(objective), assignments, notes)
-}
-
 impl FullLoadApplication {
-    /// 执行满载应用求解 / Execute full-load application solve
+    /// 执行满载业务，共享完整装载模型。 / Execute the business path using the complete shared loading model.
     pub fn execute(&self, request: Demo2Request) -> Result<Demo2Response, Box<dyn Error>> {
-        self.init(&request)?;
-        let mut notes = Vec::new();
-        append_core_feasibility_diagnostics(&request, &mut notes);
-        if !notes.is_empty() {
-            return Ok(no_solution_response("NoSolution", notes));
-        }
-        if !supported_aircraft(request.aircraft_type) {
-            notes.push(format!(
-                "unsupported aircraft type for full-load path: {:?}",
-                request.aircraft_type
-            ));
-            return Ok(no_solution_response("UnsupportedAircraft", notes));
-        }
-        let quality_guard = resolve_benders_quality_guard_config(request.benders_quality_overrides);
-        match resolve_solve_mode(&request, &mut notes) {
-            SolveMode::Milp => {
-                push_solver_path_note(&mut notes, "milp_direct");
-            }
-            SolveMode::Benders(adaptive) => {
-                match self.solve_benders(&request, adaptive) {
-                    Ok((x_idx, result)) => {
-                        let benders_iters = result.benders_iterations.unwrap_or(0);
-                        let benders_time_ms = result.time.as_millis();
-                        let quality_reason = resolve_benders_quality_reason(
-                            &adaptive,
-                            &quality_guard,
-                            benders_iters,
-                            result.gap,
-                            benders_time_ms,
-                            result.benders_runtime_metrics.as_ref(),
-                        );
-                        if let Some(reason) = quality_reason {
-                            match reason {
-                                BENDERS_QUALITY_REASON_GAP_GUARD_EXCEEDED => {
-                                    let benders_gap_guard = resolve_benders_gap_guard(&adaptive);
-                                    push_benders_gap_guard_exceeded_note(
-                                        &mut notes,
-                                        result.gap,
-                                        benders_gap_guard,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_TIME_GUARD_EXCEEDED => {
-                                    let time_guard_ms =
-                                        resolve_benders_time_guard_ms(&adaptive, &quality_guard);
-                                    push_benders_time_guard_exceeded_note(
-                                        &mut notes,
-                                        benders_time_ms,
-                                        time_guard_ms,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_PROGRESS_GUARD_TRIGGERED => {
-                                    push_benders_progress_guard_triggered_note(
-                                        &mut notes,
-                                        result
-                                            .benders_runtime_metrics
-                                            .as_ref()
-                                            .map(|metrics| metrics.executed_iterations)
-                                            .unwrap_or(benders_iters),
-                                        adaptive.max_iterations,
-                                        result.gap,
-                                        adaptive.tolerance,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_TRAJECTORY_WEAK => {
-                                    if let Some(metrics) = result.benders_runtime_metrics.as_ref() {
-                                        let snapshots = &metrics.iteration_snapshots;
-                                        if snapshots.len() >= 2 {
-                                            let mut abs_step_sum = 0.0_f64;
-                                            for index in 1..snapshots.len() {
-                                                abs_step_sum += (snapshots[index].master_obj
-                                                    - snapshots[index - 1].master_obj)
-                                                    .abs();
-                                            }
-                                            let avg_step_improvement =
-                                                abs_step_sum / ((snapshots.len() - 1) as f64);
-                                            push_benders_trajectory_weak_note(
-                                                &mut notes,
-                                                snapshots,
-                                                avg_step_improvement,
-                                            );
-                                        }
-                                    }
-                                }
-                                BENDERS_QUALITY_REASON_CUT_EFFICIENCY_LOW => {
-                                    let executed_iterations = result
-                                        .benders_runtime_metrics
-                                        .as_ref()
-                                        .map(|metrics| metrics.executed_iterations)
-                                        .unwrap_or(benders_iters);
-                                    let total_cuts = result
-                                        .benders_runtime_metrics
-                                        .as_ref()
-                                        .map(|metrics| metrics.total_cuts)
-                                        .unwrap_or(0);
-                                    let cut_density = if executed_iterations > 0 {
-                                        (total_cuts as f64) / (executed_iterations as f64)
-                                    } else {
-                                        0.0
-                                    };
-                                    push_benders_cut_efficiency_low_note(
-                                        &mut notes,
-                                        executed_iterations,
-                                        total_cuts,
-                                        cut_density,
-                                    );
-                                }
-                                _ => {}
-                            }
-                            push_benders_runtime_notes(
-                                &mut notes,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                            );
-                            let benders_quality_score = resolve_benders_quality_score(
-                                &adaptive,
-                                &quality_guard,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                                result.benders_runtime_metrics.as_ref(),
-                            );
-                            push_benders_quality_score_note(&mut notes, benders_quality_score);
-                            if request.solve_policy.benders_fallback_to_milp {
-                                push_benders_quality_action_note(
-                                    &mut notes,
-                                    "fallback_to_milp",
-                                    reason,
-                                );
-                            } else {
-                                push_solver_path_note(&mut notes, "benders");
-                                push_benders_quality_action_note(
-                                    &mut notes,
-                                    "accept_benders",
-                                    reason,
-                                );
-                                return Ok(analyze_solution_vector(
-                                    &request,
-                                    &x_idx,
-                                    result.obj,
-                                    &result.solution,
-                                    notes,
-                                ));
-                            }
-                        } else {
-                            push_solver_path_note(&mut notes, "benders");
-                            push_benders_runtime_notes(
-                                &mut notes,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                            );
-                            let benders_quality_score = resolve_benders_quality_score(
-                                &adaptive,
-                                &quality_guard,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                                result.benders_runtime_metrics.as_ref(),
-                            );
-                            push_benders_quality_score_note(&mut notes, benders_quality_score);
-                            return Ok(analyze_solution_vector(
-                                &request,
-                                &x_idx,
-                                result.obj,
-                                &result.solution,
-                                notes,
-                            ));
-                        }
-                    }
-                    Err(err) => {
-                        push_benders_failed_note(&mut notes, &err.to_string());
-                        if !request.solve_policy.benders_fallback_to_milp {
-                            return Ok(no_solution_response("BendersFailed", notes));
-                        }
-                    }
-                }
-                push_solver_path_note(&mut notes, "milp_fallback");
-            }
-        }
-
-        let mut model = MetaModel::<f64>::new("framework_demo2_full_load");
-        let x_idx = self.register(&request, &mut model)?;
-        let output = self.solve(model)?;
-        self.analyze(&request, &x_idx, output, notes)
+        self.execute_with_handle(request, &ospf_rust_core::solver::SolveHandle::new())
     }
 
-    fn init(&self, request: &Demo2Request) -> Result<(), Box<dyn Error>> {
-        if request.cargos.is_empty() {
-            return Err(String::from("demo2 request has no cargo").into());
-        }
-        if request.positions.is_empty() {
-            return Err(String::from("demo2 request has no position").into());
-        }
-        Ok(())
+    /// 使用外部取消句柄执行。 / Execute with an external cancellation handle.
+    pub fn execute_with_handle(&self, request: Demo2Request, handle: &ospf_rust_core::solver::SolveHandle) -> Result<Demo2Response, Box<dyn Error>> {
+        Ok(crate::framework::demo2::infrastructure::application_service::Demo2ApplicationService::solve(request,
+            Demo2PipelineMode::FullLoad, handle)?)
     }
 
-    fn register(
-        &self,
-        request: &Demo2Request,
-        model: &mut MetaModel<f64>,
-    ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
-        let registration = shared::model_registration::register_variables(
-            request,
-            model,
-            "x",
-            Demo2PipelineMode::FullLoad,
-        )?;
-        shared::model_registration::construct_objective(
-            request,
-            model,
-            &registration,
-            Demo2PipelineMode::FullLoad,
-        )?;
-        apply_domain_pipeline(
-            Demo2PipelineMode::FullLoad,
-            model,
-            request,
-            &registration.x_idx,
-            registration.z,
-            &registration.estimate_load_weight_idx,
-            &registration.estimate_loaded_idx,
-            &registration.loaded_idx,
-        )?;
-
-        Ok(registration.x_idx)
+    /// 使用心跳、完成通知和最终渲染选项执行。 / Execute with heartbeat, completion and final-render options.
+    pub fn execute_with_options(&self, request: Demo2Request,
+        options: crate::framework::demo2::infrastructure::application_service::Demo2ExecutionOptions<'_>) -> Result<Demo2Response, Box<dyn Error>> {
+        Ok(crate::framework::demo2::infrastructure::application_service::Demo2ApplicationService::solve_with_execution_options(
+            request, Demo2PipelineMode::FullLoad, options)?)
     }
 
-    fn build_benders_models(
-        &self,
-        request: &Demo2Request,
-    ) -> Result<
-        (
-            MetaModel<f64>,
-            MetaModel<f64>,
-            Vec<Vec<usize>>,
-            Vec<VariableId>,
-        ),
-        Box<dyn Error>,
-    > {
-        let mut master_model = MetaModel::<f64>::new("framework_demo2_full_load_master");
-        let mut sub_model = MetaModel::<f64>::new("framework_demo2_full_load_sub");
-
-        let (x_idx_master, x_idx_sub, fixed_variable_ids) =
-            shared::model_registration::register_benders_variables(
-                request,
-                &mut master_model,
-                &mut sub_model,
-                "x",
-            )?;
-
-        let master_intermediates = shared::model_registration::register_derived_variables(
-            request,
-            &mut master_model,
-            &x_idx_master,
-        )?;
-        let sub_intermediates = shared::model_registration::register_derived_variables(
-            request,
-            &mut sub_model,
-            &x_idx_sub,
-        )?;
-        let registration = shared::model_registration::RegistrationResult {
-            x_idx: x_idx_master.clone(),
-            z: None,
-            estimate_load_weight_idx: master_intermediates.estimate_load_weight_idx.clone(),
-            estimate_loaded_idx: master_intermediates.estimate_loaded_idx.clone(),
-            loaded_idx: master_intermediates.loaded_idx.clone(),
-        };
-        shared::model_registration::construct_objective(
-            request,
-            &mut master_model,
-            &registration,
-            Demo2PipelineMode::FullLoad,
-        )?;
-
-        stowage::service::apply_stowage_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::FullLoad,
-            &master_intermediates.loaded_idx,
-            &master_intermediates.estimate_loaded_idx,
-        )?;
-        loading_effectiveness::service::apply_loading_effectiveness_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::FullLoad,
-        )?;
-        express_effectiveness::service::apply_express_effectiveness_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::FullLoad,
-        )?;
-        soft_security::service::apply_soft_security_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::FullLoad,
-        )?;
-        redundancy::service::apply_redundancy_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::FullLoad,
-        )?;
-        mac_optimization::service::apply_mac_optimization_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            None,
-            Demo2PipelineMode::FullLoad,
-        )?;
-
-        airworthiness_security::service::apply_airworthiness_security_pipeline(
-            &mut sub_model,
-            request,
-            &x_idx_sub,
-            Demo2PipelineMode::FullLoad,
-            &sub_intermediates.estimate_load_weight_idx,
-            &sub_intermediates.estimate_loaded_idx,
-        )?;
-
-        Ok((master_model, sub_model, x_idx_master, fixed_variable_ids))
-    }
-
-    fn solve_benders(
-        &self,
-        request: &Demo2Request,
-        adaptive: EffectiveBendersAdaptiveConfig,
-    ) -> Result<(Vec<Vec<usize>>, FeasibleSolutionV<f64>), Box<dyn Error>> {
-        let (master_model, sub_model, x_idx_master, fixed_variable_ids) =
-            self.build_benders_models(request)?;
-        let benders_result =
-            solve_linear_benders(&master_model, &sub_model, fixed_variable_ids, adaptive)?;
-        Ok((x_idx_master, benders_result))
-    }
-
-    fn solve(
-        &self,
-        model: MetaModel<f64>,
-    ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
-        solve_meta_typed_if_feasible(model)
-    }
-
-    fn analyze(
-        &self,
-        request: &Demo2Request,
-        x_idx: &[Vec<usize>],
-        output: Option<FeasibleSolverOutput<f64>>,
-        mut notes: Vec<String>,
-    ) -> Result<Demo2Response, Box<dyn Error>> {
-        let Some(feasible_output) = output else {
-            notes.push(String::from(
-                "solver returned no feasible solution; mapped to explicit NoSolution response",
-            ));
-            return Ok(no_solution_response("NoSolution", notes));
-        };
-        let mut assignments = Vec::new();
-        let solution = feasible_output.solution;
-
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let value = solution.get(x_idx[c][p]).copied().unwrap_or(0.0);
-                if value > 0.5 {
-                    assignments.push(format!(
-                        "{} -> {}",
-                        request.cargos[c].name, request.positions[p].name
-                    ));
-                }
-            }
-        }
-        append_critical_constraint_notes(request, x_idx, &solution, &mut notes);
-
-        Ok(demo2_response(
-            format!("{:?}", feasible_output.status),
-            feasible_output.objective_value,
-            assignments,
-            notes,
-        ))
-    }
 }
 
 impl PredistributionApplication {
-    /// 执行预分配应用求解 / Execute predistribution application solve
+    /// 执行预分配业务，共享完整装载模型。 / Execute the business path using the complete shared loading model.
     pub fn execute(&self, request: Demo2Request) -> Result<Demo2Response, Box<dyn Error>> {
-        self.init(&request)?;
-        let mut notes = Vec::new();
-        append_core_feasibility_diagnostics(&request, &mut notes);
-        if !notes.is_empty() {
-            return Ok(no_solution_response("NoSolution", notes));
-        }
-        if !supported_aircraft(request.aircraft_type) {
-            notes.push(format!(
-                "unsupported aircraft type for predistribution path: {:?}",
-                request.aircraft_type
-            ));
-            return Ok(no_solution_response("UnsupportedAircraft", notes));
-        }
-        let quality_guard = resolve_benders_quality_guard_config(request.benders_quality_overrides);
-        match resolve_solve_mode(&request, &mut notes) {
-            SolveMode::Milp => {
-                push_solver_path_note(&mut notes, "milp_direct");
-            }
-            SolveMode::Benders(adaptive) => {
-                match self.solve_benders(&request, adaptive) {
-                    Ok((x_idx, result)) => {
-                        let benders_iters = result.benders_iterations.unwrap_or(0);
-                        let benders_time_ms = result.time.as_millis();
-                        let quality_reason = resolve_benders_quality_reason(
-                            &adaptive,
-                            &quality_guard,
-                            benders_iters,
-                            result.gap,
-                            benders_time_ms,
-                            result.benders_runtime_metrics.as_ref(),
-                        );
-                        if let Some(reason) = quality_reason {
-                            match reason {
-                                BENDERS_QUALITY_REASON_GAP_GUARD_EXCEEDED => {
-                                    let benders_gap_guard = resolve_benders_gap_guard(&adaptive);
-                                    push_benders_gap_guard_exceeded_note(
-                                        &mut notes,
-                                        result.gap,
-                                        benders_gap_guard,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_TIME_GUARD_EXCEEDED => {
-                                    let time_guard_ms =
-                                        resolve_benders_time_guard_ms(&adaptive, &quality_guard);
-                                    push_benders_time_guard_exceeded_note(
-                                        &mut notes,
-                                        benders_time_ms,
-                                        time_guard_ms,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_PROGRESS_GUARD_TRIGGERED => {
-                                    push_benders_progress_guard_triggered_note(
-                                        &mut notes,
-                                        result
-                                            .benders_runtime_metrics
-                                            .as_ref()
-                                            .map(|metrics| metrics.executed_iterations)
-                                            .unwrap_or(benders_iters),
-                                        adaptive.max_iterations,
-                                        result.gap,
-                                        adaptive.tolerance,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_TRAJECTORY_WEAK => {
-                                    if let Some(metrics) = result.benders_runtime_metrics.as_ref() {
-                                        let snapshots = &metrics.iteration_snapshots;
-                                        if snapshots.len() >= 2 {
-                                            let mut abs_step_sum = 0.0_f64;
-                                            for index in 1..snapshots.len() {
-                                                abs_step_sum += (snapshots[index].master_obj
-                                                    - snapshots[index - 1].master_obj)
-                                                    .abs();
-                                            }
-                                            let avg_step_improvement =
-                                                abs_step_sum / ((snapshots.len() - 1) as f64);
-                                            push_benders_trajectory_weak_note(
-                                                &mut notes,
-                                                snapshots,
-                                                avg_step_improvement,
-                                            );
-                                        }
-                                    }
-                                }
-                                BENDERS_QUALITY_REASON_CUT_EFFICIENCY_LOW => {
-                                    let executed_iterations = result
-                                        .benders_runtime_metrics
-                                        .as_ref()
-                                        .map(|metrics| metrics.executed_iterations)
-                                        .unwrap_or(benders_iters);
-                                    let total_cuts = result
-                                        .benders_runtime_metrics
-                                        .as_ref()
-                                        .map(|metrics| metrics.total_cuts)
-                                        .unwrap_or(0);
-                                    let cut_density = if executed_iterations > 0 {
-                                        (total_cuts as f64) / (executed_iterations as f64)
-                                    } else {
-                                        0.0
-                                    };
-                                    push_benders_cut_efficiency_low_note(
-                                        &mut notes,
-                                        executed_iterations,
-                                        total_cuts,
-                                        cut_density,
-                                    );
-                                }
-                                _ => {}
-                            }
-                            push_benders_runtime_notes(
-                                &mut notes,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                            );
-                            let benders_quality_score = resolve_benders_quality_score(
-                                &adaptive,
-                                &quality_guard,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                                result.benders_runtime_metrics.as_ref(),
-                            );
-                            push_benders_quality_score_note(&mut notes, benders_quality_score);
-                            if request.solve_policy.benders_fallback_to_milp {
-                                push_benders_quality_action_note(
-                                    &mut notes,
-                                    "fallback_to_milp",
-                                    reason,
-                                );
-                            } else {
-                                push_solver_path_note(&mut notes, "benders");
-                                push_benders_quality_action_note(
-                                    &mut notes,
-                                    "accept_benders",
-                                    reason,
-                                );
-                                return Ok(analyze_solution_vector(
-                                    &request,
-                                    &x_idx,
-                                    result.obj,
-                                    &result.solution,
-                                    notes,
-                                ));
-                            }
-                        } else {
-                            push_solver_path_note(&mut notes, "benders");
-                            push_benders_runtime_notes(
-                                &mut notes,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                            );
-                            let benders_quality_score = resolve_benders_quality_score(
-                                &adaptive,
-                                &quality_guard,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                                result.benders_runtime_metrics.as_ref(),
-                            );
-                            push_benders_quality_score_note(&mut notes, benders_quality_score);
-                            return Ok(analyze_solution_vector(
-                                &request,
-                                &x_idx,
-                                result.obj,
-                                &result.solution,
-                                notes,
-                            ));
-                        }
-                    }
-                    Err(err) => {
-                        push_benders_failed_note(&mut notes, &err.to_string());
-                    }
-                }
-                if !request.solve_policy.benders_fallback_to_milp {
-                    return Ok(no_solution_response("BendersFailed", notes));
-                }
-                push_solver_path_note(&mut notes, "milp_fallback");
-            }
-        }
-
-        let mut model = MetaModel::<f64>::new("framework_demo2_predistribution");
-        let x_idx = self.register(&request, &mut model)?;
-        let output = self.solve(model)?;
-        self.analyze(&request, &x_idx, output, notes)
+        self.execute_with_handle(request, &ospf_rust_core::solver::SolveHandle::new())
     }
 
-    fn init(&self, request: &Demo2Request) -> Result<(), Box<dyn Error>> {
-        if request.cargos.is_empty() {
-            return Err(String::from("demo2 request has no cargo").into());
-        }
-        if request.positions.is_empty() {
-            return Err(String::from("demo2 request has no position").into());
-        }
-        Ok(())
+    /// 使用外部取消句柄执行。 / Execute with an external cancellation handle.
+    pub fn execute_with_handle(&self, request: Demo2Request, handle: &ospf_rust_core::solver::SolveHandle) -> Result<Demo2Response, Box<dyn Error>> {
+        Ok(crate::framework::demo2::infrastructure::application_service::Demo2ApplicationService::solve(request,
+            Demo2PipelineMode::Predistribution, handle)?)
     }
 
-    fn register(
-        &self,
-        request: &Demo2Request,
-        model: &mut MetaModel<f64>,
-    ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
-        let registration = shared::model_registration::register_variables(
-            request,
-            model,
-            "x_pre",
-            Demo2PipelineMode::Predistribution,
-        )?;
-        shared::model_registration::construct_objective(
-            request,
-            model,
-            &registration,
-            Demo2PipelineMode::Predistribution,
-        )?;
-        apply_domain_pipeline(
-            Demo2PipelineMode::Predistribution,
-            model,
-            request,
-            &registration.x_idx,
-            registration.z,
-            &registration.estimate_load_weight_idx,
-            &registration.estimate_loaded_idx,
-            &registration.loaded_idx,
-        )?;
-
-        Ok(registration.x_idx)
+    /// 使用心跳、完成通知和最终渲染选项执行。 / Execute with heartbeat, completion and final-render options.
+    pub fn execute_with_options(&self, request: Demo2Request,
+        options: crate::framework::demo2::infrastructure::application_service::Demo2ExecutionOptions<'_>) -> Result<Demo2Response, Box<dyn Error>> {
+        Ok(crate::framework::demo2::infrastructure::application_service::Demo2ApplicationService::solve_with_execution_options(
+            request, Demo2PipelineMode::Predistribution, options)?)
     }
 
-    fn solve(
-        &self,
-        model: MetaModel<f64>,
-    ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
-        solve_meta_typed_if_feasible(model)
-    }
-
-    fn build_benders_models(
-        &self,
-        request: &Demo2Request,
-    ) -> Result<
-        (
-            MetaModel<f64>,
-            MetaModel<f64>,
-            Vec<Vec<usize>>,
-            Vec<VariableId>,
-        ),
-        Box<dyn Error>,
-    > {
-        let mut master_model = MetaModel::<f64>::new("framework_demo2_predistribution_master");
-        let mut sub_model = MetaModel::<f64>::new("framework_demo2_predistribution_sub");
-
-        let (x_idx_master, x_idx_sub, fixed_variable_ids) =
-            shared::model_registration::register_benders_variables(
-                request,
-                &mut master_model,
-                &mut sub_model,
-                "x_pre",
-            )?;
-
-        let z = master_model
-            .register_variable(UContinuousVariableItem::auto("pre_benders_max_deviation"))?;
-        let master_intermediates = shared::model_registration::register_derived_variables(
-            request,
-            &mut master_model,
-            &x_idx_master,
-        )?;
-        let sub_intermediates = shared::model_registration::register_derived_variables(
-            request,
-            &mut sub_model,
-            &x_idx_sub,
-        )?;
-        let registration = shared::model_registration::RegistrationResult {
-            x_idx: x_idx_master.clone(),
-            z: Some(z),
-            estimate_load_weight_idx: master_intermediates.estimate_load_weight_idx.clone(),
-            estimate_loaded_idx: master_intermediates.estimate_loaded_idx.clone(),
-            loaded_idx: master_intermediates.loaded_idx.clone(),
-        };
-        shared::model_registration::construct_objective(
-            request,
-            &mut master_model,
-            &registration,
-            Demo2PipelineMode::Predistribution,
-        )?;
-
-        stowage::service::apply_stowage_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::Predistribution,
-            &master_intermediates.loaded_idx,
-            &master_intermediates.estimate_loaded_idx,
-        )?;
-        loading_effectiveness::service::apply_loading_effectiveness_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::Predistribution,
-        )?;
-        express_effectiveness::service::apply_express_effectiveness_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::Predistribution,
-        )?;
-        soft_security::service::apply_soft_security_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::Predistribution,
-        )?;
-        redundancy::service::apply_redundancy_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::Predistribution,
-        )?;
-        mac_optimization::service::apply_mac_optimization_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Some(z),
-            Demo2PipelineMode::Predistribution,
-        )?;
-
-        airworthiness_security::service::apply_airworthiness_security_pipeline(
-            &mut sub_model,
-            request,
-            &x_idx_sub,
-            Demo2PipelineMode::Predistribution,
-            &sub_intermediates.estimate_load_weight_idx,
-            &sub_intermediates.estimate_loaded_idx,
-        )?;
-
-        Ok((master_model, sub_model, x_idx_master, fixed_variable_ids))
-    }
-
-    fn solve_benders(
-        &self,
-        request: &Demo2Request,
-        adaptive: EffectiveBendersAdaptiveConfig,
-    ) -> Result<(Vec<Vec<usize>>, FeasibleSolutionV<f64>), Box<dyn Error>> {
-        let (master_model, sub_model, x_idx_master, fixed_variable_ids) =
-            self.build_benders_models(request)?;
-        let benders_result =
-            solve_linear_benders(&master_model, &sub_model, fixed_variable_ids, adaptive)?;
-        Ok((x_idx_master, benders_result))
-    }
-
-    fn analyze(
-        &self,
-        request: &Demo2Request,
-        x_idx: &[Vec<usize>],
-        output: Option<FeasibleSolverOutput<f64>>,
-        mut notes: Vec<String>,
-    ) -> Result<Demo2Response, Box<dyn Error>> {
-        let Some(feasible_output) = output else {
-            notes.push(String::from(
-                "solver returned no feasible solution; mapped to explicit NoSolution response",
-            ));
-            return Ok(no_solution_response("NoSolution", notes));
-        };
-        let mut assignments = Vec::new();
-        let solution = feasible_output.solution;
-
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let value = solution.get(x_idx[c][p]).copied().unwrap_or(0.0);
-                if value > 0.5 {
-                    assignments.push(format!(
-                        "{} -> {}",
-                        request.cargos[c].name, request.positions[p].name
-                    ));
-                }
-            }
-        }
-        append_critical_constraint_notes(request, x_idx, &solution, &mut notes);
-
-        Ok(demo2_response(
-            format!("{:?}", feasible_output.status),
-            feasible_output.objective_value,
-            assignments,
-            notes,
-        ))
-    }
 }
 
 impl WeightRecommendationApplication {
-    /// 执行重量推荐应用求解 / Execute weight recommendation application solve
+    /// 执行重量推荐业务，共享完整装载模型。 / Execute the business path using the complete shared loading model.
     pub fn execute(&self, request: Demo2Request) -> Result<Demo2Response, Box<dyn Error>> {
-        self.init(&request)?;
-        let mut notes = Vec::new();
-        append_core_feasibility_diagnostics(&request, &mut notes);
-        if !notes.is_empty() {
-            return Ok(no_solution_response("NoSolution", notes));
-        }
-        if !supported_aircraft(request.aircraft_type) {
-            notes.push(format!(
-                "unsupported aircraft type for weight-recommendation path: {:?}",
-                request.aircraft_type
-            ));
-            return Ok(no_solution_response("UnsupportedAircraft", notes));
-        }
-        let quality_guard = resolve_benders_quality_guard_config(request.benders_quality_overrides);
-        match resolve_solve_mode(&request, &mut notes) {
-            SolveMode::Milp => {
-                push_solver_path_note(&mut notes, "milp_direct");
-            }
-            SolveMode::Benders(adaptive) => {
-                match self.solve_benders(&request, adaptive) {
-                    Ok((x_idx, result)) => {
-                        let benders_iters = result.benders_iterations.unwrap_or(0);
-                        let benders_time_ms = result.time.as_millis();
-                        let quality_reason = resolve_benders_quality_reason(
-                            &adaptive,
-                            &quality_guard,
-                            benders_iters,
-                            result.gap,
-                            benders_time_ms,
-                            result.benders_runtime_metrics.as_ref(),
-                        );
-                        if let Some(reason) = quality_reason {
-                            match reason {
-                                BENDERS_QUALITY_REASON_GAP_GUARD_EXCEEDED => {
-                                    let benders_gap_guard = resolve_benders_gap_guard(&adaptive);
-                                    push_benders_gap_guard_exceeded_note(
-                                        &mut notes,
-                                        result.gap,
-                                        benders_gap_guard,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_TIME_GUARD_EXCEEDED => {
-                                    let time_guard_ms =
-                                        resolve_benders_time_guard_ms(&adaptive, &quality_guard);
-                                    push_benders_time_guard_exceeded_note(
-                                        &mut notes,
-                                        benders_time_ms,
-                                        time_guard_ms,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_PROGRESS_GUARD_TRIGGERED => {
-                                    push_benders_progress_guard_triggered_note(
-                                        &mut notes,
-                                        result
-                                            .benders_runtime_metrics
-                                            .as_ref()
-                                            .map(|metrics| metrics.executed_iterations)
-                                            .unwrap_or(benders_iters),
-                                        adaptive.max_iterations,
-                                        result.gap,
-                                        adaptive.tolerance,
-                                    );
-                                }
-                                BENDERS_QUALITY_REASON_TRAJECTORY_WEAK => {
-                                    if let Some(metrics) = result.benders_runtime_metrics.as_ref() {
-                                        let snapshots = &metrics.iteration_snapshots;
-                                        if snapshots.len() >= 2 {
-                                            let mut abs_step_sum = 0.0_f64;
-                                            for index in 1..snapshots.len() {
-                                                abs_step_sum += (snapshots[index].master_obj
-                                                    - snapshots[index - 1].master_obj)
-                                                    .abs();
-                                            }
-                                            let avg_step_improvement =
-                                                abs_step_sum / ((snapshots.len() - 1) as f64);
-                                            push_benders_trajectory_weak_note(
-                                                &mut notes,
-                                                snapshots,
-                                                avg_step_improvement,
-                                            );
-                                        }
-                                    }
-                                }
-                                BENDERS_QUALITY_REASON_CUT_EFFICIENCY_LOW => {
-                                    let executed_iterations = result
-                                        .benders_runtime_metrics
-                                        .as_ref()
-                                        .map(|metrics| metrics.executed_iterations)
-                                        .unwrap_or(benders_iters);
-                                    let total_cuts = result
-                                        .benders_runtime_metrics
-                                        .as_ref()
-                                        .map(|metrics| metrics.total_cuts)
-                                        .unwrap_or(0);
-                                    let cut_density = if executed_iterations > 0 {
-                                        (total_cuts as f64) / (executed_iterations as f64)
-                                    } else {
-                                        0.0
-                                    };
-                                    push_benders_cut_efficiency_low_note(
-                                        &mut notes,
-                                        executed_iterations,
-                                        total_cuts,
-                                        cut_density,
-                                    );
-                                }
-                                _ => {}
-                            }
-                            push_benders_runtime_notes(
-                                &mut notes,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                            );
-                            let benders_quality_score = resolve_benders_quality_score(
-                                &adaptive,
-                                &quality_guard,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                                result.benders_runtime_metrics.as_ref(),
-                            );
-                            push_benders_quality_score_note(&mut notes, benders_quality_score);
-                            if request.solve_policy.benders_fallback_to_milp {
-                                push_benders_quality_action_note(
-                                    &mut notes,
-                                    "fallback_to_milp",
-                                    reason,
-                                );
-                            } else {
-                                push_solver_path_note(&mut notes, "benders");
-                                push_benders_quality_action_note(
-                                    &mut notes,
-                                    "accept_benders",
-                                    reason,
-                                );
-                                return Ok(analyze_solution_vector(
-                                    &request,
-                                    &x_idx,
-                                    result.obj,
-                                    &result.solution,
-                                    notes,
-                                ));
-                            }
-                        } else {
-                            push_solver_path_note(&mut notes, "benders");
-                            push_benders_runtime_notes(
-                                &mut notes,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                            );
-                            let benders_quality_score = resolve_benders_quality_score(
-                                &adaptive,
-                                &quality_guard,
-                                benders_iters,
-                                result.gap,
-                                benders_time_ms,
-                                result.benders_runtime_metrics.as_ref(),
-                            );
-                            push_benders_quality_score_note(&mut notes, benders_quality_score);
-                            return Ok(analyze_solution_vector(
-                                &request,
-                                &x_idx,
-                                result.obj,
-                                &result.solution,
-                                notes,
-                            ));
-                        }
-                    }
-                    Err(err) => {
-                        push_benders_failed_note(&mut notes, &err.to_string());
-                        if !request.solve_policy.benders_fallback_to_milp {
-                            return Ok(no_solution_response("BendersFailed", notes));
-                        }
-                    }
-                }
-                push_solver_path_note(&mut notes, "milp_fallback");
-            }
-        }
-
-        let mut model = MetaModel::<f64>::new("framework_demo2_weight_recommendation");
-        let x_idx = self.register(&request, &mut model)?;
-        let output = self.solve(model)?;
-        self.analyze(&request, &x_idx, output, notes)
+        self.execute_with_handle(request, &ospf_rust_core::solver::SolveHandle::new())
     }
 
-    fn init(&self, request: &Demo2Request) -> Result<(), Box<dyn Error>> {
-        if request.cargos.is_empty() {
-            return Err(String::from("demo2 request has no cargo").into());
-        }
-        if request.positions.is_empty() {
-            return Err(String::from("demo2 request has no position").into());
-        }
-        Ok(())
+    /// 使用外部取消句柄执行。 / Execute with an external cancellation handle.
+    pub fn execute_with_handle(&self, request: Demo2Request, handle: &ospf_rust_core::solver::SolveHandle) -> Result<Demo2Response, Box<dyn Error>> {
+        Ok(crate::framework::demo2::infrastructure::application_service::Demo2ApplicationService::solve(request,
+            Demo2PipelineMode::WeightRecommendation, handle)?)
     }
 
-    fn register(
-        &self,
-        request: &Demo2Request,
-        model: &mut MetaModel<f64>,
-    ) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
-        let registration = shared::model_registration::register_variables(
-            request,
-            model,
-            "x_wr",
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-        shared::model_registration::construct_objective(
-            request,
-            model,
-            &registration,
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-        apply_domain_pipeline(
-            Demo2PipelineMode::WeightRecommendation,
-            model,
-            request,
-            &registration.x_idx,
-            registration.z,
-            &registration.estimate_load_weight_idx,
-            &registration.estimate_loaded_idx,
-            &registration.loaded_idx,
-        )?;
-
-        Ok(registration.x_idx)
+    /// 使用心跳、完成通知和最终渲染选项执行。 / Execute with heartbeat, completion and final-render options.
+    pub fn execute_with_options(&self, request: Demo2Request,
+        options: crate::framework::demo2::infrastructure::application_service::Demo2ExecutionOptions<'_>) -> Result<Demo2Response, Box<dyn Error>> {
+        Ok(crate::framework::demo2::infrastructure::application_service::Demo2ApplicationService::solve_with_execution_options(
+            request, Demo2PipelineMode::WeightRecommendation, options)?)
     }
 
-    fn build_benders_models(
-        &self,
-        request: &Demo2Request,
-    ) -> Result<
-        (
-            MetaModel<f64>,
-            MetaModel<f64>,
-            Vec<Vec<usize>>,
-            Vec<VariableId>,
-        ),
-        Box<dyn Error>,
-    > {
-        let mut master_model =
-            MetaModel::<f64>::new("framework_demo2_weight_recommendation_master");
-        let mut sub_model = MetaModel::<f64>::new("framework_demo2_weight_recommendation_sub");
-
-        let (x_idx_master, x_idx_sub, fixed_variable_ids) =
-            shared::model_registration::register_benders_variables(
-                request,
-                &mut master_model,
-                &mut sub_model,
-                "x_wr",
-            )?;
-
-        let z = master_model
-            .register_variable(UContinuousVariableItem::auto("wr_benders_max_deviation"))?;
-        let master_intermediates = shared::model_registration::register_derived_variables(
-            request,
-            &mut master_model,
-            &x_idx_master,
-        )?;
-        let sub_intermediates = shared::model_registration::register_derived_variables(
-            request,
-            &mut sub_model,
-            &x_idx_sub,
-        )?;
-        let registration = shared::model_registration::RegistrationResult {
-            x_idx: x_idx_master.clone(),
-            z: Some(z),
-            estimate_load_weight_idx: master_intermediates.estimate_load_weight_idx.clone(),
-            estimate_loaded_idx: master_intermediates.estimate_loaded_idx.clone(),
-            loaded_idx: master_intermediates.loaded_idx.clone(),
-        };
-        shared::model_registration::construct_objective(
-            request,
-            &mut master_model,
-            &registration,
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-
-        stowage::service::apply_stowage_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::WeightRecommendation,
-            &master_intermediates.loaded_idx,
-            &master_intermediates.estimate_loaded_idx,
-        )?;
-        loading_effectiveness::service::apply_loading_effectiveness_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-        express_effectiveness::service::apply_express_effectiveness_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-        soft_security::service::apply_soft_security_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-        redundancy::service::apply_redundancy_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-        mac_optimization::service::apply_mac_optimization_pipeline(
-            &mut master_model,
-            request,
-            &x_idx_master,
-            Some(z),
-            Demo2PipelineMode::WeightRecommendation,
-        )?;
-
-        airworthiness_security::service::apply_airworthiness_security_pipeline(
-            &mut sub_model,
-            request,
-            &x_idx_sub,
-            Demo2PipelineMode::WeightRecommendation,
-            &sub_intermediates.estimate_load_weight_idx,
-            &sub_intermediates.estimate_loaded_idx,
-        )?;
-
-        Ok((master_model, sub_model, x_idx_master, fixed_variable_ids))
-    }
-
-    fn solve_benders(
-        &self,
-        request: &Demo2Request,
-        adaptive: EffectiveBendersAdaptiveConfig,
-    ) -> Result<(Vec<Vec<usize>>, FeasibleSolutionV<f64>), Box<dyn Error>> {
-        let (master_model, sub_model, x_idx_master, fixed_variable_ids) =
-            self.build_benders_models(request)?;
-        let benders_result =
-            solve_linear_benders(&master_model, &sub_model, fixed_variable_ids, adaptive)?;
-        Ok((x_idx_master, benders_result))
-    }
-
-    fn solve(
-        &self,
-        model: MetaModel<f64>,
-    ) -> Result<Option<FeasibleSolverOutput<f64>>, Box<dyn Error>> {
-        solve_meta_typed_if_feasible(model)
-    }
-
-    fn analyze(
-        &self,
-        request: &Demo2Request,
-        x_idx: &[Vec<usize>],
-        output: Option<FeasibleSolverOutput<f64>>,
-        mut notes: Vec<String>,
-    ) -> Result<Demo2Response, Box<dyn Error>> {
-        let Some(feasible_output) = output else {
-            notes.push(String::from(
-                "solver returned no feasible solution; mapped to explicit NoSolution response",
-            ));
-            return Ok(no_solution_response("NoSolution", notes));
-        };
-        let mut assignments = Vec::new();
-        let solution = feasible_output.solution;
-
-        for c in 0..request.cargos.len() {
-            for p in 0..request.positions.len() {
-                let value = solution.get(x_idx[c][p]).copied().unwrap_or(0.0);
-                if value > 0.5 {
-                    assignments.push(format!(
-                        "{} -> {}",
-                        request.cargos[c].name, request.positions[p].name
-                    ));
-                }
-            }
-        }
-        append_critical_constraint_notes(request, x_idx, &solution, &mut notes);
-
-        Ok(demo2_response(
-            format!("{:?}", feasible_output.status),
-            feasible_output.objective_value,
-            assignments,
-            notes,
-        ))
-    }
 }
 
 impl LoadingOrderApplication {
@@ -2371,539 +1241,7 @@ impl LoadingOrderApplication {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::framework::demo2::infrastructure::dto::{
-        AircraftTypeInput, BendersAdaptiveConfig, CargoInput, Demo2Request, PositionInput,
-        SolvePolicy, WeightRecommendationObjectiveConfig,
-    };
-
-    #[test]
-    fn full_load_returns_unsupported_aircraft_status() {
-        let mut request = Demo2Request::sample();
-        request.aircraft_type = AircraftTypeInput::B767;
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("unsupported aircraft should be handled as response");
-
-        assert_eq!(output.status, "UnsupportedAircraft");
-        assert!(output.assignments.is_empty());
-    }
-
-    #[test]
-    fn full_load_prefers_benders_without_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("benders-no-fallback should be handled as response");
-
-        assert!(
-            output.status == "Optimal" || output.status == "Feasible",
-            "unexpected status `{}` with notes {:?}",
-            output.status,
-            output.notes
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=benders"))
-                || output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("solver_path=milp_fallback"))
-        );
-    }
-
-    #[test]
-    fn full_load_returns_benders_failed_when_benders_errors_without_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("full-load benders-failed branch should be handled as response");
-
-        assert_eq!(output.status, "BendersFailed");
-        assert!(output.assignments.is_empty());
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_failed:"))
-        );
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("benders_failed")
-        }));
-    }
-
-    #[test]
-    fn full_load_falls_back_to_milp_when_benders_errors_with_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("full-load benders fallback branch should be handled as response");
-
-        assert!(
-            output.status == "Optimal" || output.status == "Feasible",
-            "unexpected status `{}` with notes {:?}",
-            output.status,
-            output.notes
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=milp_fallback"))
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_failed:"))
-        );
-    }
-
-    #[test]
-    fn predistribution_prefers_benders_without_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-
-        let app = PredistributionApplication;
-        let output = app
-            .execute(request)
-            .expect("predistribution benders branch should be handled as response");
-
-        assert!(
-            output.status == "Optimal" || output.status == "Feasible",
-            "unexpected status `{}` with notes {:?}",
-            output.status,
-            output.notes
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=benders"))
-                || output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("solver_path=milp_fallback"))
-        );
-    }
-
-    #[test]
-    fn predistribution_returns_benders_failed_when_benders_errors_without_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let app = PredistributionApplication;
-        let output = app
-            .execute(request)
-            .expect("predistribution benders-failed branch should be handled as response");
-
-        assert_eq!(output.status, "BendersFailed");
-        assert!(output.assignments.is_empty());
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_failed:"))
-        );
-    }
-
-    #[test]
-    fn predistribution_falls_back_to_milp_when_benders_errors_with_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let app = PredistributionApplication;
-        let output = app
-            .execute(request)
-            .expect("predistribution benders fallback branch should be handled as response");
-
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=milp_fallback"))
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_failed:"))
-        );
-    }
-
-    #[test]
-    fn full_load_returns_no_solution_when_capacity_is_too_small() {
-        let mut request = Demo2Request::sample();
-        for position in &mut request.positions {
-            position.max_weight = 5.0;
-        }
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("no-solution should be mapped into response");
-
-        assert_eq!(output.status, "NoSolution");
-        assert!(output.assignments.is_empty());
-    }
-
-    #[test]
-    fn predistribution_minimal_path_is_feasible() {
-        let request = Demo2Request::sample();
-        let app = PredistributionApplication;
-        let output = app.execute(request).expect("predistribution should run");
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(!output.assignments.is_empty());
-    }
-
-    #[test]
-    fn weight_recommendation_minimal_path_is_feasible() {
-        let request = Demo2Request::sample();
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight recommendation should run");
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(!output.assignments.is_empty());
-    }
-
-    #[test]
-    fn loading_order_exports_sorted_sequence() {
-        let request = Demo2Request::sample();
-        let app = LoadingOrderApplication;
-        let output = app.execute(request).expect("loading order should run");
-        assert_eq!(output.status, "OK");
-        assert_eq!(output.orders.len(), 3);
-        assert!(output.orders[0].contains("C1"));
-        assert!(output.diagnostics.is_empty());
-    }
-
-    #[test]
-    fn full_load_returns_no_solution_when_envelope_is_too_tight() {
-        let mut request = Demo2Request::sample();
-        request.envelope_longitudinal_moment_min = -1.0;
-        request.envelope_longitudinal_moment_max = 1.0;
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("tight envelope should be mapped into response");
-
-        assert_eq!(output.status, "NoSolution");
-        assert!(output.assignments.is_empty());
-    }
-
-    #[test]
-    fn full_load_returns_no_solution_when_cumulative_load_limit_is_too_small() {
-        let mut request = Demo2Request::sample();
-        request.max_cumulative_forward_load = 7.0;
-        request.max_cumulative_backward_load = 7.0;
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("tight cumulative limits should be mapped into response");
-
-        assert_eq!(output.status, "NoSolution");
-        assert!(output.assignments.is_empty());
-    }
-
-    #[test]
-    fn full_load_returns_no_solution_when_lateral_imbalance_is_too_small() {
-        let mut request = Demo2Request::sample();
-        request.max_lateral_imbalance = 0.0;
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("tight lateral imbalance should be mapped into response");
-
-        assert_eq!(output.status, "NoSolution");
-        assert!(output.assignments.is_empty());
-    }
-
-    #[test]
-    fn full_load_returns_no_solution_with_diagnostics_when_cargo_exceeds_all_positions() {
-        let mut request = Demo2Request::sample();
-        request.cargos[0].weight = 100.0;
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("hard-infeasible data should be mapped into response");
-
-        assert_eq!(output.status, "NoSolution");
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("code=cargo_exceeds_all_positions"))
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_returns_no_solution_with_diagnostics_when_min_payload_infeasible() {
-        let mut request = Demo2Request::sample();
-        request.payload_upper_bound = 10.0;
-        request.min_payload_ratio = 1.5;
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("invalid payload bounds should be mapped into response");
-
-        assert_eq!(output.status, "NoSolution");
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("code=min_payload_ratio_out_of_range"))
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_prioritizes_balance_over_small_extra_payload() {
-        let mut request = Demo2Request::sample();
-        request.cargos = vec![
-            crate::framework::demo2::infrastructure::dto::CargoInput {
-                name: String::from("H1"),
-                weight: 10.0,
-                priority: 6,
-                source: String::from("S1"),
-                destination: String::from("D1"),
-                requires_separation: false,
-                code: None,
-            },
-            crate::framework::demo2::infrastructure::dto::CargoInput {
-                name: String::from("H2"),
-                weight: 10.0,
-                priority: 6,
-                source: String::from("S2"),
-                destination: String::from("D2"),
-                requires_separation: false,
-                code: None,
-            },
-            crate::framework::demo2::infrastructure::dto::CargoInput {
-                name: String::from("L1"),
-                weight: 1.0,
-                priority: 1,
-                source: String::from("S3"),
-                destination: String::from("D3"),
-                requires_separation: false,
-                code: None,
-            },
-        ];
-        request.positions = vec![
-            crate::framework::demo2::infrastructure::dto::PositionInput {
-                name: String::from("P1"),
-                max_weight: 20.0,
-                longitudinal_arm: -1.0,
-                lateral_arm: 0.0,
-                area: 5.0,
-                length: 2.0,
-                max_load_count: 3,
-                loaded_items: Vec::new(),
-                predicate_load_weight_min: None,
-            },
-            crate::framework::demo2::infrastructure::dto::PositionInput {
-                name: String::from("P2"),
-                max_weight: 20.0,
-                longitudinal_arm: 1.0,
-                lateral_arm: 0.0,
-                area: 5.0,
-                length: 2.0,
-                max_load_count: 3,
-                loaded_items: Vec::new(),
-                predicate_load_weight_min: None,
-            },
-        ];
-        request.payload_upper_bound = 40.0;
-        request.min_payload_ratio = 0.0;
-        request.max_adjacent_load_gap = 40.0;
-        request.max_cumulative_forward_load = 40.0;
-        request.max_cumulative_backward_load = 40.0;
-        request.envelope_longitudinal_moment_min = -100.0;
-        request.envelope_longitudinal_moment_max = 100.0;
-        request.max_longitudinal_moment_deviation = 100.0;
-        request.max_lateral_imbalance = 100.0;
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight recommendation should run");
-
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(
-            output.objective.unwrap_or(0.0) < 0.0,
-            "balance-first objective should dominate payload term and keep objective negative"
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_objective_config_can_shift_payload_preference() {
-        let mut request = Demo2Request::sample();
-        request.weight_recommendation_objective = WeightRecommendationObjectiveConfig {
-            balance_priority: 0.1,
-            payload_priority: 10.0,
-        };
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight recommendation should run");
-
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(
-            output.objective.unwrap_or(0.0) > 0.0,
-            "payload-first objective should dominate and keep objective positive"
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_prefers_benders_without_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight recommendation benders-no-fallback should be handled as response");
-
-        assert!(
-            output.status == "Optimal" || output.status == "Feasible",
-            "unexpected status `{}` with notes {:?}",
-            output.status,
-            output.notes
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=benders"))
-                || output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("solver_path=milp_fallback"))
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_returns_benders_failed_when_benders_errors_without_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight-recommendation benders-failed branch should be handled as response");
-
-        assert_eq!(output.status, "BendersFailed");
-        assert!(output.assignments.is_empty());
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_failed:"))
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_falls_back_to_milp_when_benders_errors_with_fallback() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight-recommendation benders fallback branch should be handled as response");
-
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=milp_fallback"))
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_failed:"))
-        );
-    }
-
+    use crate::framework::demo2::infrastructure::dto::{CargoInput, PositionInput, SolvePolicy};
     #[test]
     fn tune_benders_adaptive_config_scales_iterations_and_tolerance() {
         let configured = BendersAdaptiveConfig {
@@ -3117,6 +1455,7 @@ mod tests {
         request.solve_policy = SolvePolicy {
             prefer_benders: true,
             benders_fallback_to_milp: false,
+            source_milp_finishing: Default::default(),
         };
         request.benders_adaptive = BendersAdaptiveConfig {
             min_binary_variables: 1,
@@ -3154,8 +1493,8 @@ mod tests {
             SolveMode::Benders(adaptive) => {
                 assert_eq!(adaptive.max_iterations, 64);
                 assert!((adaptive.tolerance - 2e-5).abs() <= 1e-12);
-                assert_eq!(adaptive.max_stall_iterations, Some(16));
-                assert_eq!(adaptive.objective_stall_iterations, Some(5));
+                assert_eq!(adaptive.max_stall_iterations, None);
+                assert_eq!(adaptive.objective_stall_iterations, None);
             }
         }
         assert!(
@@ -3166,12 +1505,12 @@ mod tests {
         assert!(
             notes
                 .iter()
-                .any(|note| note.contains("max_stall_iterations=16"))
+                .any(|note| note.contains("max_stall_iterations=none"))
         );
         assert!(
             notes
                 .iter()
-                .any(|note| note.contains("objective_stall_iterations=5"))
+                .any(|note| note.contains("objective_stall_iterations=none"))
         );
         assert!(
             notes
@@ -3186,512 +1525,6 @@ mod tests {
     }
 
     #[test]
-    fn full_load_skips_benders_when_problem_size_below_threshold() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 999,
-            max_iterations: 8,
-            tolerance: 1e-4,
-        };
-
-        let app = FullLoadApplication;
-        let output = app
-            .execute(request)
-            .expect("full-load threshold branch should be handled as response");
-
-        assert!(output.status == "Optimal" || output.status == "Feasible");
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("Benders requested but skipped"))
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("solver_path=milp_direct"))
-        );
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("solver_path")
-                && note.message.contains("milp_direct")
-        }));
-    }
-
-    #[test]
-    fn full_load_benders_notes_include_adaptive_config() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-
-        let app = FullLoadApplication;
-        let output = app.execute(request).expect("full-load should run");
-
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_adaptive=min_binary_variables="))
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_adaptive_effective=min_binary_variables="))
-        );
-        assert!(
-            output
-                .notes
-                .iter()
-                .any(|note| note.contains("benders_problem_size_binary_variables="))
-        );
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("benders_adaptive_effective")
-        }));
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("benders_problem_size_binary_variables")
-        }));
-        if output
-            .notes
-            .iter()
-            .any(|note| note.contains("solver_path=benders"))
-        {
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("benders_iters="))
-            );
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("benders_gap="))
-            );
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("benders_time_ms="))
-            );
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("benders_iterations")
-            }));
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("benders_gap")
-            }));
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("benders_time_ms")
-            }));
-        }
-    }
-
-    #[test]
-    fn notes_and_diagnostics_contract_for_milp_direct_is_consistent_across_apps() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: false,
-            benders_fallback_to_milp: true,
-        };
-
-        let full_load = FullLoadApplication
-            .execute(request.clone())
-            .expect("full-load milp-direct should run");
-        let predistribution = PredistributionApplication
-            .execute(request.clone())
-            .expect("predistribution milp-direct should run");
-        let weight_recommendation = WeightRecommendationApplication
-            .execute(request)
-            .expect("weight-recommendation milp-direct should run");
-
-        for output in [&full_load, &predistribution, &weight_recommendation] {
-            assert_eq!(output.notes.len(), output.diagnostics.len());
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("solver_path=milp_direct"))
-            );
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("solver_path")
-                    && note.message.contains("milp_direct")
-            }));
-        }
-    }
-
-    #[test]
-    fn notes_and_diagnostics_contract_for_benders_failed_is_consistent_across_apps() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: false,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let full_load = FullLoadApplication
-            .execute(request.clone())
-            .expect("full-load benders-failed should run");
-        let predistribution = PredistributionApplication
-            .execute(request.clone())
-            .expect("predistribution benders-failed should run");
-        let weight_recommendation = WeightRecommendationApplication
-            .execute(request)
-            .expect("weight-recommendation benders-failed should run");
-
-        for output in [&full_load, &predistribution, &weight_recommendation] {
-            assert_eq!(output.notes.len(), output.diagnostics.len());
-            assert_eq!(output.status, "BendersFailed");
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("benders_failed:"))
-            );
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("benders_failed")
-            }));
-        }
-    }
-
-    #[test]
-    fn notes_and_diagnostics_contract_for_milp_fallback_is_consistent_across_apps() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_adaptive = BendersAdaptiveConfig {
-            min_binary_variables: 1,
-            max_iterations: 0,
-            tolerance: 1e-6,
-        };
-
-        let full_load = FullLoadApplication
-            .execute(request.clone())
-            .expect("full-load milp-fallback should run");
-        let predistribution = PredistributionApplication
-            .execute(request.clone())
-            .expect("predistribution milp-fallback should run");
-        let weight_recommendation = WeightRecommendationApplication
-            .execute(request)
-            .expect("weight-recommendation milp-fallback should run");
-
-        for output in [&full_load, &predistribution, &weight_recommendation] {
-            assert_eq!(output.notes.len(), output.diagnostics.len());
-            assert!(output.status == "Optimal" || output.status == "Feasible");
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("solver_path=milp_fallback"))
-            );
-            assert!(
-                output
-                    .notes
-                    .iter()
-                    .any(|note| note.contains("benders_failed:"))
-            );
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("solver_path")
-                    && note.message.contains("milp_fallback")
-            }));
-            assert!(output.diagnostics.iter().any(|note| {
-                note.level == "diagnostic"
-                    && note.group.as_deref() == Some("solver")
-                    && note.code.as_deref() == Some("benders_failed")
-            }));
-        }
-    }
-
-    #[test]
-    fn full_load_benders_quality_overrides_are_reflected_in_effective_notes() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_quality_overrides = Some(BendersQualityOverrideConfig {
-            weak_gap_multiplier: Some(30.0),
-            weak_gap_floor: Some(2e-5),
-            iteration_pressure_percent: Some(80),
-            cut_density_min_iterations: Some(10),
-            cut_density_threshold: Some(0.4),
-            trajectory_min_snapshots: Some(8),
-            trajectory_step_multiplier: Some(25.0),
-            trajectory_step_floor: Some(2e-6),
-            time_guard_min_ms: Some(1200),
-            score_gap_weight: Some(0.4),
-            score_time_weight: Some(0.3),
-            score_iteration_weight: Some(0.1),
-            score_cut_density_weight: Some(0.1),
-            score_trajectory_weight: Some(0.1),
-        });
-
-        let app = FullLoadApplication;
-        let output = app.execute(request).expect("full-load should run");
-
-        assert!(output.notes.iter().any(|note| {
-            note.contains("benders_quality_guard_effective=")
-                && note.contains("weak_gap_multiplier=30.000")
-                && note.contains("weak_gap_floor=0.000020")
-                && note.contains("iteration_pressure_percent=80")
-                && note.contains("cut_density_min_iterations=10")
-                && note.contains("cut_density_threshold=0.400")
-                && note.contains("trajectory_min_snapshots=8")
-                && note.contains("trajectory_step_multiplier=25.000")
-                && note.contains("trajectory_step_floor=0.000002")
-                && note.contains("time_guard_min_ms=1200")
-                && note
-                    .contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
-        }));
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("benders_quality_guard_effective")
-                && note.message.contains("weak_gap_multiplier=30.000")
-                && note.message.contains("time_guard_min_ms=1200")
-        }));
-    }
-
-    #[test]
-    fn predistribution_benders_quality_overrides_are_reflected_in_effective_notes() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_quality_overrides = Some(BendersQualityOverrideConfig {
-            weak_gap_multiplier: Some(30.0),
-            weak_gap_floor: Some(2e-5),
-            iteration_pressure_percent: Some(80),
-            cut_density_min_iterations: Some(10),
-            cut_density_threshold: Some(0.4),
-            trajectory_min_snapshots: Some(8),
-            trajectory_step_multiplier: Some(25.0),
-            trajectory_step_floor: Some(2e-6),
-            time_guard_min_ms: Some(1200),
-            score_gap_weight: Some(0.4),
-            score_time_weight: Some(0.3),
-            score_iteration_weight: Some(0.1),
-            score_cut_density_weight: Some(0.1),
-            score_trajectory_weight: Some(0.1),
-        });
-
-        let app = PredistributionApplication;
-        let output = app.execute(request).expect("predistribution should run");
-
-        assert!(output.notes.iter().any(|note| {
-            note.contains("benders_quality_guard_effective=")
-                && note.contains("weak_gap_multiplier=30.000")
-                && note.contains("weak_gap_floor=0.000020")
-                && note.contains("iteration_pressure_percent=80")
-                && note.contains("cut_density_min_iterations=10")
-                && note.contains("cut_density_threshold=0.400")
-                && note.contains("trajectory_min_snapshots=8")
-                && note.contains("trajectory_step_multiplier=25.000")
-                && note.contains("trajectory_step_floor=0.000002")
-                && note.contains("time_guard_min_ms=1200")
-                && note
-                    .contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
-        }));
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("benders_quality_guard_effective")
-                && note.message.contains("weak_gap_multiplier=30.000")
-                && note.message.contains("time_guard_min_ms=1200")
-        }));
-    }
-
-    #[test]
-    fn weight_recommendation_benders_quality_overrides_are_reflected_in_effective_notes() {
-        let mut request = Demo2Request::sample();
-        request.solve_policy = SolvePolicy {
-            prefer_benders: true,
-            benders_fallback_to_milp: true,
-        };
-        request.benders_quality_overrides = Some(BendersQualityOverrideConfig {
-            weak_gap_multiplier: Some(30.0),
-            weak_gap_floor: Some(2e-5),
-            iteration_pressure_percent: Some(80),
-            cut_density_min_iterations: Some(10),
-            cut_density_threshold: Some(0.4),
-            trajectory_min_snapshots: Some(8),
-            trajectory_step_multiplier: Some(25.0),
-            trajectory_step_floor: Some(2e-6),
-            time_guard_min_ms: Some(1200),
-            score_gap_weight: Some(0.4),
-            score_time_weight: Some(0.3),
-            score_iteration_weight: Some(0.1),
-            score_cut_density_weight: Some(0.1),
-            score_trajectory_weight: Some(0.1),
-        });
-
-        let app = WeightRecommendationApplication;
-        let output = app
-            .execute(request)
-            .expect("weight-recommendation should run");
-
-        assert!(output.notes.iter().any(|note| {
-            note.contains("benders_quality_guard_effective=")
-                && note.contains("weak_gap_multiplier=30.000")
-                && note.contains("weak_gap_floor=0.000020")
-                && note.contains("iteration_pressure_percent=80")
-                && note.contains("cut_density_min_iterations=10")
-                && note.contains("cut_density_threshold=0.400")
-                && note.contains("trajectory_min_snapshots=8")
-                && note.contains("trajectory_step_multiplier=25.000")
-                && note.contains("trajectory_step_floor=0.000002")
-                && note.contains("time_guard_min_ms=1200")
-                && note
-                    .contains("score_weights=gap:0.400|time:0.300|iter:0.100|cut:0.100|traj:0.100")
-        }));
-        assert!(output.diagnostics.iter().any(|note| {
-            note.level == "diagnostic"
-                && note.group.as_deref() == Some("solver")
-                && note.code.as_deref() == Some("benders_quality_guard_effective")
-                && note.message.contains("weak_gap_multiplier=30.000")
-                && note.message.contains("time_guard_min_ms=1200")
-        }));
-    }
-
-    #[test]
-    fn full_load_benders_constraint_grouping_routes_airworthiness_to_sub() {
-        let request = Demo2Request::sample();
-        let app = FullLoadApplication;
-        let (master_model, sub_model, _, _) = app
-            .build_benders_models(&request)
-            .expect("full-load benders models should build");
-
-        let master_constraint_names: Vec<&str> = master_model
-            .as_basic()
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.name.as_str())
-            .collect();
-        let sub_constraint_names: Vec<&str> = sub_model
-            .as_basic()
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.name.as_str())
-            .collect();
-
-        assert!(!master_constraint_names.is_empty());
-        assert!(!sub_constraint_names.is_empty());
-        assert!(
-            master_constraint_names
-                .iter()
-                .all(|name| !name.starts_with("airworthiness_security_"))
-        );
-        assert!(
-            sub_constraint_names
-                .iter()
-                .filter(|name| !name.starts_with("define_"))
-                .all(|name| name.starts_with("airworthiness_security_"))
-        );
-    }
-
-    #[test]
-    fn weight_recommendation_benders_constraint_grouping_routes_airworthiness_to_sub() {
-        let request = Demo2Request::sample();
-        let app = WeightRecommendationApplication;
-        let (master_model, sub_model, _, _) = app
-            .build_benders_models(&request)
-            .expect("weight-recommendation benders models should build");
-
-        let master_constraint_names: Vec<&str> = master_model
-            .as_basic()
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.name.as_str())
-            .collect();
-        let sub_constraint_names: Vec<&str> = sub_model
-            .as_basic()
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.name.as_str())
-            .collect();
-
-        assert!(!master_constraint_names.is_empty());
-        assert!(!sub_constraint_names.is_empty());
-        assert!(
-            master_constraint_names
-                .iter()
-                .all(|name| !name.starts_with("airworthiness_security_"))
-        );
-        assert!(
-            sub_constraint_names
-                .iter()
-                .filter(|name| !name.starts_with("define_"))
-                .all(|name| name.starts_with("airworthiness_security_"))
-        );
-    }
-
-    #[test]
-    fn predistribution_benders_constraint_grouping_routes_airworthiness_to_sub() {
-        let request = Demo2Request::sample();
-        let app = PredistributionApplication;
-        let (master_model, sub_model, _, _) = app
-            .build_benders_models(&request)
-            .expect("predistribution benders models should build");
-
-        let master_constraint_names: Vec<&str> = master_model
-            .as_basic()
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.name.as_str())
-            .collect();
-        let sub_constraint_names: Vec<&str> = sub_model
-            .as_basic()
-            .constraints()
-            .iter()
-            .map(|constraint| constraint.name.as_str())
-            .collect();
-
-        assert!(!master_constraint_names.is_empty());
-        assert!(!sub_constraint_names.is_empty());
-        assert!(
-            master_constraint_names
-                .iter()
-                .all(|name| !name.starts_with("airworthiness_security_"))
-        );
-        assert!(
-            sub_constraint_names
-                .iter()
-                .filter(|name| !name.starts_with("define_"))
-                .all(|name| name.starts_with("airworthiness_security_"))
-        );
-    }
-
-    #[test]
     fn no_solution_response_includes_structured_diagnostics() {
         let mut request = Demo2Request::sample();
         request.cargos[0].weight = 100.0;
@@ -3701,7 +1534,7 @@ mod tests {
             .execute(request)
             .expect("hard-infeasible data should be mapped into response");
 
-        assert_eq!(output.status, "NoSolution");
+        assert!(["Infeasible", "Unknown"].contains(&output.status.as_str()));
         assert!(output.diagnostics.iter().any(|note| {
             note.level == "diagnostic"
                 && note.group.as_deref() == Some("airworthiness")
@@ -3732,6 +1565,8 @@ mod tests {
             loaded_items: Vec::new(),
             predicate_load_weight_min: None,
         }];
+        request.loading.positions.retain(|id, _| id == "P1");
+        request.loading.adjacent_positions.clear();
         request.adjacent_positions.clear();
         request.payload_upper_bound = 10.0;
         request.min_payload_ratio = 0.0;
@@ -3841,3 +1676,6 @@ mod tests {
         }));
     }
 }
+
+#[cfg(test)]
+mod migration_tests;

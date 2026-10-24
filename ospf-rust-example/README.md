@@ -24,7 +24,7 @@ Explicit non-goals:
 | `src/example_modeling.rs` | Shared modeling and typed solve helpers. |
 | `src/core` | Core modeling demos, shortcut APIs, capability gates, and backend-aware examples. |
 | `src/framework/demo1` | Framework routing/bandwidth context example. |
-| `src/framework/demo2` | Adaptive Benders / MILP fallback behavior contract example. |
+| [`src/framework/demo2`](src/framework/demo2/README.md) | Complete shared aviation registration: FullLoad, Predistribution and WeightRecommendation, with MILP, safe Benders and independent partition CG. |
 | `src/framework/demo3` | CSP1D-facing demo scaffold. |
 | `src/framework/demo4` | Lossless flight recovery, managed Gantt master, Network path pricing and actual result extraction. |
 | `src/framework/demo5` | Solomon parser/adapter and VRPTW Branch-and-Price solver wiring. |
@@ -40,7 +40,7 @@ The crate is primarily executable. The stable surface is its command names and d
 | `core:capability-gate` | Capability gating demo. | Gurobi feature |
 | `core:shortcuts` | `MetaModel` shortcut API demo. | Gurobi feature |
 | `framework:demo1` | Framework routing/bandwidth context demo. | Gurobi feature |
-| `framework:demo2` | Adaptive Benders and MILP fallback demo. | Gurobi feature |
+| `framework:demo2` | Shared BPP1D/BPP2D aviation loading and actual solver-evidence demo. | Gurobi feature |
 | `framework:demo3` | CSP1D scaffold entry. | Gurobi feature |
 | `framework:demo4` | Flight-recovery domain showcase or actual Gantt column-generation application. | `demo4-offline` or `demo4-gurobi-cg` |
 | `framework:demo5` | VRPTW Branch-and-Price demo. | `demo5-gurobi-bp` or `demo5-scip-bp` |
@@ -112,22 +112,22 @@ Solver and pricing failure paths are covered by the network crate's offline test
 
 ## Demo2 Benders Behavior Contract
 
-`framework::demo2` supports adaptive Benders with optional MILP fallback.
+`framework::demo2` uses the shared fixed-recourse Benders service with optional fresh-model MILP fallback.
 
-When `prefer_benders=true`, the application derives an effective adaptive profile from problem size (`cargo_count * position_count`) and emits both configured and effective settings in notes. The effective profile includes `max_stall_iterations` for cut stagnation and `objective_stall_iterations` for objective-improvement stagnation.
+When `prefer_benders=true`, the application selects Benders using the actual sparse assignment count and emits configured and effective settings. Legacy cut/objective stall controls are explicitly inactive in the safe fixed-recourse service; they do not silently alter stopping or fallback.
 
 ### Status and Path Semantics
 
-1. `prefer_benders=false`: solve directly with MILP; diagnostics include `solver_path=milp_direct`.
-2. `prefer_benders=true` and Benders succeeds: response status is `Feasible` or `Optimal`; diagnostics include `solver_path=benders`.
-3. `prefer_benders=true`, Benders fails, and `benders_fallback_to_milp=true`: application retries with MILP; final path is `solver_path=milp_fallback`; `benders_failed` remains observable.
-4. `prefer_benders=true`, Benders fails, and `benders_fallback_to_milp=false`: response status is `BendersFailed`; no MILP retry is performed.
+1. `prefer_benders=false`: solve directly with MILP unless independent partition CG is explicitly selected; diagnostics identify the actual path.
+2. Benders/CG accelerator incumbents stay `Feasible`; master/sub and restricted reports are not promoted. `solve_policy.source_milp_finishing` defaults to `IfUnproven`: without a complete-source terminal proof, a fresh equivalent source MILP finishes with reserved time and a validated warm start. `Disabled` appends no source solve and reserves no finishing time, while retaining full-source feasibility validation.
+3. Recoverable decomposition failures may use `benders_fallback_to_milp=true` to launch a fresh equivalent MILP with only the remaining total time. Input/modeling/callback errors, cancellation and exhausted time do not trigger fallback.
+4. The legacy fallback switch independently controls early fallback inside acceleration; disable it and set finishing to `Disabled` to prohibit all ordinary MILP solves after Benders. Cancellation/interruption and an exhausted total deadline never start another solve. Actual accelerator and certification evidence stay separate, without synthetic `BendersFailed` states.
 
-`BendersFailed` means the request terminates on the Benders error path. `milp_fallback` means Benders failed first, but the request recovered through MILP.
+`milp_fallback` records that a fresh MILP was attempted; it does not itself certify success. An empty or worse fallback result cannot discard a better validated decomposition incumbent. See the [complete Demo2 contract](src/framework/demo2/README.md) for terminal states, independent CG, callbacks and extraction.
 
 ### Quality Override
 
-`Demo2Request.benders_quality_overrides` can override online quality-guard thresholds per request. If omitted, default guard values are applied.
+`Demo2Request.benders_quality_overrides` overrides observational diagnostic thresholds. These diagnostics use actual available bounds and cut counts; they neither fabricate trajectories nor trigger fallback or discard an incumbent. If omitted, default diagnostic values are applied.
 
 Supported fields:
 

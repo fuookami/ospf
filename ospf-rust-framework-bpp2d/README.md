@@ -14,6 +14,16 @@ never drift apart on area conventions or overlap semantics.
 
 ## Scope
 
+### Discrete Loading
+
+`domain::discrete_loading::Bpp2dDiscreteLoading::context` adapts explicit `LoadingRectangle` bounds
+to the dimension-independent shared BPP context. Geometry and weight units have separate explicit
+adapters. Coordinates and extents remain in their original numeric domain; the adapter does not
+require `Float`. The longitudinal sweep refines candidates through the shared geometry kernel's
+normalized rectangle test, excludes touching edges, separates physical spaces and retains explicit
+conflict edges. Every position needs exactly one finite, positive rectangle. Layout groups remain
+optional and explicit. There is no dependency on BPP1D or aircraft-specific loading rules.
+
 The crate owns the reusable BPP2D kernel: item/sheet/layer models, BLA and block-loading layout, candidate
 layer generation, the layer-assignment modelling boundary, final packing with geometry validation, remnant
 reporting, and the column-generation application flow.

@@ -32,6 +32,8 @@
 | [`ospf-rust-core`](ospf-rust-core/README_ch.md) | `ospf-kotlin-core` | 变量、token、symbol、`MetaModel`、flatten、solver trait、solver output、IIS 和 backend adapter。 |
 | [`ospf-rust-framework`](ospf-rust-framework/README_ch.md) | `ospf-kotlin-framework` | pipeline 建模、shadow price、列生成、Benders、组合求解器、持久化契约、远程求解客户端和心跳工具。 |
 | [`ospf-rust-framework-geometry2d`](ospf-rust-framework-geometry2d/README_ch.md) | `ospf-kotlin-framework-geometry2d` | 共享二维量纲几何内核：量值算术、点与形状、放置、包围盒重叠、板材几何与刀缝，供 BPP2D 与 CSP2D 共用。 |
+| [`ospf-rust-framework-bpp`](ospf-rust-framework-bpp/README_ch.md) | `ospf-kotlin-framework-bpp` | 共享稀疏离散装载、有限容量整体占位、保全边的冲突、显式布局、原数值域复核及几何适配。 |
+| [`ospf-rust-framework-bpp1d`](ospf-rust-framework-bpp1d/README_ch.md) | `ospf-kotlin-framework-bpp1d` | 物理量精确需求装箱、有界组合列、统一 MILP/LP/final 注册、有限池列激活、严格 CSV、尾箱优化及一维离散装载。 |
 | [`ospf-rust-framework-bpp2d`](ospf-rust-framework-bpp2d/README_ch.md) | `ospf-kotlin-framework-bpp2d` | 可复用二维装箱框架，包括物品/板材/层模型、BLA 与块装载、候选层生成、层分配、装箱余料与列生成应用流程。 |
 | [`ospf-rust-framework-bpp3d`](ospf-rust-framework-bpp3d/README_ch.md) | `ospf-kotlin-framework-bpp3d` | 可复用三维装箱框架，包括 BPP3D context、层生成/分配、packing、CSV fixture 和 renderer DTO。 |
 | [`ospf-rust-framework-csp1d`](ospf-rust-framework-csp1d/README_ch.md) | `ospf-kotlin-framework-csp1d` | 可复用一维分切框架，包括 material、generation、produce、yield、waste、length 和 application flow。 |

@@ -1,0 +1,28 @@
+[package]
+name = "ospf-rust-framework-bpp"
+version = "1.1.0"
+edition = "2024"
+description = "Shared sparse discrete loading and partition packing framework"
+license.workspace = true
+readme = "README.md"
+
+[dependencies]
+ospf-rust-core = { path = "../ospf-rust-core", version = "1.1.0" }
+ospf-rust-framework = { path = "../ospf-rust-framework", version = "1.1.0" }
+ospf-rust-quantities = { path = "../ospf-rust-quantities", version = "1.1.0" }
+num-traits = "0.2.19"
+
+[features]
+default = []
+serde = ["ospf-rust-framework/serde"]
+async = ["ospf-rust-framework/async"]
+nightly = ["ospf-rust-framework/nightly"]
+big-rational = ["ospf-rust-framework/big-rational"]
+big-decimal = ["ospf-rust-framework/big-decimal"]
+gurobi10 = ["ospf-rust-framework/gurobi10"]
+gurobi11 = ["ospf-rust-framework/gurobi11"]
+gurobi12 = ["ospf-rust-framework/gurobi12"]
+scip = ["ospf-rust-framework/scip"]
+scip-bundled = ["ospf-rust-framework/scip-bundled"]
+scip-from-source = ["ospf-rust-framework/scip-from-source"]
+scip-quadratic = ["ospf-rust-framework/scip-quadratic"]

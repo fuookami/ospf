@@ -8,6 +8,7 @@
 
 pub mod bla;
 pub mod block_loading;
+pub mod discrete_loading;
 pub mod item;
 pub mod layer_assignment;
 pub mod layer_generation;

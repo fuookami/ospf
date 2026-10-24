@@ -1,11 +1,13 @@
 //! Demo2 数据传输对象 / Demo2 data transfer objects.
 pub mod kpi_response_dto;
+pub mod loading;
 pub mod loading_order_response_dto;
 pub mod render_dto;
 pub mod report_response_dto;
 pub mod running_heartbeat_dto;
 
 pub use kpi_response_dto::*;
+pub use loading::*;
 pub use loading_order_response_dto::*;
 pub use render_dto::*;
 pub use report_response_dto::*;
@@ -69,13 +71,25 @@ pub enum AircraftTypeInput {
     Unknown,
 }
 
+/// 加速阶段后的完整源 MILP 收尾策略，不控制源可行性复核。 / Complete-source MILP finishing policy after acceleration, independent of source-feasibility validation.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SourceMilpFinishingPolicy {
+    /// 不追加源求解，保留加速结果及真实证明边界。 / Do not append a source solve; retain the accelerator result and actual proof limits.
+    Disabled,
+    /// 缺少完整源终局证明且未取消、仍有预算时收尾。 / Finish when a complete-source terminal proof is missing, unless cancelled or out of budget.
+    #[default]
+    IfUnproven,
+}
+
 /// 求解策略配置 / Solve policy configuration
 #[derive(Clone, Copy, Debug)]
 pub struct SolvePolicy {
     /// 是否优先使用 Benders 分解 / Whether to prefer Benders decomposition
     pub prefer_benders: bool,
-    /// Benders 失败时是否回退到 MILP / Whether to fall back to MILP when Benders fails
+    /// 加速阶段内 Benders 失败时是否提前回退；独立于源收尾策略。 / Allow early MILP fallback inside acceleration, independently of source finishing policy.
     pub benders_fallback_to_milp: bool,
+    /// 完整源 MILP 收尾策略；默认仅在缺少源终局证明时启用。 / Complete-source MILP finishing policy; defaults to finishing only without a source terminal proof.
+    pub source_milp_finishing: SourceMilpFinishingPolicy,
 }
 
 /// Benders 自适应配置 / Benders adaptive configuration
@@ -159,6 +173,8 @@ pub struct PositionPair {
 /// Demo2 请求数据 / Demo2 request data
 #[derive(Clone)]
 pub struct Demo2Request {
+    /// 共享离散装载合同。 / Shared discrete-loading contract.
+    pub loading: Demo2LoadingInput,
     /// 货物列表 / Cargo list
     pub cargos: Vec<CargoInput>,
     /// 货舱位置列表 / Position list
@@ -204,6 +220,16 @@ impl Demo2Request {
     /// 生成示例请求数据 / Generate sample request data
     pub fn sample() -> Self {
         Self {
+            loading: Demo2LoadingInput {
+                adjacent_positions: vec![("P1".into(), "P2".into())],
+                positions: ["P1", "P2"].into_iter().enumerate().map(|(p, id)| (id.into(), PositionLoadingInput {
+                    loading_order: p as i32, loading_order_scope: "main".into(), stowage_needed: true, adjustment_needed: false,
+                    space_id: "main".into(), front: p as f64 * 2.0, back: (p + 1) as f64 * 2.0,
+                    left: 0.0, right: 2.0, enabled: true, fixed_occupied: false, empty_forbidden: false,
+                    predicate_weight: None, recommended_weight: None,
+                })).collect(),
+                ..Default::default()
+            },
             cargos: vec![
                 CargoInput {
                     name: String::from("C1"),
@@ -261,6 +287,7 @@ impl Demo2Request {
             solve_policy: SolvePolicy {
                 prefer_benders: false,
                 benders_fallback_to_milp: true,
+                source_milp_finishing: SourceMilpFinishingPolicy::default(),
             },
             benders_adaptive: BendersAdaptiveConfig {
                 min_binary_variables: 4,
@@ -292,6 +319,22 @@ impl Demo2Request {
 
 /// Demo2 响应数据 / Demo2 response data
 pub struct Demo2Response {
+    /// 完整源模型实际报告，包含问题状态、终止、解存在性与证明。 / Actual full-source report, preserving problem status, termination, solution presence and proof.
+    pub solve_report: Option<ospf_rust_core::solver::SolveReport<f64>>,
+    /// 实际分解／受限模型报告，不提升为源证明。 / Actual decomposition/restricted reports, never promoted to source proofs.
+    pub algorithm_reports: Vec<ospf_rust_core::solver::SolveReport<f64>>,
+    /// 最终方案渲染，非中间 master 方案。 / Final-plan render, never an intermediate master plan.
+    pub render: Option<RenderDto>,
+    /// 最终完整重量 KPI。 / Final complete-weight KPIs.
+    pub kpi: Option<KpiResponseDto>,
+    /// 实际框架路径。 / Actual framework path.
+    pub framework_path: String,
+    /// 已选择布局。 / Selected layouts.
+    pub selected_layouts: std::collections::BTreeMap<String, String>,
+    /// 整体占位舱位。 / Whole occupied positions.
+    pub occupied_positions: std::collections::BTreeSet<String>,
+    /// 每舱位预测与推荐附加重量（kg）。 / Predicate and recommended additional weights by position (kg).
+    pub additional_weights: std::collections::BTreeMap<String, f64>,
     /// 求解状态 / Solve status
     pub status: String,
     /// 目标函数值 / Objective function value

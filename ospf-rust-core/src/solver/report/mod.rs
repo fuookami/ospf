@@ -1511,155 +1511,23 @@ pub fn require_optimal_lp_certificate_for_linear_model<'a>(
         ));
     }
 
-    let primal_objective = model
-        .c
-        .iter()
-        .zip(solution.values.iter())
-        .map(|(coefficient, value)| coefficient * value)
-        .sum::<f64>();
-    if !primal_objective.is_finite() {
-        return Err(invalid_report("optimal LP primal objective is not finite"));
-    }
     let reported_objective = solution
         .objective_value
         .or(solution.objective)
         .ok_or_else(|| invalid_report("optimal LP report has no objective value"))?;
-    if !reported_objective.is_finite()
-        || !approximately_equal_certificate(primal_objective, reported_objective)
-    {
-        return Err(invalid_report(
-            "optimal LP report objective does not match the linear model and solution",
-        ));
-    }
-    if !linear_dual_certificate_is_valid(model, &solution.values, certificate.dual) {
-        return Err(invalid_report(
-            "optimal LP dual fails independent sign, reduced-cost, or objective checks",
-        ));
-    }
+    crate::solver::linear_certificate::validate_linear_optimal_dual(
+        model, &solution.values, certificate.dual, Some(reported_objective),
+    )?;
     Ok(certificate)
 }
 
-const LINEAR_CERTIFICATE_TOLERANCE: f64 = 1e-7;
-
-fn approximately_equal_certificate(left: f64, right: f64) -> bool {
-    let scale = left.abs().max(right.abs()).max(1.0);
-    (left - right).abs() <= LINEAR_CERTIFICATE_TOLERANCE * scale
-}
-
-fn valid_linear_bound_pair(lower: f64, upper: f64) -> bool {
-    !(lower.is_nan()
-        || upper.is_nan()
-        || (lower.is_infinite() && lower.is_sign_positive())
-        || (upper.is_infinite() && upper.is_sign_negative()))
-        && lower <= upper
-}
-
+#[cfg(feature = "scip")]
 pub(crate) fn linear_dual_certificate_is_valid(
     model: &LinearTriadModel,
     values: &[f64],
     dual: &[f64],
 ) -> bool {
-    if values.len() != model.num_variables()
-        || dual.len() != model.num_constraints()
-        || !values.iter().all(|value| value.is_finite())
-        || !dual.iter().all(|value| value.is_finite())
-    {
-        return false;
-    }
-
-    let mut transposed_activity = vec![0.0; model.num_variables()];
-    for (row_index, row) in model.basic.A.rows.iter().enumerate() {
-        for (column, coefficient) in &row.entries {
-            if *column >= transposed_activity.len() || !coefficient.is_finite() {
-                return false;
-            }
-            transposed_activity[*column] += coefficient * dual[row_index];
-        }
-    }
-    if transposed_activity.iter().any(|value| !value.is_finite()) {
-        return false;
-    }
-
-    let dual_sign_is_valid = match model.objective_category {
-        crate::model::ObjectiveCategory::Maximum => dual
-            .iter()
-            .all(|value| *value >= -LINEAR_CERTIFICATE_TOLERANCE),
-        crate::model::ObjectiveCategory::Minimum => dual
-            .iter()
-            .all(|value| *value <= LINEAR_CERTIFICATE_TOLERANCE),
-    };
-    if !dual_sign_is_valid {
-        return false;
-    }
-
-    let primal_objective = model
-        .c
-        .iter()
-        .zip(values.iter())
-        .map(|(coefficient, value)| coefficient * value)
-        .sum::<f64>();
-    let mut dual_objective = model
-        .basic
-        .b
-        .iter()
-        .zip(dual.iter())
-        .map(|(rhs, dual_value)| rhs * dual_value)
-        .sum::<f64>();
-    if !primal_objective.is_finite() || !dual_objective.is_finite() {
-        return false;
-    }
-
-    for column in 0..model.num_variables() {
-        let lower = model.basic.lb[column];
-        let upper = model.basic.ub[column];
-        if !valid_linear_bound_pair(lower, upper) {
-            return false;
-        }
-        let value = values[column];
-        if (lower.is_finite() && value + LINEAR_CERTIFICATE_TOLERANCE < lower)
-            || (upper.is_finite() && value - LINEAR_CERTIFICATE_TOLERANCE > upper)
-        {
-            return false;
-        }
-
-        let reduced_cost = model.c[column] - transposed_activity[column];
-        if !reduced_cost.is_finite() {
-            return false;
-        }
-        let at_lower = lower.is_finite() && (value - lower).abs() <= LINEAR_CERTIFICATE_TOLERANCE;
-        let at_upper = upper.is_finite() && (value - upper).abs() <= LINEAR_CERTIFICATE_TOLERANCE;
-        let reduced_cost_is_valid = if at_lower && at_upper {
-            true
-        } else if at_lower {
-            match model.objective_category {
-                crate::model::ObjectiveCategory::Maximum => {
-                    reduced_cost <= LINEAR_CERTIFICATE_TOLERANCE
-                }
-                crate::model::ObjectiveCategory::Minimum => {
-                    reduced_cost >= -LINEAR_CERTIFICATE_TOLERANCE
-                }
-            }
-        } else if at_upper {
-            match model.objective_category {
-                crate::model::ObjectiveCategory::Maximum => {
-                    reduced_cost >= -LINEAR_CERTIFICATE_TOLERANCE
-                }
-                crate::model::ObjectiveCategory::Minimum => {
-                    reduced_cost <= LINEAR_CERTIFICATE_TOLERANCE
-                }
-            }
-        } else {
-            approximately_equal_certificate(reduced_cost, 0.0)
-        };
-        if !reduced_cost_is_valid {
-            return false;
-        }
-        if at_lower || at_upper {
-            dual_objective += reduced_cost * value;
-        }
-    }
-
-    dual_objective.is_finite() && approximately_equal_certificate(primal_objective, dual_objective)
+    crate::solver::linear_certificate::validate_linear_optimal_dual(model, values, dual, None).is_ok()
 }
 
 fn require_optimal_lp_certificate_inner<'a, V>(

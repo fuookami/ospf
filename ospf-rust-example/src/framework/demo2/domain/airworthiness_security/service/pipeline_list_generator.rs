@@ -32,11 +32,11 @@ mod tests {
 
     #[test]
     fn airworthiness_security_pipeline_applies_in_all_modes() {
-        assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 4);
-        assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 4);
+        assert_eq!(pipeline_steps(Demo2PipelineMode::FullLoad).len(), 5);
+        assert_eq!(pipeline_steps(Demo2PipelineMode::Predistribution).len(), 5);
         assert_eq!(
             pipeline_steps(Demo2PipelineMode::WeightRecommendation).len(),
-            4
+            5
         );
     }
 }

@@ -42,7 +42,8 @@
 1. `ActivitySchedulingContext::new` 接收 adapter、可选缓存费用策略和注册配置，
    在修改模型前完成全部可失败的费用、行系数和右端转换。
 2. 用 `register` 或 `register_with` 注册到 `MetaModel<f64>`。失败时模型与聚合暂存态
-   一起回滚，可重试；成功后归属单模型，不能重复注册。闭包外部副作用不保证回滚。
+   一起回滚，可重试；成功后归属单模型，不能重复注册。回滚只覆盖受管模型结构和聚合
+   暂存态，不覆盖闭包外部副作用或共享符号内部状态；扩展不得修改这些内部状态。
 3. 使用聚合暴露的源 token 变量与 `cost_expression` 追加规则或费用。
    本域只追加目标，不覆盖外部目标；`minimize_cost=false` 允许完全自定义目标。
 4. 全部扩展完成后 `compile`。私有构造的 `ActivityCompiledModel` 保存真实完整矩阵、
@@ -52,6 +53,7 @@
    也不能重放另一编译记录的执行结果。`extract_solution` 可审计裸报告并返回可行 payload，
    但不能提升任何证明。源模型变更后失效。
    提取入口自身检查完整向量、变量界、展开行、辅助整数性、维度、有限性和目标。
+   报告若附带映射，必须与完整编译模型匹配；无 incumbent 时同样核对，不能只验证映射自身一致。
    不可把完整 solver 向量直接回填源 token：DEFERRED fallback 可能增加列。
 
 `validate_activity_selection` 与 `ActivityPreparation::validate` 独立在原 V 域检查选择、
@@ -70,6 +72,10 @@
 报告后端 objective/bound/gap 均为编译模型 `c^T x` 口径。`objective_offset()` 单独保存
 按全局方向、子目标方向和权重归一化的声明常数；不能只给 objective 加常数而不处理 bound/gap。
 `ActivitySchedule::cost` 从原 V 缓存重算业务费用，排除下游目标和事实沉没费用。
+
+恒等 f64 模型保留可转移的结构化报告警告、统计扩展、诊断警告/问题/扩展及不可行证据。
+数字型行/变量界求值仍留在原 SolverModel 审计中，不强制转换成 `ActivitySchedule` payload。
+下列 `activity.*` 诊断键保留给投影元数据。
 
 诊断扩展 `activity.solverModelReport.debug` 完整保留原 `SolveReport<f64>` 的 Debug 字符串，
 只供审计，不是机器可读 SourceModel 证书。另有完整声明目标 `activity.declaredObjective`、`activity.objectiveOffset` 和

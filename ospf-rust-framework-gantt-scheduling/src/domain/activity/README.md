@@ -58,7 +58,9 @@ runtime quantities or policy objects.
    conversion completes before model mutation.
 2. Call `register` or `register_with` on a `MetaModel<f64>`. Failures roll back model
    and staged aggregation and allow retry. Successful contexts belong to one model
-   and cannot register twice. External closure side effects are not rolled back.
+   and cannot register twice. Rollback covers managed model structure and staged
+   aggregation, not external closure side effects or shared-symbol internals;
+   extensions must not mutate those internals.
 3. Append constraints/objectives using source-token variables and `cost_expression`.
    Activity cost appends one objective; it never clears external objectives.
    Set `minimize_cost=false` to supply your own objective.
@@ -72,7 +74,9 @@ runtime quantities or policy objects.
    a feasible payload, but cannot promote any proof. Source
    changes invalidate extraction. Full-vector bounds, expanded rows, auxiliary
    integrality, dimensions, finite values and objectives are audited at this entry,
-   not only in the application. Never assign the whole compiled vector to source
+   not only in the application. A supplied report mapping must match the complete
+   compilation, including no-incumbent reports; a self-consistent foreign mapping
+   is not accepted. Never assign the whole compiled vector to source
    tokens: deferred fallback can add columns.
 
 `validate_activity_selection` and `ActivityPreparation::validate` independently
@@ -99,6 +103,12 @@ Backend objective, bound and gap retain the compiled `c^T x` convention.
 constant. `ActivitySchedule::cost` recomputes native business costs, excluding
 downstream objectives and sunk execution costs. Do not add the offset only to the
 objective while leaving bound/gap unchanged.
+
+For identity f64 models, transferable report warnings, statistics extensions,
+diagnostic warnings/issues/extensions and infeasibility evidence remain structured.
+Typed numeric row/bound evaluations stay in the original SolverModel audit rather
+than being cast to `ActivitySchedule` payloads. The `activity.*` diagnostic keys
+listed below are reserved for projection metadata.
 
 Diagnostic extension `activity.solverModelReport.debug` retains the original full
 `SolveReport<f64>` as a Debug string for audit, not a machine-readable SourceModel

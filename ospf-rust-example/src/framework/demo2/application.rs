@@ -18,12 +18,13 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let loading_order = LoadingOrderApplication;
     let loading_order_response = loading_order.execute(Demo2Request::sample())?;
     let mut unsupported_request = Demo2Request::sample();
-    unsupported_request.aircraft_type = AircraftTypeInput::B767;
+    unsupported_request.aircraft_type = AircraftTypeInput::Unknown;
     let unsupported_response = full_load.execute(unsupported_request)?;
     let mut benders_no_fallback_request = Demo2Request::sample();
     benders_no_fallback_request.solve_policy = SolvePolicy {
         prefer_benders: true,
         benders_fallback_to_milp: false,
+        source_milp_finishing: Default::default(),
     };
     let benders_no_fallback_response = full_load.execute(benders_no_fallback_request)?;
 

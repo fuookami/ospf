@@ -10,6 +10,11 @@
 
 本 crate 与求解器无关：只依赖 `ospf-rust-base`、`ospf-rust-math` 与 `ospf-rust-quantities`。
 
+`Box2Geometry::new` 与 `of_rectangle` 是纯构造方法，支持运行时单位及原域高精度值，
+不要求 `Float`。独立的 `rectangle_overlapped` 路径只依赖原域有序加法，要求量纲及
+比例尺相同，贴边不算重叠；单位／形状不兼容或数值不可比较时返回 `None`。
+调用方须先校验有限正尺寸；其他形状／包含 API 保留原有 trait 边界。
+
 ## 作用范围
 
 | 领域 | 类型 |
