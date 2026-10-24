@@ -1,58 +1,36 @@
-#![feature(sync_unsafe_cell)]
-
-use std::cell::{Cell, SyncUnsafeCell};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::Mutex;
 
-mod serializer;
 mod dto;
+mod serializer;
 use dto::SchemaDTO;
 
-static mut CURRENT_DIR: SyncUnsafeCell<Cell<Option<String>>> = SyncUnsafeCell::new(Cell::new(None));
+static CURRENT_DIR: Mutex<Option<String>> = Mutex::new(None);
 
 #[tauri::command]
-fn get_current_directory() -> Option<&'static String> {
-    unsafe {
-        if (*(*CURRENT_DIR.get()).as_ptr()).is_none() {
-            CURRENT_DIR.get_mut().set(Some(String::from(
-                std::env::current_dir()
-                    .unwrap()
-                    .parent()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-            )));
-        }
-        (*(*CURRENT_DIR.get()).as_ptr()).as_ref()
+fn get_current_directory() -> Result<String, String> {
+    let current = CURRENT_DIR.lock().map_err(|error| error.to_string())?;
+    if let Some(path) = current.as_ref() {
+        return Ok(path.clone());
     }
-}
-
-fn load_json<T: serde::de::DeserializeOwned>(path: String) -> Option<T> {
-    unsafe {
-        let parent_path = Path::new(&path).parent().unwrap();
-        CURRENT_DIR
-            .get_mut()
-            .set(Some(String::from(parent_path.to_str().unwrap())));
-    }
-
-    let file = File::open(path).unwrap();
-    let reader = BufReader::new(file);
-    match serde_json::from_reader(reader) {
-        Ok(data) => Some(data),
-        Err(err) => {
-            println!("Message from Rust: {}", err);
-            None
-        }
-    }
+    std::env::current_dir()
+        .map(|path| path.to_string_lossy().into_owned())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn load_data(path: String) -> Result<SchemaDTO, String> {
-    if let Some(data) = load_json::<SchemaDTO>(path.clone()) {
-        return Ok(data);
-    }
-    Err(String::from("无法识别的数据文件"))
+    let file = File::open(&path).map_err(|error| format!("Cannot open {path}: {error}"))?;
+    let schema = serde_json::from_reader(BufReader::new(file))
+        .map_err(|error| format!("Invalid renderer data: {error}"))?;
+    let parent = Path::new(&path)
+        .parent()
+        .ok_or("Missing parent directory")?;
+    *CURRENT_DIR.lock().map_err(|error| error.to_string())? =
+        Some(parent.to_string_lossy().into_owned());
+    Ok(schema)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

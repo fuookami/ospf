@@ -97,7 +97,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
 
 - <strong>[framework](framework)</strong>: 面向特定问题开发包的公用组件，包含结果可视化工具。
 
-- <strong>[remote](remote)</strong>: 远程求解调度器与服务端，用于在服务器上运行求解器，并通过网络接口获取结果。
+- <strong>[remote-solver](framework/remote-solver)</strong>: 远程求解调度器与服务端，用于在服务器上运行求解器，并通过网络接口获取结果。
 
 ### 宿主语言实现组件
 
@@ -126,6 +126,8 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
 
 ### Core
 
+当前 Kotlin 与 Rust 均具备线性/二次建模、统一求解报告、物理量与泛型数值支持。CP 提供快照、稳定 ID 和有界问题的 MIP 转换；不是原生 CP 搜索引擎。Rust 的原生求解器适配目前以 Gurobi 10/11/12 和 SCIP 为主，需要启用相应 feature 并安装后端。表中的 ⭕ 表示实现与测试已具备，不等同于所有后端、数值类型和部署环境均已完成生产验证。
+
 <div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
   <table style="text-align: center;">
     <thead>
@@ -148,7 +150,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>MIQCQP</td>
@@ -156,7 +158,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
+        <td>⭕</td>
+      </tr>
+      <tr>
+        <td>约束规划 CP（有界 MIP 转换）</td>
         <td>❌</td>
+        <td>❌</td>
+        <td>⭕</td>
+        <td>❌</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>MINLP</td>
@@ -170,7 +180,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td colspan=6>求解器接口</td>
       </tr>
       <tr>
-        <td>COPIN-OR</td>
+        <td>COIN-OR</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -199,7 +209,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>GUROBI-11</td>
@@ -207,7 +217,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>HEXALY</td>
@@ -255,7 +265,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>其它</td>
@@ -270,15 +280,15 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>GA</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>MVO</td>
@@ -286,7 +296,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>SAA</td>
@@ -294,7 +304,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>HCA</td>
@@ -302,7 +312,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>NMS</td>
@@ -321,6 +331,8 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
 </div>
 
 ### Framework
+
+七个业务框架均已在 Kotlin 与 Rust 中实现领域模型、求解入口和结果解析，并提供[场景教程](docs/zh-cn/frameworks/index.md)。各框架的候选生成范围、扩展点与后端支持并不完全相同，请以教程与模块 README 的边界说明为准。三个可视化工具支持两种语言的渲染 DTO；不是直接读取任意领域求解结果。
 
 <div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
   <table style="text-align: center;">
@@ -342,7 +354,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -354,7 +366,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -363,7 +375,7 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -372,16 +384,16 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
-        <td>自动B Benders 分解<br>（二次型）</td>
+        <td>自动 Benders 分解<br>（二次型）</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -391,18 +403,18 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>一维装箱</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
         <td>二维装箱</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -411,25 +423,25 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>✔️</td>
+        <td>⭕</td>
+        <td>⭕</td>
       </tr>
       <tr>
-        <td>一维下料</td>
+        <td>一维分切 CSP1D</td>
         <td>❌</td>
         <td>❌</td>
         <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>✔️</td>
+        <td>⭕</td>
+        <td>⭕</td>
       </tr>
       <tr>
-        <td>二维下料</td>
+        <td>二维套裁 CSP2D</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -438,16 +450,16 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>✔️</td>
+        <td>⭕</td>
+        <td>⭕</td>
       </tr>
       <tr>
-        <td>网络流调度</td>
+        <td>网络优化 Network</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -460,18 +472,20 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
 
 ### Remote
 
+[Remote Solver](framework/remote-solver/README_ch.md) 已实现 API、成本感知调度、时间片轮转、检查点与续算、持久化和监控适配器；Kotlin/Rust 客户端均已提供。时间片抢占和恢复方式由执行适配器声明：CP 采用快照重建与 warm start，不代表保存原生搜索树。独立的通用元启发式算法服务仍未提供。部署前需验证实际求解器、数据库、消息与对象存储配置。
+
 <div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
   <table style="text-align: center;">
     <thead>
       <tr>
         <th>特性</th>
-        <th></th>
+        <th>进度</th>
       </tr>
     </thead>
     <tbody>
       <tr>
         <td>求解器服务端</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>元启发式算法服务端</td>
@@ -479,11 +493,11 @@ ospf 采用内部<strong><em>领域特定语言</em></strong>（DSL） 的形式
       </tr>
       <tr>
         <td>调度器</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>时间片轮转</td>
-        <td>❌</td>
+        <td>⭕</td>
       </tr>
     </tbody>
   </table>

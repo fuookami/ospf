@@ -14,7 +14,7 @@
 
 <script lang="ts">
 import "./chart.css"
-import {ComponentPublicInstance, defineComponent, defineExpose, defineEmits, HTMLAttributes, ref} from "vue";
+import {ComponentPublicInstance, defineComponent, ref} from "vue";
 import dayjs from "dayjs";
 import GanttChartItemView from "./item.vue";
 import {GanttItemVO} from "../vo.ts";
@@ -25,7 +25,7 @@ type GanttItemView = {
   x: number
   y: number
   item: GanttItemVO
-  view: typeof GanttChartItemView | null
+  view: InstanceType<typeof GanttChartItemView> | null
 }
 
 function calculateHeights(startTime: dayjs.Dayjs, items: Array<GanttItemVO>): Array<number> {
@@ -61,27 +61,26 @@ export default defineComponent({
     GanttChartItemView
   },
 
-  setup() {
+  setup(_, {emit}) {
     const width = ref<number>(0);
     const height = ref<number>(baseLineHeight);
     const items = ref<Array<GanttItemView>>([]);
     const widthPerUnit = ref<number>(0);
-    const linkedKey = ref<string>();
+    const linkedKeys = ref<string[]>([]);
 
-    const emit = defineEmits(['focused']);
 
     function init(
       startTime: dayjs.Dayjs,
       ganttItems: Array<GanttItemVO>,
       charWidth: number,
       chartWidthPerUnit: number,
-      chartLinkedKey: string
+      chartLinkedKeys: string[]
     ) {
       width.value = charWidth;
       const heights = calculateHeights(startTime, ganttItems);
       height.value = .25 + (Math.max.apply(Math, heights) + 1) * baseLineHeight;
       widthPerUnit.value = chartWidthPerUnit;
-      linkedKey.value = chartLinkedKey;
+      linkedKeys.value = chartLinkedKeys;
 
       items.value = ganttItems.map((item, i) => {
         const x = dayjs(item.startTime, "%Y-%m-%d %H:%M:%S").diff(startTime, 'minute') * chartWidthPerUnit;
@@ -96,10 +95,10 @@ export default defineComponent({
       });
     }
 
-    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, item: GanttItemView) {
+    function setViewRefs(el: Element | ComponentPublicInstance | null, item: GanttItemView) {
       if (el) {
-        item.view = el as typeof GanttChartItemView;
-        item.view.init(item.item, widthPerUnit.value, linkedKey.value);
+        item.view = el as InstanceType<typeof GanttChartItemView>;
+        item.view.init(item.item, widthPerUnit.value, linkedKeys.value);
       }
     }
 
@@ -124,9 +123,6 @@ export default defineComponent({
       emit("focused", linkedInfo)
     }
 
-    defineExpose({
-      height
-    });
 
     return {
       width,
@@ -141,4 +137,3 @@ export default defineComponent({
   }
 });
 </script>
-../vo.ts

@@ -37,7 +37,7 @@ export default defineComponent({
       width: 0,
       standardWidth: 0,
       productions: [],
-      info: new Map()
+      info: {}
     });
     const standardWidth = ref(0);
     const productions = ref<Array<CuttingPlanProductionView>>([]);

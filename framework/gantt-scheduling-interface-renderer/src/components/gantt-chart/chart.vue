@@ -60,7 +60,7 @@
 
 <script lang="ts">
 import "./chart.css"
-import {ComponentPublicInstance, defineComponent, defineExpose, defineEmits, HTMLAttributes, ref} from "vue";
+import {ComponentPublicInstance, defineComponent, ref} from "vue";
 import dayjs from "dayjs";
 import GanttChartLineView from "./line.vue";
 import {GanttChartVO, GanttLineVO} from "../vo.ts";
@@ -73,7 +73,7 @@ type GanttLineView = {
   height: number
   visible: string
   line: GanttLineVO
-  view: typeof GanttChartLineView | null
+  view: InstanceType<typeof GanttChartLineView> | null
 }
 
 type GanttHeader = {
@@ -144,7 +144,7 @@ export default defineComponent({
     GanttChartLineView
   },
 
-  setup() {
+  setup(_, {emit}) {
     const chart = ref<HTMLElement>();
     const header = ref<HTMLElement>();
     const metaLine = ref<HTMLElement>();
@@ -172,7 +172,6 @@ export default defineComponent({
     const linkedKeys = ref<Array<string>>([]);
     const enabledLinkedKeys = ref<Array<string>>([]);
 
-    const emit = defineEmits(['focused']);
 
     function init(schema: GanttChartVO, windowWidth: number, windowHeight: number) {
       schema.lines.sort((lhs, rhs) => {
@@ -216,9 +215,9 @@ export default defineComponent({
       enabledLinkedKeys.value = schema.linkInfo;
     }
 
-    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, line: GanttLineView) {
-      if (el) {
-        line.view = el as typeof GanttChartLineView;
+    function setViewRefs(el: Element | ComponentPublicInstance | null, line: GanttLineView) {
+      if (el && startTime.value) {
+        line.view = el as InstanceType<typeof GanttChartLineView>;
         line.view.init(startTime.value, line.line.items, chartWidth.value, widthPerHour.value / 60, linkedKeys.value);
         let newHeight = 0;
         for (const line of lines.value) {
@@ -310,9 +309,6 @@ export default defineComponent({
       }
     }
 
-    defineExpose({
-      scales
-    });
 
     return {
       chart,
@@ -341,4 +337,3 @@ export default defineComponent({
   }
 });
 </script>
-../vo

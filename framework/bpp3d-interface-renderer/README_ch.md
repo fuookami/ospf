@@ -4,6 +4,10 @@
 
 这是一个 Tauri + Vue 渲染器，用于读取 BPP3D 装载方案 JSON，并在 Three.js 场景中展示每个货柜。
 
+## Kotlin / Rust 输入兼容性
+
+导入支持当前 Kotlin 的 camelCase 和 Rust 的 snake_case 渲染 DTO，包括 `loadingPlans` / `loading_plans`、字符串或列表分组、null/文本形式的 `info` 以及 JSON 值的 KPI。数字字符串和 JSON 数字统一转为有限数值，Vue 接口统一接收 camelCase 字段。转换规则及不依赖桌面的兼容测试见[共用渲染契约](../renderer-contract/README_ch.md)。领域求解结果需要先通过 BPP3D 的渲染适配器转换。
+
 ## 支持形状
 
 - `Cuboid`：使用 `THREE.BoxGeometry` 渲染。

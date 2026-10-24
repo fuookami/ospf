@@ -1,16 +1,26 @@
-# Tauri + Vue + TypeScript
+# CSP1D Interface Renderer
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+English | [简体中文](README_ch.md)
 
-## Recommended IDE Setup
+A Tauri + Vue viewer for one-dimensional cutting plans. Select a JSON file exported through the Kotlin or Rust framework's renderer DTO/adapter.
 
-- [VS Code](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## Input Compatibility
 
-## Type Support For `.vue` Imports in TS
+- Kotlin and Rust camelCase renderer DTOs are supported, with snake_case aliases for compatibility.
+- Numeric fields accept numbers and numeric strings; null optional values are preserved.
+- Product IDs, unit lengths, per-production amounts, material IDs and rest widths are retained.
+- Existing `Product`, `Costar` and legacy `DefectCostar` labels and custom colors remain supported.
 
-Since TypeScript cannot handle type information for `.vue` imports, they are shimmed to be a generic Vue component type by default. In most cases this is fine if you don't really care about component prop types outside of templates. However, if you wish to get actual prop types in `.vue` imports (for example to get props validation when using manual `h(...)` calls), you can enable Volar's Take Over mode by following these steps:
+See the [shared renderer contract](../renderer-contract/README.md) for normalization rules and cross-language DTO tests. This viewer does not consume an arbitrary domain solve-result object.
 
-1. Run `Extensions: Show Built-in Extensions` from VS Code's command palette, look for `TypeScript and JavaScript Language Features`, then right click and select `Disable (Workspace)`. By default, Take Over mode will enable itself if the default TypeScript extension is disabled.
-2. Reload the VS Code window by running `Developer: Reload Window` from the command palette.
+## Development
 
-You can learn more about Take Over mode [here](https://github.com/johnsoncodehk/volar/discussions/471).
+From this directory:
+
+```sh
+npm install
+npm run dev
+npm run build
+npx vue-tsc --noEmit
+cargo check
+```

@@ -4,7 +4,7 @@
 </template>
 
 <script lang="ts">
-import {ComponentPublicInstance, defineComponent, HTMLAttributes, ref} from "vue";
+import {ComponentPublicInstance, defineComponent, ref} from "vue";
 import CuttingPlanView from "./cutting-plan-view.vue";
 import {offset, CuttingPlanDTO, CuttingPlanProductionDTO, CuttingPlanProductionView} from "./dto.ts";
 
@@ -67,11 +67,11 @@ export default defineComponent({
 
     const group = ref<Array<string>>([]);
     const cuttingPlans = ref<Array<CuttingPlanDTO>>([]);
-    const cuttingPlanViews: Array<typeof CuttingPlanView> = [];
+    const cuttingPlanViews: Array<InstanceType<typeof CuttingPlanView>> = [];
 
-    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, cuttingPlan: CuttingPlanDTO) {
+    function setViewRefs(el: Element | ComponentPublicInstance | null, cuttingPlan: CuttingPlanDTO) {
       if(el) {
-        const view = el as typeof CuttingPlanView;
+        const view = el as InstanceType<typeof CuttingPlanView>;
         view.cuttingPlan = cuttingPlan;
         cuttingPlanViews.push(view);
         renderCuttingPlans();
@@ -87,7 +87,7 @@ export default defineComponent({
         const scale = view.standardWidth / (windowWidth.value - offset);
 
         view.standardWidth = view.standardWidth / scale;
-        view.productions.forEach((p: CuttingPlanProductionDTO) => {
+        view.productions.forEach((p: CuttingPlanProductionView) => {
           p.x = (p.x - offset) / scale + offset;
           p.width = p.width / scale;
         });
@@ -103,6 +103,9 @@ export default defineComponent({
         view.standardWidth = view.cuttingPlan.standardWidth / scale;
         view.productions = view.cuttingPlan.productions.map((p: CuttingPlanProductionDTO) => {
           const info = new Map(Object.entries(p.info));
+          if (p.id != null) info.set("id", p.id);
+          if (p.unitLength != null) info.set("length", p.unitLength.toString());
+          if (p.amount != null) info.set("amount", p.amount.toString());
           let color = 0x000000;
           if (p.productionType == "Costar") {
             color = costarColor;
@@ -130,7 +133,7 @@ export default defineComponent({
             displayWidth: p.width.toFixed(0).toString(),
             productionType: p.productionType,
             info: info,
-            color: "#" + color.toString(16).padStart(6, '0'),
+            color: p.color ?? "#" + color.toString(16).padStart(6, '0'),
           };
           return result;
         });

@@ -28,7 +28,7 @@ export default defineComponent({
         }]
       });
       if (selected === null) {
-        context.emit("fileLoadingFailed", "未选择文件")
+        return;
       } else {
         fileName.value = selected;
       }

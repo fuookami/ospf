@@ -4,6 +4,10 @@
 
 This Tauri + Vue renderer loads BPP3D loading-plan JSON files and displays each bin in a Three.js scene.
 
+## Kotlin / Rust Input Compatibility
+
+The importer accepts current Kotlin camelCase and Rust snake_case renderer DTOs, including `loadingPlans` / `loading_plans`, string or list groups, nullable/text `info`, and JSON-valued KPI. Numeric strings and JSON numbers normalize to finite numbers, and the Vue interface always receives camelCase fields. See the [shared renderer contract](../renderer-contract/README.md) for the conversion rules and headless compatibility tests. Domain solve results must first pass through the BPP3D renderer adapter.
+
 ## Supported Shapes
 
 - `Cuboid`: rendered with `THREE.BoxGeometry`.

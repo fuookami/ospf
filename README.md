@@ -98,7 +98,7 @@ ospf is designed and implemented using an internal <strong><em>Domain Specific L
 
 - <strong>[framework](framework)</strong>: a set of common components developed for specific problem domains, including visualization tools for results.
 
-- <strong>[remote](remote)</strong>: a remote solver scheduler and server used to execute solvers on a server and retrieve results through a network interface.
+- <strong>[remote-solver](framework/remote-solver)</strong>: a remote solver scheduler and server used to execute solvers on a server and retrieve results through a network interface.
 
 ### Components In Host Language Implementation 
 
@@ -127,6 +127,8 @@ each ospf implementation consists of the following components:
 
 ### Core
 
+Kotlin and Rust now provide linear/quadratic modeling, unified solve reports, physical quantities and generic numeric domains. CP includes snapshots, stable IDs and bounded MIP lowering; it is not a native CP search engine. Rust native adapters currently focus on Gurobi 10/11/12 and SCIP, requiring the corresponding features and backend installation. ⭕ denotes an implemented and tested capability, not production certification for every backend, numeric domain or deployment.
+
 <div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
   <table style="text-align: center;">
     <thead>
@@ -149,7 +151,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>MIQCQP</td>
@@ -157,7 +159,15 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
+        <td>⭕</td>
+      </tr>
+      <tr>
+        <td>Constraint Programming (bounded MIP lowering)</td>
         <td>❌</td>
+        <td>❌</td>
+        <td>⭕</td>
+        <td>❌</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>MINLP</td>
@@ -171,7 +181,7 @@ each ospf implementation consists of the following components:
         <td colspan=6>Solver Wrapper</td>
       </tr>
       <tr>
-        <td>COPIN-OR</td>
+        <td>COIN-OR</td>
         <td>❗</td>
         <td>❌</td>
         <td>❗</td>
@@ -200,7 +210,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>GUROBI-11</td>
@@ -208,7 +218,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>HEXALY</td>
@@ -256,11 +266,11 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>else</td>
-        <td colspan=5>planing</td>
+        <td colspan=5>planned</td>
       </tr>
       <tr>
         <td colspan=6>Meta-Heuristic Algorithm</td>
@@ -271,7 +281,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>GA</td>
@@ -279,7 +289,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>MVO</td>
@@ -287,7 +297,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>SAA</td>
@@ -295,7 +305,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>HCA</td>
@@ -303,7 +313,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>NMS</td>
@@ -315,13 +325,15 @@ each ospf implementation consists of the following components:
       </tr>
       <tr>
         <td>else</td>
-        <td colspan=5>planing</td>
+        <td colspan=5>planned</td>
       </tr>
     </tbody>
   </table>
 </div>
 
 ### Framework
+
+All seven business frameworks now provide domain models, solve entries and result extraction in Kotlin and Rust, with [scenario-based tutorials](docs/frameworks/index.md). Candidate-generation scope, extension points and backend support differ by framework; consult the tutorials and module READMEs. The three visualization tools accept renderer DTOs from both languages, not arbitrary domain solve results.
 
 <div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
   <table style="text-align: center;">
@@ -343,7 +355,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -355,7 +367,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -364,7 +376,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -373,7 +385,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -382,7 +394,7 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>❗</td>
         <td>❌</td>
-        <td>❗</td>
+        <td>⭕</td>
         <td></td>
       </tr>
       <tr>
@@ -392,18 +404,18 @@ each ospf implementation consists of the following components:
         <td>bpp1d</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
         <td>bpp2d</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -412,8 +424,8 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>✔️</td>
+        <td>⭕</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>csp1d</td>
@@ -421,16 +433,16 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>✔️</td>
+        <td>⭕</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>csp2d</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
@@ -439,21 +451,21 @@ each ospf implementation consists of the following components:
         <td>❌</td>
         <td>✔️</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>✔️</td>
+        <td>⭕</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>network-scheduling</td>
         <td>❌</td>
         <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
-        <td>❌</td>
-        <td>❌</td>
+        <td>⭕</td>
         <td>❌</td>
       </tr>
       <tr>
         <td>else</td>
-        <td colspan=6>planing</td>
+        <td colspan=6>planned</td>
       </tr>
     </tbody>
   </table>
@@ -461,18 +473,20 @@ each ospf implementation consists of the following components:
 
 ### Remote
 
+[Remote Solver](framework/remote-solver/README.md) implements the API, cost-aware dispatch, time slicing, checkpoint/recovery, persistence and monitoring adapters, with Kotlin/Rust clients. Preemption and recovery depend on the execution adapter: CP uses snapshot rebuild and warm start, not native search-tree persistence. A standalone general-purpose metaheuristic service is not yet available. Validate the actual solver, database, messaging and object-storage configuration before deployment.
+
 <div style="width: auto; display: table; margin-left: auto; margin-right: auto;">
   <table style="text-align: center;">
     <thead>
       <tr>
         <th>Feature</th>
-        <th></th>
+        <th>Status</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td>Solver Serivce</td>
-        <td>❗</td>
+        <td>Solver Service</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>Meta-Heuristic Algorithm Service</td>
@@ -480,11 +494,11 @@ each ospf implementation consists of the following components:
       </tr>
       <tr>
         <td>Dispatcher</td>
-        <td>❗</td>
+        <td>⭕</td>
       </tr>
       <tr>
         <td>Time Slice Cycle</td>
-        <td>❌</td>
+        <td>⭕</td>
       </tr>
     </tbody>
   </table>

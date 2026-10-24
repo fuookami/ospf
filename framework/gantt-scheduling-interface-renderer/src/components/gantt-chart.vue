@@ -3,7 +3,7 @@
     <v-container ref="toolbar" fluid class="d-flex flex-row-reverse" style="margin: 0; padding: 0;">
       <v-btn density="compact" icon="mdi-plus" style="margin-right: .5em;" @click="rescale(1)" />
       <v-btn density="compact" icon="mdi-minus" style="margin-right: .5em;" @click="rescale(-1)" />
-      <v-select v-model="visibleLines" :items="lines" label="可见行" multiple="true">
+      <v-select v-model="visibleLines" :items="lines" label="可见行" :multiple="true">
         <template v-slot:prepend-item>
           <v-list-item title="选择全部" @click="setAllLineVisible" />
           <v-list-item title="选择关联行" @click="setLinkedLineVisible" />
@@ -15,7 +15,7 @@
 </template>
 
 <script lang="ts">
-import {defineComponent, ref, watch} from "vue";
+import {ComponentPublicInstance, defineComponent, ref, watch} from "vue";
 import GanttChartView from "./gantt-chart/chart.vue"
 import { GanttChartVO, GanttLineVO } from "./vo.ts";
 
@@ -40,18 +40,18 @@ export default defineComponent({
   },
 
   setup() {
-    const container = ref<HTMLElement>();
-    const toolbar = ref<HTMLElement>();
-    const ganttChart = ref<typeof GanttChartView | null>();
+    const container = ref<ComponentPublicInstance>();
+    const toolbar = ref<ComponentPublicInstance>();
+    const ganttChart = ref<InstanceType<typeof GanttChartView> | null>(null);
 
     const schema = ref<GanttChartVO>();
     const height = ref(0);
     const minScale = ref(0);
     const maxScale = ref(0);
     const scale = ref(0);
-    const lines = ref<Array<String>>([]);
-    const visibleLines = ref<Array<String>>([]);
-    const linkedLines = ref<Array<String>>([]);
+    const lines = ref<Array<string>>([]);
+    const visibleLines = ref<Array<string>>([]);
+    const linkedLines = ref<Array<string>>([]);
 
     function render(data: GanttChartVO) {
       schema.value = data;
@@ -66,7 +66,7 @@ export default defineComponent({
 
     function resize(newWidth: number, newHeight: number) {
       if (ganttChart.value) {
-        height.value = newHeight - toolbar.value!!.offsetHeight;
+        height.value = newHeight - toolbar.value!!.$el.offsetHeight;
         ganttChart.value.resize(newWidth, height.value);
       }
     }

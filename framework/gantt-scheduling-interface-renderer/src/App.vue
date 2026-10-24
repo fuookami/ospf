@@ -23,7 +23,7 @@
 </template>
 
 <script lang="ts">
-import { onMounted, defineComponent, ref } from "vue";
+import { ComponentPublicInstance, onMounted, defineComponent, ref } from "vue";
 
 import FileSelector from "./components/file-selector.vue";
 import GanttChart from "./components/gantt-chart.vue";
@@ -39,9 +39,9 @@ export default defineComponent({
   },
 
   setup() {
-    const main = ref<HTMLElement>();
-    const fileSelector = ref<typeof FileSelector | null>();
-    const ganttChart = ref<typeof GanttChart | null>();
+    const main = ref<ComponentPublicInstance>();
+    const fileSelector = ref<InstanceType<typeof FileSelector> | null>(null);
+    const ganttChart = ref<InstanceType<typeof GanttChart> | null>(null);
 
     const windowHeight = ref(0);
     const windowWidth = ref(0);
@@ -58,8 +58,14 @@ export default defineComponent({
 
     function render(data: SchemaDTO) {
       if (ganttChart.value) {
+        const chart = dump(data);
+        if (chart === null) {
+          rendererVisibility.value = "hidden";
+          showMessage("数据中没有可绘制的已排期任务；未排期任务未被补造时间。");
+          return;
+        }
         rendererVisibility.value = "visible";
-        ganttChart.value!!.render(dump(data));
+        ganttChart.value!!.render(chart);
       }
     }
 
@@ -67,7 +73,7 @@ export default defineComponent({
       windowWidth.value = window.innerWidth;
       windowHeight.value = window.innerHeight;
       if (ganttChart.value) {
-        ganttChart.value!!.resize(ganttChart.value!!.$el.offsetWidth, main.value!!.offsetHeight - fileSelector.value!!.$el.offsetHeight);
+        ganttChart.value!!.resize(ganttChart.value!!.$el.offsetWidth, main.value!!.$el.offsetHeight - fileSelector.value!!.$el.offsetHeight);
       }
     }
 

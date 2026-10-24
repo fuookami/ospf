@@ -1,5 +1,5 @@
 import lodash from "lodash";
-import { SchemaDTO } from "./dto";
+import type { SchemaDTO } from "./dto.ts";
 
 export type GanttSubItemVO = {
     name: string
@@ -38,104 +38,53 @@ export type GanttChartVO = {
     lines: GanttLineVO[]
 }
 
-export function dump(schema: SchemaDTO): GanttChartVO {
-    const items: GanttItemVO[] = schema.tasks.map(task => {
-        let scheduledStartTime = task.scheduledStartTime;
-        if (!scheduledStartTime) {
-            scheduledStartTime = task.startTime;
-        }
-        let scheduledEndTime = task.scheduledEndTime;
-        if (!scheduledEndTime) {
-            scheduledEndTime = task.endTime;
-        }
-        const produces: Map<string, string> = new Map();
-        if (task.order) {
-            produces.set("order", task.order);
-        }
-        if (task.produce) {
-            produces.set("produce", task.produce);
-        }
-        if (task.products) {
-            if (task.products!! instanceof Map) {
-                task.products!!.forEach((value, key) => {
-                    produces.set(key, value);
-                });
-            } else {
-                Object.entries(task.products!!).forEach(([key, value]) => {
-                    produces.set(key, value);
-                });
-            }
-        }
-        const consumption: Map<string, string> = new Map();
-        if (task.materials) {
-            if (task.materials!! instanceof Map) {
-                task.materials!!.forEach((value, key) => {
-                    consumption.set(key, value);
-                });
-            } else {
-                Object.entries(task.materials!!).forEach(([key, value]) => {
-                    consumption.set(key, value);
-                });
-            }
-        }
-        const info: Map<string, string> = new Map();
-        if (task.info) {
-            if (task.info!! instanceof Map) {
-                task.info!!.forEach((value, key) => {
-                    info.set(key, value)
-                });
-            } else {
-                Object.entries(task.info!!).forEach(([key, value]) => {
-                    info.set(key, value)
-                });
-            }
-        }
-        return {
+export function dump(schema: SchemaDTO): GanttChartVO | null {
+    const items: GanttItemVO[] = schema.tasks.flatMap(task => {
+        if (task.startTime == null || task.endTime == null) return [];
+        const scheduledStartTime = task.scheduledStartTime ?? task.startTime;
+        const scheduledEndTime = task.scheduledEndTime ?? task.endTime;
+        const produces = new Map(Object.entries(task.products ?? {}));
+        if (task.order != null) produces.set("order", task.order);
+        if (task.produce != null) produces.set("produce", task.produce);
+        const consumption = new Map(Object.entries({...task.materials, ...task.consumption}));
+        const info = new Map(Object.entries({...task.resources, ...task.info}));
+        return [{
             name: task.name,
             category: task.category,
             executor: task.executor,
-            subItems: task.subTasks.map(subTask => {
-                return {
+            subItems: task.subTasks.flatMap(subTask => {
+                if (subTask.startTime == null || subTask.endTime == null) return [];
+                return [{
                     name: subTask.name,
                     category: subTask.category,
                     startTime: subTask.startTime,
                     endTime: subTask.endTime,
-                    info: subTask.info
-                }
+                    info: new Map(Object.entries(subTask.info))
+                }];
             }),
-            scheduledStartTime: scheduledStartTime,
-            scheduledEndTime: scheduledEndTime,
+            scheduledStartTime,
+            scheduledEndTime,
             startTime: task.startTime,
             endTime: task.endTime,
             renderStartTime: lodash.min([scheduledStartTime, task.startTime]) as string,
             renderEndTime: lodash.max([scheduledEndTime, task.endTime]) as string,
-            produces: produces,
-            consumption: consumption,
-            info: info
-        };
+            produces,
+            consumption,
+            info
+        }];
     });
+    if (items.length === 0) return null;
     const executors = lodash.uniq(items.map(item => item.executor));
-
-    const lines: GanttLineVO[] = executors.map(executor => {
-        return {
-            name: executor,
-            category: "Normal",
-            items: items.filter(item => item.executor === executor).sort((lhs, rhs) => {
-                if (lhs.renderStartTime < rhs.renderStartTime) {
-                    return -1;
-                } else if (lhs.renderStartTime > rhs.renderStartTime) {
-                    return 1;
-                } else {
-                    return 0;
-                }
-            })
-        };
-    });
-
+    const lines: GanttLineVO[] = executors.map(executor => ({
+        name: executor,
+        category: "Normal",
+        items: items.filter(item => item.executor === executor).sort((lhs, rhs) =>
+            lhs.renderStartTime.localeCompare(rhs.renderStartTime))
+    }));
     return {
-        startTime: lodash.minBy(items, "renderStartTime")!!.renderStartTime,
-        endTime: lodash.maxBy(items, "renderEndTime")!!.renderEndTime,
-        linkInfo: lodash.flatMap(schema.tasks, task => Object.keys(task.resources)),
-        lines: lines
+        startTime: lodash.minBy(items, "renderStartTime")!.renderStartTime,
+        endTime: lodash.maxBy(items, "renderEndTime")!.renderEndTime,
+        linkInfo: lodash.uniq(lodash.flatMap(schema.tasks, task => Object.keys(task.resources))),
+        lines
     };
 }

@@ -1,6 +1,11 @@
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use ospf_renderer_contract::{
+    group, integer as deserialize_u64_from_number_or_string,
+    number as deserialize_f64_from_number_or_string,
+    optional_number as deserialize_optional_f64_from_number_or_string, string_map,
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum RenderShapeTypeDTO {
@@ -31,66 +36,12 @@ pub enum RenderAlgorithmShapeTypeDTO {
     BoundingCuboid,
 }
 
-fn deserialize_f64_from_number_or_string<'de, D>(deserializer: D) -> Result<f64, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum NumberOrString {
-        Number(f64),
-        String(String),
-    }
-
-    match NumberOrString::deserialize(deserializer)? {
-        NumberOrString::Number(value) => Ok(value),
-        NumberOrString::String(value) => value.parse().map_err(serde::de::Error::custom),
-    }
-}
-
-fn deserialize_optional_f64_from_number_or_string<'de, D>(
-    deserializer: D,
-) -> Result<Option<f64>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum OptionalNumberOrString {
-        Number(f64),
-        String(String),
-        None,
-    }
-
-    match OptionalNumberOrString::deserialize(deserializer)? {
-        OptionalNumberOrString::Number(value) => Ok(Some(value)),
-        OptionalNumberOrString::String(value) => value.parse().map(Some).map_err(serde::de::Error::custom),
-        OptionalNumberOrString::None => Ok(None),
-    }
-}
-
-fn deserialize_usize_from_number_or_string<'de, D>(deserializer: D) -> Result<usize, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum IntegerOrString {
-        Integer(usize),
-        String(String),
-    }
-
-    match IntegerOrString::deserialize(deserializer)? {
-        IntegerOrString::Integer(value) => Ok(value),
-        IntegerOrString::String(value) => value.parse().map_err(serde::de::Error::custom),
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadingPlanItemDTO {
     name: String,
     #[serde(default)]
+    #[serde(alias = "package_type")]
     package_type: Option<String>,
     #[serde(deserialize_with = "deserialize_f64_from_number_or_string")]
     width: f64,
@@ -106,38 +57,65 @@ pub struct LoadingPlanItemDTO {
     z: f64,
     #[serde(deserialize_with = "deserialize_f64_from_number_or_string")]
     weight: f64,
-    #[serde(deserialize_with = "deserialize_usize_from_number_or_string")]
-    loading_order: usize,
+    #[serde(deserialize_with = "deserialize_u64_from_number_or_string")]
+    #[serde(alias = "loading_order")]
+    loading_order: u64,
     #[serde(default)]
+    #[serde(alias = "shape_type")]
     shape_type: Option<RenderShapeTypeDTO>,
     #[serde(default)]
+    #[serde(alias = "render_shape_type")]
     render_shape_type: Option<RenderShapeTypeDTO>,
     #[serde(default)]
+    #[serde(alias = "algorithm_shape_type")]
     algorithm_shape_type: Option<RenderAlgorithmShapeTypeDTO>,
-    #[serde(default, deserialize_with = "deserialize_optional_f64_from_number_or_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
     radius: Option<f64>,
-    #[serde(default, deserialize_with = "deserialize_optional_f64_from_number_or_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
     diameter: Option<f64>,
     #[serde(default)]
     axis: Option<RenderAxis3DTO>,
-    #[serde(default, deserialize_with = "deserialize_optional_f64_from_number_or_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    #[serde(alias = "bounding_width")]
     bounding_width: Option<f64>,
-    #[serde(default, deserialize_with = "deserialize_optional_f64_from_number_or_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    #[serde(alias = "bounding_height")]
     bounding_height: Option<f64>,
-    #[serde(default, deserialize_with = "deserialize_optional_f64_from_number_or_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    #[serde(alias = "bounding_depth")]
     bounding_depth: Option<f64>,
-    #[serde(default, deserialize_with = "deserialize_optional_f64_from_number_or_string")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_f64_from_number_or_string"
+    )]
+    #[serde(alias = "actual_volume")]
     actual_volume: Option<f64>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_map")]
     info: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadingPlanDTO {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "group")]
     group: Vec<String>,
     name: String,
+    #[serde(alias = "type_code")]
     type_code: String,
     #[serde(deserialize_with = "deserialize_f64_from_number_or_string")]
     width: f64,
@@ -146,6 +124,7 @@ pub struct LoadingPlanDTO {
     #[serde(deserialize_with = "deserialize_f64_from_number_or_string")]
     depth: f64,
     #[serde(deserialize_with = "deserialize_f64_from_number_or_string")]
+    #[serde(alias = "loading_rate")]
     loading_rate: f64,
     #[serde(deserialize_with = "deserialize_f64_from_number_or_string")]
     weight: f64,
@@ -153,22 +132,59 @@ pub struct LoadingPlanDTO {
     volume: f64,
     #[serde(default)]
     items: Vec<LoadingPlanItemDTO>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_map")]
     info: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaDTO {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "string_map")]
     kpi: BTreeMap<String, String>,
     #[serde(default)]
+    #[serde(alias = "loading_plans")]
     loading_plans: Vec<LoadingPlanDTO>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rust_snake_case_groups_and_nullable_info() {
+        let schema: SchemaDTO = serde_json::from_value(serde_json::json!({
+            "kpi": {"rate": 0.5, "complete": true}, "loading_plans": [{
+                "group": "shipment", "name": "bin1", "type_code": "BIN",
+                "width": 10, "height": 10, "depth": 10, "loading_rate": 0.5,
+                "weight": 1, "volume": 1000, "info": null, "items": [{
+                    "name": "cylinder", "package_type": "roll", "width": 2, "height": 3, "depth": 2,
+                    "x": 0, "y": 0, "z": 0, "weight": 1, "loading_order": 1,
+                    "shape_type": "Cylinder", "algorithm_shape_type": "VerticalCylinder",
+                    "radius": 1, "axis": "Y", "bounding_width": 2, "bounding_height": 3,
+                    "bounding_depth": 2, "actual_volume": 9.42, "info": "fragile"
+                }]
+            }]
+        }))
+        .unwrap();
+        let output = serde_json::to_value(schema).unwrap();
+        let plan = &output["loadingPlans"][0];
+        assert_eq!(plan["group"], serde_json::json!(["shipment"]));
+        assert_eq!(plan["items"][0]["algorithmShapeType"], "VerticalCylinder");
+        assert_eq!(plan["items"][0]["info"]["info"], "fragile");
+        assert_eq!(plan["info"], serde_json::json!({}));
+        assert_eq!(output["kpi"]["complete"], "true");
+        serde_json::from_value::<SchemaDTO>(output).unwrap();
+    }
+
+    #[test]
+    fn reject_nonfinite_dimensions() {
+        let mut input: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/examples/cuboid-cylinder-loading-plan.json"
+        ))
+        .unwrap();
+        input["loadingPlans"][0]["width"] = serde_json::json!("NaN");
+        assert!(serde_json::from_value::<SchemaDTO>(input).is_err());
+    }
 
     #[test]
     fn deserialize_horizontal_cylinder_algorithm_shape_types() {
@@ -262,12 +278,12 @@ mod tests {
 
         assert!(items.iter().any(|item| {
             matches!(item.shape_type, Some(RenderShapeTypeDTO::Cylinder))
-                    && matches!(
-                        item.algorithm_shape_type,
-                        Some(RenderAlgorithmShapeTypeDTO::HorizontalCylinderX)
-                    )
-                    && item.radius == Some(100.0)
-                    && item.actual_volume == Some(15707963.27)
+                && matches!(
+                    item.algorithm_shape_type,
+                    Some(RenderAlgorithmShapeTypeDTO::HorizontalCylinderX)
+                )
+                && item.radius == Some(100.0)
+                && item.actual_volume == Some(15707963.27)
         }));
     }
 
@@ -318,7 +334,10 @@ mod tests {
             serde_json::from_str(json).expect("legacy alias shape names should deserialize");
         let item = &schema.loading_plans[0].items[0];
 
-        assert!(matches!(item.shape_type, Some(RenderShapeTypeDTO::Cylinder)));
+        assert!(matches!(
+            item.shape_type,
+            Some(RenderShapeTypeDTO::Cylinder)
+        ));
         assert!(matches!(
             item.algorithm_shape_type,
             Some(RenderAlgorithmShapeTypeDTO::VerticalCylinder)

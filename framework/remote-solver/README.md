@@ -4,6 +4,8 @@
 
 ## Overview
 
+Remote Solver and its protocol, dispatcher and calculator modules use version `1.1.2`, aligned with the Maven parent, OSPF BOM and Kotlin runtime/plugin dependencies.
+
 `remote-solver` is an event-driven heterogeneous scheduling framework for solver workloads.
 It focuses on cost-aware dispatching, checkpoint-based resume, and round-robin slicing for complex tasks.
 

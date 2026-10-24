@@ -4,6 +4,8 @@ English document: [README.md](README.md)
 
 ## 概述
 
+Remote Solver 及其 protocol、dispatcher、calculator 子模块统一使用 `1.1.2`，与 Maven 父 POM、OSPF BOM 及 Kotlin 运行库/插件依赖保持一致。
+
 `remote-solver` 是一个事件驱动的异构求解调度框架，目标是在满足时效约束的前提下最小化总体成本。
 核心能力包括成本感知调度、复杂任务时间片轮转、checkpoint 持久化与 warm start 续算。
 

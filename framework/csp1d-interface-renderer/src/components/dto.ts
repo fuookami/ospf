@@ -13,24 +13,30 @@ export type CuttingPlanProductionView = {
 }
 
 export type CuttingPlanProductionDTO = {
+    id?: string | null
     name: string
     x: number
     width: number
     productionType: string
-    info: Map<string, string>
-    color: string | null
+    unitLength?: number | null
+    amount?: number | null
+    info: Record<string, string>
+    color?: string | null
 }
 
 export type CuttingPlanDTO = {
+    id?: string | null
+    materialId?: string | null
     group: string[]
     productions: CuttingPlanProductionDTO[]
     width: number
     standardWidth: number
+    restWidth?: number | null
     amount: number
-    info: Map<string, string>
+    info: Record<string, string>
 }
 
 export type SchemaDTO = {
-    kpi: Map<string, string>
+    kpi: Record<string, string>
     cuttingPlans: CuttingPlanDTO[]
 }

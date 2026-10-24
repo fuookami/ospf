@@ -85,7 +85,7 @@
 
 <script lang="ts">
 import "./item.css"
-import { defineComponent, defineEmits, ref } from "vue";
+import { defineComponent, ref } from "vue";
 import clipoard3 from "vue-clipboard3";
 import dayjs from "dayjs";
 import { GanttItemVO, GanttSubItemVO } from "../vo.ts";
@@ -157,16 +157,16 @@ function needSubBar(subItems: Array<GanttSubItemVO>): boolean {
 export default defineComponent({
   name: "GanttChartItemView",
 
-  setup() {
+  setup(_, {emit}) {
     const item = ref<GanttItemVO>();
     const subItems = ref<Array<GanttSubItemView>>([]);
 
     const name = ref<string>("");
-    const produceListVisible = ref<string>("hidden");
+    const produceListVisible = ref<"hidden" | "visible">("hidden");
     const produceList = ref<Array<{ key: string, value: string }>>([]);
-    const consumptionListVisible = ref<string>("hidden");
+    const consumptionListVisible = ref<"hidden" | "visible">("hidden");
     const consumptionList = ref<Array<{ key: string, value: string }>>([]);
-    const infoListVisible = ref<string>("hidden");
+    const infoListVisible = ref<"hidden" | "visible">("hidden");
     const infoList = ref<Array<{ key: string, value: string }>>([]);
     const linkedInfo = ref<Map<string, string>>(new Map());
 
@@ -186,7 +186,6 @@ export default defineComponent({
     const snackbar = ref<boolean>(false);
     const snackbarText = ref<string>("");
 
-    const emit = defineEmits(['focused']);
     const { toClipboard } = clipoard3();
 
     function init(item: GanttItemVO, widthPerUnit: number, linkedKeys: Array<string>) {
@@ -328,4 +327,3 @@ export default defineComponent({
   }
 });
 </script>
-../vo.ts

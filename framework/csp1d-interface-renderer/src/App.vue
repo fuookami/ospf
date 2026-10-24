@@ -21,7 +21,7 @@
 </template>
 
 <script lang="ts">
-import {defineComponent, ComponentPublicInstance, HTMLAttributes, onMounted, ref} from "vue";
+import {defineComponent, ComponentPublicInstance, onMounted, ref} from "vue";
 
 import {SchemaDTO} from "./components/dto.ts";
 import FileSelector from "./components/file-selector.vue";
@@ -44,10 +44,10 @@ export default defineComponent({
 
     const schema = ref<SchemaDTO>({
       cuttingPlans: [],
-      kpi: new Map()
+      kpi: {}
     })
     const groups = ref<Array<Array<string>>>([]);
-    const cuttingPlanViews: Array<typeof CuttingPlanGroupView> = [];
+    const cuttingPlanViews: Array<InstanceType<typeof CuttingPlanGroupView>> = [];
 
     onMounted(() => {
       resized();
@@ -91,9 +91,9 @@ export default defineComponent({
       return result;
     }
 
-    function setViewRefs(el: HTMLElement | ComponentPublicInstance | HTMLAttributes, group: Array<string>) {
+    function setViewRefs(el: Element | ComponentPublicInstance | null, group: Array<string>) {
       if(el) {
-        const view = el as typeof CuttingPlanGroupView;
+        const view = el as InstanceType<typeof CuttingPlanGroupView>;
         view.windowHeight = windowHeight.value;
         view.windowWidth = windowWidth.value;
         view.group = group;
